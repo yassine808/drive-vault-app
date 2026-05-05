@@ -128,7 +128,8 @@ async function fetchLogo(site) {
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 async function dbLoadJobs(userId) {
   const { data, error } = await supabase.from('vault_jobs').select('*')
-    .eq('user_id',userId).order('sort_order',{ascending:true}).order('created_at',{ascending:false});
+    .eq('user_id',userId).is('deleted_at',null)
+    .order('sort_order',{ascending:true}).order('created_at',{ascending:false});
   if (error) throw error; return data;
 }
 async function dbSaveJob(userId, job) {
@@ -166,14 +167,9 @@ async function dbLoadJobTrash(userId) {
   if (error) throw error;
   return data;
 }
-async function dbLoadJobs(userId) {
-  const { data, error } = await supabase.from('vault_jobs').select('*')
-    .eq('user_id',userId).is('deleted_at',null)
-    .order('sort_order',{ascending:true}).order('created_at',{ascending:false});
-  if (error) throw error; return data;
-}
-  await Promise.all(jobs.map((j,i) =>
-    j.id ? supabase.from('vault_jobs').update({ sort_order:i }).eq('id',j.id).eq('user_id',userId) : Promise.resolve()
+async function dbUpdateJobOrder(jobs, userId) {
+  await Promise.all(jobs.map((j, i) =>
+    j.id ? supabase.from('vault_jobs').update({ sort_order: i }).eq('id', j.id).eq('user_id', userId) : Promise.resolve()
   ));
 }
 
@@ -439,12 +435,12 @@ function createWindow() {
   win = new BrowserWindow({
     width:1100, height:720, minWidth:900, minHeight:580,
     frame:false, transparent:true,
-    icon: path.join(__dirname, '..', 'assets', 'icon.png'),
+    icon: path.join(__dirname, '..', 'icon.png'),
     vibrancy:'under-window', visualEffectState:'active',
     backgroundColor:'#00000000',
-    webPreferences:{ preload:path.join(__dirname,'preload.js'), contextIsolation:true, nodeIntegration:false, spellcheck:false },
+    webPreferences:{ preload:path.join(__dirname, '..', 'preload.js'), contextIsolation:true, nodeIntegration:false, spellcheck:false },
   });
-  win.loadFile(path.join(__dirname,'index.html'));
+  win.loadFile(path.join(__dirname, '..', 'index.html'));
   // Windows snap — handle double-click on titlebar via frontend
   if (process.argv.includes('--dev')) win.webContents.openDevTools({ mode:'detach' });
 }
@@ -452,8 +448,14 @@ function createWindow() {
 app.whenReady().then(() => {
   CryptoJS  = require('crypto-js');
   speakeasy = require('speakeasy');
+  const ws = require('ws');
   const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth:{ persistSession:false } });
+  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false },
+    realtime: {
+      transport: ws
+    }
+  });
   createWindow();
 });
 app.on('window-all-closed', () => { if(process.platform!=='darwin')app.quit(); });
