@@ -45,3 +45,5 @@ A secure vault application built with Electron.
    npm start
 
    npm run build
+
+   test
