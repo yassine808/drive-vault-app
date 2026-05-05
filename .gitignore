@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+build/
+
+# Environment files
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Electron specific
+electron-builder.yml
