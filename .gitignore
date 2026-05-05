@@ -26,3 +26,5 @@ npm-debug.log*
 
 # Electron specific
 electron-builder.yml
+
+package-lock.json
