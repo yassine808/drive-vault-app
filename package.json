@@ -30,6 +30,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.43.0",
     "crypto-js": "^4.2.0",
+    "dotenv": "^17.4.2",
     "googleapis": "^140.0.0",
     "speakeasy": "^2.0.0",
     "uuid": "^9.0.0",

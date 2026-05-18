@@ -1,5 +1,8 @@
 'use strict';
 
+// Load .env before anything else
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path   = require('path');
 const http   = require('http');
@@ -8,11 +11,24 @@ const crypto = require('crypto');
 const fs     = require('fs');
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const SUPABASE_URL         = 'https://ltqqqsaodxjqwsyzxurf.supabase.co';
-const SUPABASE_SERVICE_KEY = 'REDACTED_SUPABASE_SERVICE_KEY';
-const GOOGLE_CLIENT_ID     = '621412630191-n52i57ouvdvao99oh75ln06448q4rkos.apps.googleusercontent.com';
-const GOOGLE_CLIENT_SECRET = 'REDACTED_GOOGLE_CLIENT_SECRET';
-const REDIRECT_URI         = 'http://localhost:42813/oauth2callback';
+function requireEnv(name) {
+  const v = process.env[name];
+  if (!v) {
+    console.error(`FATAL: Missing required environment variable: ${name}`);
+    if (app.isReady()) {
+      const { dialog } = require('electron');
+      dialog.showErrorBox('Configuration Error', `Missing required environment variable: ${name}\n\nPlease ensure a .env file is present.`);
+    }
+    process.exit(1);
+  }
+  return v;
+}
+
+const SUPABASE_URL         = requireEnv('SUPABASE_URL');
+const SUPABASE_SERVICE_KEY = requireEnv('SUPABASE_SERVICE_KEY');
+const GOOGLE_CLIENT_ID     = requireEnv('GOOGLE_CLIENT_ID');
+const GOOGLE_CLIENT_SECRET = requireEnv('GOOGLE_CLIENT_SECRET');
+const REDIRECT_URI         = process.env.REDIRECT_URI || 'http://localhost:42813/oauth2callback';
 const SCOPES               = ['openid', 'email', 'profile'];
 
 // Log file: next to the app executable
@@ -33,9 +49,60 @@ process.on('unhandledRejection', e => logError('unhandledRejection', e));
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let win, supabase, CryptoJS, speakeasy;
 let session = null;
+let sessionToken = null;
 // Track whether an OAuth flow is currently running so we don't double-open
 let oauthInProgress = false;
 let oauthServer = null;
+
+// ─── SESSION TOKEN ────────────────────────────────────────────────────────────
+function genSessionToken() { return crypto.randomBytes(32).toString('hex'); }
+function validateToken(token) { return token && token === sessionToken; }
+
+// ─── IPC AUTH WRAPPERS ───────────────────────────────────────────────────────
+function requireAuth(fn) {
+  return async (event, token, ...args) => {
+    if (!validateToken(token)) return { ok: false, error: 'Not authenticated' };
+    return fn(event, ...args);
+  };
+}
+function requireAuthNoArgs(fn) {
+  return async (event, token) => {
+    if (!validateToken(token)) return { ok: false, error: 'Not authenticated' };
+    return fn(event);
+  };
+}
+
+// ─── INPUT VALIDATION ─────────────────────────────────────────────────────────
+const MAX_FIELD_LEN = 500;
+const MAX_NOTES_LEN = 5000;
+const VALID_ITEM_TYPES = ['password', 'note'];
+function sanitizeStr(s, max=MAX_FIELD_LEN) { return String(s||'').trim().slice(0,max); }
+function validType(t) { return VALID_ITEM_TYPES.includes(t); }
+function validEmail(e) { return /^[^\s@]{1,128}@[^\s@]{1,256}\.[^\s@]{2,}$/.test(String(e||'')); }
+function validTotpSecret(s) { return /^[A-Z2-7]{16,64}$/.test(String(s||'').replace(/\s/g,'')); }
+
+// ─── 2FA RATE LIMITER ─────────────────────────────────────────────────────────
+const rateLimit = {
+  attempts: [],
+  lockoutUntil: 0,
+  MAX_ATTEMPTS: 5,
+  WINDOW_MS: 15 * 60 * 1000,
+  LOCKOUT_MS: 15 * 60 * 1000,
+};
+function isRateLimited() {
+  const now = Date.now();
+  if (now < rateLimit.lockoutUntil) return true;
+  rateLimit.attempts = rateLimit.attempts.filter(t => now - t < rateLimit.WINDOW_MS);
+  return rateLimit.attempts.length >= rateLimit.MAX_ATTEMPTS;
+}
+function recordFailedAttempt() {
+  const now = Date.now();
+  rateLimit.attempts.push(now);
+  if (rateLimit.attempts.length >= rateLimit.MAX_ATTEMPTS) {
+    rateLimit.lockoutUntil = now + rateLimit.LOCKOUT_MS;
+  }
+}
+function resetRateLimit() { rateLimit.attempts = []; rateLimit.lockoutUntil = 0; }
 
 // ─── CRYPTO ───────────────────────────────────────────────────────────────────
 function deriveKey(googleId) { return crypto.createHash('sha256').update('vault:'+googleId).digest('hex').slice(0,32); }
@@ -252,6 +319,7 @@ async function googleOAuth() {
   const { google } = require('googleapis');
   const client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
   const state  = crypto.randomBytes(16).toString('hex');
+  const stateCreatedAt = Date.now();
   const authUrl = client.generateAuthUrl({ access_type:'offline', scope:SCOPES, state, prompt:'select_account' });
 
   return new Promise((resolve, reject) => {
@@ -260,7 +328,29 @@ async function googleOAuth() {
       const parsed = url.parse(req.url, true);
       if (!parsed.pathname.startsWith('/oauth2callback')) return;
 
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      const origin = req.headers['origin'] || req.headers['referer'];
+      if (origin && !origin.startsWith('http://localhost:42813') && !origin.startsWith('http://127.0.0.1:42813')) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+      }
+      if (!oauthInProgress) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('OAuth session expired or already used');
+        return;
+      }
+      if (Date.now() - stateCreatedAt > 5 * 60 * 1000) {
+        oauthServer.close(); oauthServer = null; oauthInProgress = false;
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('OAuth state expired');
+        return reject(new Error('OAuth state expired'));
+      }
+
+      const nonce = crypto.randomBytes(16).toString('base64');
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "';"
+      });
       res.end(`<!DOCTYPE html><html><head><title>Vault — Authenticated</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
@@ -288,7 +378,7 @@ async function googleOAuth() {
   <p>You're all set. Return to Vault.<br>This tab closes automatically in 5 seconds.</p>
   <div class="bar"><div class="fill"></div></div>
 </div>
-<script>
+<script nonce="${nonce}">
 const c=document.getElementById('c'),ctx=c.getContext('2d');
 let W=c.width=innerWidth,H=c.height=innerHeight;
 window.onresize=()=>{W=c.width=innerWidth;H=c.height=innerHeight};
@@ -349,32 +439,36 @@ ipcMain.handle('auth:login', async () => {
     const profile = await googleOAuth();
     const encKey  = deriveKey(profile.googleId);
     const userId  = await dbUpsertUser(profile);
+    sessionToken = genSessionToken();
     const twofa   = await db2faGet(userId);
     if (twofa?.enabled) {
       session = { ...profile, userId, encKey, pending2fa:true };
-      return { ok:true, needs2fa:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar } };
+      return { ok:true, needs2fa:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken };
     }
     const vault = await dbLoadItems(userId, encKey);
     session = { ...profile, userId, encKey, pending2fa:false };
     playSound('login');
-    return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, vault };
+    return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken, vault };
   } catch (e) { logError('auth:login', e); return { ok:false, error:e.message }; }
 });
 
 ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
   try {
+    if (isRateLimited()) return { ok:false, error:'Too many attempts. Try again in 15 minutes.' };
     if (!session?.pending2fa) return { ok:false, error:'No pending 2FA' };
     const twofa = await db2faGet(session.userId);
-    if (!verify2fa(twofa.secret, token)) return { ok:false, error:'Invalid code' };
+    if (!verify2fa(twofa.secret, token)) { recordFailedAttempt(); return { ok:false, error:'Invalid code' }; }
+    resetRateLimit();
     session.pending2fa = false;
+    sessionToken = genSessionToken();
     const vault = await dbLoadItems(session.userId, session.encKey);
     playSound('login');
-    return { ok:true, vault };
+    return { ok:true, token:sessionToken, vault };
   } catch (e) { logError('auth:verify2fa', e); return { ok:false, error:e.message }; }
 });
 
 ipcMain.handle('auth:logout', () => {
-  playSound('logout'); session=null; return { ok:true };
+  playSound('logout'); session=null; sessionToken=null; return { ok:true };
 });
 
 ipcMain.handle('auth:reauth', async () => {
@@ -386,45 +480,47 @@ ipcMain.handle('auth:reauth', async () => {
     const userId = await dbUpsertUser(profile);
     const vault  = await dbLoadItems(userId, encKey);
     session = { ...profile, userId, encKey, pending2fa:false };
+    sessionToken = genSessionToken();
     playSound('login');
-    return { ok:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, vault };
+    return { ok:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken, vault };
   } catch (e) { logError('auth:reauth', e); return { ok:false, error:e.message }; }
 });
 
-ipcMain.handle('vault:save',   async (_e,{type,item}) => { try { return {ok:true,dbId:await dbSaveItem(session.userId,type,item,session.encKey)}; } catch(e){logError('vault:save',e);return{ok:false,error:e.message};} });
-ipcMain.handle('vault:delete', async (_e,{dbId})      => { try { await dbSoftDelete(dbId,session.userId);return{ok:true}; } catch(e){logError('vault:delete',e);return{ok:false,error:e.message};} });
-ipcMain.handle('vault:sync',   async ()               => { try { return {ok:true,vault:await dbLoadItems(session.userId,session.encKey)}; } catch(e){logError('vault:sync',e);return{ok:false,error:e.message};} });
-ipcMain.handle('vault:reorder',async (_e,{type,items})=> { try { await dbUpdateSortOrder(items,session.userId);return{ok:true}; } catch(e){logError('vault:reorder',e);return{ok:false};} });
+// ─── SENSITIVE HANDLERS (token-validated) ─────────────────────────────────────
+ipcMain.handle('vault:save',     requireAuth(async (_e,{type,item})            => { try { if(!validType(type))return{ok:false,error:'Invalid item type'};if(!item||typeof item!=='object')return{ok:false,error:'Invalid item'};item.site=sanitizeStr(item.site);item.username=sanitizeStr(item.username);item.password=sanitizeStr(item.password,MAX_NOTES_LEN);item.notes=sanitizeStr(item.notes,MAX_NOTES_LEN);return {ok:true,dbId:await dbSaveItem(session.userId,type,item,session.encKey)}; } catch(e){logError('vault:save',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('vault:delete',   requireAuth(async (_e,{dbId})                => { try { await dbSoftDelete(dbId,session.userId);return{ok:true}; } catch(e){logError('vault:delete',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('vault:sync',     requireAuthNoArgs(async ()                    => { try { return {ok:true,vault:await dbLoadItems(session.userId,session.encKey)}; } catch(e){logError('vault:sync',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('vault:reorder',  requireAuth(async (_e,{type,items})          => { try { await dbUpdateSortOrder(items,session.userId);return{ok:true}; } catch(e){logError('vault:reorder',e);return{ok:false};} }));
 
-ipcMain.handle('trash:load',    async ()          => { try { return {ok:true,items:await dbLoadTrash(session.userId,session.encKey)}; } catch(e){logError('trash:load',e);return{ok:false,error:e.message};} });
-ipcMain.handle('trash:restore', async (_e,{dbId}) => { try { await dbRestore(dbId,session.userId);return{ok:true}; } catch(e){logError('trash:restore',e);return{ok:false,error:e.message};} });
-ipcMain.handle('trash:purge',   async (_e,{dbId}) => { try { await dbPermDelete(dbId,session.userId);return{ok:true}; } catch(e){logError('trash:purge',e);return{ok:false,error:e.message};} });
+ipcMain.handle('trash:load',     requireAuthNoArgs(async ()                    => { try { return {ok:true,items:await dbLoadTrash(session.userId,session.encKey)}; } catch(e){logError('trash:load',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('trash:restore',  requireAuth(async (_e,{dbId})                => { try { await dbRestore(dbId,session.userId);return{ok:true}; } catch(e){logError('trash:restore',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('trash:purge',    requireAuth(async (_e,{dbId})                => { try { await dbPermDelete(dbId,session.userId);return{ok:true}; } catch(e){logError('trash:purge',e);return{ok:false,error:e.message};} }));
 
-ipcMain.handle('logo:fetch',    async (_e,{site}) => { try { return {ok:true,url:await fetchLogo(site)}; } catch(e){return{ok:false};} });
+ipcMain.handle('logo:fetch',     requireAuth(async (_e,{site})                => { try { return {ok:true,url:await fetchLogo(site)}; } catch(e){return{ok:false};} }));
 
-ipcMain.handle('jobs:load',   async ()        => { try { return {ok:true,jobs:await dbLoadJobs(session.userId)}; } catch(e){logError('jobs:load',e);return{ok:false,error:e.message};} });
-ipcMain.handle('jobs:save',   async (_e,{job})=> { try { return {ok:true,id:await dbSaveJob(session.userId,job)}; } catch(e){logError('jobs:save',e);return{ok:false,error:e.message};} });
-ipcMain.handle('jobs:delete', async (_e,{id}) => { try { await dbDeleteJob(id,session.userId);return{ok:true}; } catch(e){logError('jobs:delete',e);return{ok:false,error:e.message};} });
-ipcMain.handle('jobs:reorder',async (_e,{jobs})=> { try { await dbUpdateJobOrder(jobs,session.userId);return{ok:true}; } catch(e){logError('jobs:reorder',e);return{ok:false};} });
-ipcMain.handle('jobs:trash:load',   async ()          => { try { return {ok:true,items:await dbLoadJobTrash(session.userId)}; } catch(e){logError('jobs:trash:load',e);return{ok:false,error:e.message};} });
-ipcMain.handle('jobs:trash:restore',async (_e,{id})   => { try { await dbRestoreJob(id,session.userId);return{ok:true}; } catch(e){logError('jobs:trash:restore',e);return{ok:false,error:e.message};} });
-ipcMain.handle('jobs:trash:purge',  async (_e,{id})   => { try { await dbPermDeleteJob(id,session.userId);return{ok:true}; } catch(e){logError('jobs:trash:purge',e);return{ok:false,error:e.message};} });
+ipcMain.handle('jobs:load',      requireAuthNoArgs(async ()                    => { try { return {ok:true,jobs:await dbLoadJobs(session.userId)}; } catch(e){logError('jobs:load',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('jobs:save',      requireAuth(async (_e,{job})                 => { try { if(!job||typeof job!=='object')return{ok:false,error:'Invalid job data'};job.company=sanitizeStr(job.company);job.role=sanitizeStr(job.role);if(job.email&&!validEmail(job.email))return{ok:false,error:'Invalid email'};job.notes=sanitizeStr(job.notes,MAX_NOTES_LEN);return {ok:true,id:await dbSaveJob(session.userId,job)}; } catch(e){logError('jobs:save',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('jobs:delete',    requireAuth(async (_e,{id})                  => { try { await dbDeleteJob(id,session.userId);return{ok:true}; } catch(e){logError('jobs:delete',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('jobs:reorder',   requireAuth(async (_e,{jobs})                => { try { await dbUpdateJobOrder(jobs,session.userId);return{ok:true}; } catch(e){logError('jobs:reorder',e);return{ok:false};} }));
+ipcMain.handle('jobs:trash:load',    requireAuthNoArgs(async ()               => { try { return {ok:true,items:await dbLoadJobTrash(session.userId)}; } catch(e){logError('jobs:trash:load',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('jobs:trash:restore', requireAuth(async (_e,{id})              => { try { await dbRestoreJob(id,session.userId);return{ok:true}; } catch(e){logError('jobs:trash:restore',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('jobs:trash:purge',   requireAuth(async (_e,{id})              => { try { await dbPermDeleteJob(id,session.userId);return{ok:true}; } catch(e){logError('jobs:trash:purge',e);return{ok:false,error:e.message};} }));
 
-ipcMain.handle('settings:load', async () => { try { return {ok:true,settings:await dbLoadSettings(session.userId)}; } catch(e){return{ok:true,settings:{lock_timeout:5,lock_action:'lock'}};} });
-ipcMain.handle('settings:save', async (_e,{settings}) => { try { await dbSaveSettings(session.userId,settings);return{ok:true}; } catch(e){logError('settings:save',e);return{ok:false};} });
+ipcMain.handle('settings:load',  requireAuthNoArgs(async ()                    => { try { return {ok:true,settings:await dbLoadSettings(session.userId)}; } catch(e){return{ok:true,settings:{lock_timeout:5,lock_action:'lock'}};} }));
+ipcMain.handle('settings:save',  requireAuth(async (_e,{settings})            => { try { if(!settings||typeof settings!=='object')return{ok:false,error:'Invalid settings'};const t=parseInt(settings.lock_timeout);if(isNaN(t)||t<0||t>120)return{ok:false,error:'Lock timeout must be 0-120 minutes'};if(!['lock','exit'].includes(settings.lock_action))return{ok:false,error:'Invalid lock action'};await dbSaveSettings(session.userId,{lock_timeout:t,lock_action:settings.lock_action});return{ok:true}; } catch(e){logError('settings:save',e);return{ok:false};} }));
 
-ipcMain.handle('totp:load',   async ()          => { try { return {ok:true,items:await dbLoadTotp(session.userId,session.encKey)}; } catch(e){logError('totp:load',e);return{ok:false,error:e.message};} });
-ipcMain.handle('totp:save',   async (_e,{item}) => { try { return {ok:true,id:await dbSaveTotp(session.userId,item,session.encKey)}; } catch(e){logError('totp:save',e);return{ok:false,error:e.message};} });
-ipcMain.handle('totp:delete', async (_e,{id})   => { try { await dbDeleteTotp(id,session.userId);return{ok:true}; } catch(e){logError('totp:delete',e);return{ok:false,error:e.message};} });
+ipcMain.handle('totp:load',      requireAuthNoArgs(async ()                    => { try { return {ok:true,items:await dbLoadTotp(session.userId,session.encKey)}; } catch(e){logError('totp:load',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('totp:save',      requireAuth(async (_e,{item})                => { try { if(!item||typeof item!=='object')return{ok:false,error:'Invalid TOTP data'};item.name=sanitizeStr(item.name);item.issuer=sanitizeStr(item.issuer);if(!validTotpSecret(item.secret))return{ok:false,error:'Invalid TOTP secret (base32: A-Z, 2-7, 16+ chars)'};return {ok:true,id:await dbSaveTotp(session.userId,item,session.encKey)}; } catch(e){logError('totp:save',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('totp:delete',    requireAuth(async (_e,{id})                  => { try { await dbDeleteTotp(id,session.userId);return{ok:true}; } catch(e){logError('totp:delete',e);return{ok:false,error:e.message};} }));
 
-ipcMain.handle('2fa:status',  async ()           => { try { const d=await db2faGet(session.userId);return{ok:true,enabled:d?.enabled||false}; } catch(e){return{ok:true,enabled:false};} });
-ipcMain.handle('2fa:setup',   async ()           => { try { const s=speakeasy.generateSecret({name:`Vault (${session.email})`,length:20});await db2faSave(session.userId,s.base32,false);return{ok:true,secret:s.base32,otpauth:s.otpauth_url}; } catch(e){logError('2fa:setup',e);return{ok:false,error:e.message};} });
-ipcMain.handle('2fa:enable',  async (_e,{token})=> { try { const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token))return{ok:false,error:'Invalid code'};await db2faSave(session.userId,d.secret,true);return{ok:true}; } catch(e){logError('2fa:enable',e);return{ok:false,error:e.message};} });
-ipcMain.handle('2fa:disable', async ()           => { try { const d=await db2faGet(session.userId);if(d)await db2faSave(session.userId,d.secret,false);return{ok:true}; } catch(e){logError('2fa:disable',e);return{ok:false,error:e.message};} });
+ipcMain.handle('2fa:status',     requireAuthNoArgs(async ()                    => { try { const d=await db2faGet(session.userId);return{ok:true,enabled:d?.enabled||false}; } catch(e){return{ok:true,enabled:false};} }));
+ipcMain.handle('2fa:setup',      requireAuthNoArgs(async ()                    => { try { const s=speakeasy.generateSecret({name:`Vault (${session.email})`,length:20});await db2faSave(session.userId,s.base32,false);return{ok:true,secret:s.base32,otpauth:s.otpauth_url}; } catch(e){logError('2fa:setup',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('2fa:enable',     requireAuth(async (_e,{token})               => { try { const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token))return{ok:false,error:'Invalid code'};await db2faSave(session.userId,d.secret,true);return{ok:true}; } catch(e){logError('2fa:enable',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('2fa:disable',    requireAuthNoArgs(async ()                    => { try { const d=await db2faGet(session.userId);if(d)await db2faSave(session.userId,d.secret,false);return{ok:true}; } catch(e){logError('2fa:disable',e);return{ok:false,error:e.message};} }));
 
-ipcMain.handle('monitor:stats', async ()   => { try { return {ok:true,stats:await dbGetStats(session.userId),logPath:LOG_PATH}; } catch(e){logError('monitor:stats',e);return{ok:false,error:e.message};} });
-ipcMain.handle('log:read',      async ()   => { try { const t=fs.existsSync(LOG_PATH)?fs.readFileSync(LOG_PATH,'utf8'):'(no errors logged)';return{ok:true,log:t.slice(-10000)}; } catch(e){return{ok:true,log:'(could not read log)'};} });
-ipcMain.handle('log:clear',     async ()   => { try { fs.writeFileSync(LOG_PATH,'');return{ok:true}; } catch(e){return{ok:false};} });
+ipcMain.handle('monitor:stats',  requireAuthNoArgs(async ()                    => { try { return {ok:true,stats:await dbGetStats(session.userId),logPath:LOG_PATH}; } catch(e){logError('monitor:stats',e);return{ok:false,error:e.message};} }));
+ipcMain.handle('log:read',       requireAuthNoArgs(async ()                    => { try { const t=fs.existsSync(LOG_PATH)?fs.readFileSync(LOG_PATH,'utf8'):'(no errors logged)';return{ok:true,log:t.slice(-10000)}; } catch(e){return{ok:true,log:'(could not read log)'};} }));
+ipcMain.handle('log:clear',      requireAuthNoArgs(async ()                    => { try { fs.writeFileSync(LOG_PATH,'');return{ok:true}; } catch(e){return{ok:false};} }));
 
 ipcMain.on('win:minimize', () => win?.minimize());
 ipcMain.on('win:maximize', () => { if(win?.isMaximized())win.unmaximize(); else win?.maximize(); });

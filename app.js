@@ -146,7 +146,7 @@ document.getElementById('btn-unlock').addEventListener('click',async()=>{
   if(btn.disabled)return;
   btn.textContent='Opening browser…';btn.disabled=true;
   const r=await api.reauth();
-  if(r.ok){S.user=r.user;loadVault(r.vault);screen('s-app');armLock();toast('Vault unlocked');}
+  if(r.ok){if(r.token)window.__vaultToken.set(r.token);S.user=r.user;loadVault(r.vault);screen('s-app');armLock();toast('Vault unlocked');}
   else{btn.textContent='Unlock with Google';btn.disabled=false;toast('Unlock failed: '+r.error);}
 });
 
@@ -158,12 +158,14 @@ document.getElementById('btn-login').addEventListener('click',async()=>{
   const r=await api.login();
   if(!r.ok){const err=document.getElementById('login-err');err.hidden=false;err.textContent=r.error;btn.textContent='Sign in with Google';btn.disabled=false;return;}
   if(r.needs2fa){S.user=r.user;screen('s-2fa');btn.textContent='Sign in with Google';btn.disabled=false;return;}
+  if(r.token)window.__vaultToken.set(r.token);
   S.user=r.user;loadVault(r.vault);await loadSettings();enterApp();
 });
 document.getElementById('btn-verify2fa').addEventListener('click',async()=>{
   const token=document.getElementById('twofa-code').value.trim();
   const r=await api.verify2fa(token);
   if(!r.ok){document.getElementById('twofa-err').hidden=false;document.getElementById('twofa-err').textContent=r.error;return;}
+  if(r.token)window.__vaultToken.set(r.token);
   loadVault(r.vault);await loadSettings();enterApp();
 });
 document.getElementById('twofa-code').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('btn-verify2fa').click();});
@@ -186,9 +188,20 @@ async function loadSettings(){
 function enterApp(){screen('s-app');renderUserChip();switchTab('passwords');armLock();}
 function renderUserChip(){
   const u=S.user;const init=(u.name||u.email||'?')[0].toUpperCase();
-  document.getElementById('user-chip').innerHTML=u.avatar
-    ?`<img class="avatar" src="${u.avatar}"/><div><div class="u-name">${esc(u.name)}</div><div class="u-email">${esc(u.email)}</div></div>`
-    :`<div class="avatar-fb">${init}</div><div><div class="u-name">${esc(u.name)}</div><div class="u-email">${esc(u.email)}</div></div>`;
+  const chip=document.getElementById('user-chip');chip.innerHTML='';
+	  if(u.avatar){
+	    const img=document.createElement('img');img.className='avatar';
+	    if(u.avatar.startsWith('https://')){img.src=u.avatar;}
+	    chip.appendChild(img);
+	  }else{
+	    const fb=document.createElement('div');fb.className='avatar-fb';fb.textContent=init;
+	    chip.appendChild(fb);
+	  }
+	  const info=document.createElement('div');
+	  const nm=document.createElement('div');nm.className='u-name';nm.textContent=u.name||'';
+	  const em=document.createElement('div');em.className='u-email';em.textContent=u.email||'';
+	  info.appendChild(nm);info.appendChild(em);
+	  chip.appendChild(info);
 }
 
 // ═══ TABS ══════════════════════════════════════════════════════════════════════
@@ -292,7 +305,15 @@ function renderPasswords(){
       </div>`;
     getLogo(pw.site).then(url=>{
       const el=document.getElementById('icon-'+pw.id);
-      if(el&&url)el.innerHTML=`<img src="${url}" width="22" height="22" style="border-radius:4px;object-fit:contain" onerror="this.remove()" />`;
+      if(el&&url){
+        el.innerHTML='';
+        const img=document.createElement('img');img.width=22;img.height=22;
+        img.style.borderRadius='4px';img.style.objectFit='contain';
+        // Only allow https favicon URLs
+        if(url.startsWith('https://')){img.src=url;}
+        img.addEventListener('error',()=>{img.remove();});
+        el.appendChild(img);
+      }
     });
     // Hold to show — show while pressed, hide on release (no toggle)
     const eyeBtn=row.querySelector('.eye-inline');
@@ -954,17 +975,24 @@ function updateSm(wrapId,pw){
 const LOWER='abcdefghijklmnopqrstuvwxyz',UPPER='ABCDEFGHIJKLMNOPQRSTUVWXYZ',NUMS='0123456789',SYMS='!@#$%^&*()_+-=[]{}|;:,.<>?';
 function doGenerate(){
   const len=parseInt(document.getElementById('gen-len').value);
-  let cs=LOWER;
-  if(document.getElementById('go-upper').checked)cs+=UPPER;
-  if(document.getElementById('go-nums').checked)cs+=NUMS;
-  if(document.getElementById('go-syms').checked)cs+=SYMS;
+  const classes=[LOWER];
+  if(document.getElementById('go-upper').checked)classes.push(UPPER);
+  if(document.getElementById('go-nums').checked)classes.push(NUMS);
+  if(document.getElementById('go-syms').checked)classes.push(SYMS);
+  const allCs=classes.join('');
+  // Guarantee at least one char from each enabled class, fill rest randomly, then shuffle
   const arr=new Uint32Array(len);crypto.getRandomValues(arr);
-  const pw=Array.from(arr).map(n=>cs[n%cs.length]).join('');
-  document.getElementById('gen-out').textContent=pw;
-  const{n,lbl,cls}=scoreP(pw);
+  const guaranteed=classes.map((cs,i)=>cs[arr[i]%cs.length]);
+  const rest=Array.from(arr).slice(classes.length).map(n=>allCs[n%allCs.length]);
+  let pw=[...guaranteed,...rest];
+  // Fisher-Yates shuffle with CSPRNG
+  for(let i=pw.length-1;i>0;i--){const j=arr[i<arr.length?i:i%arr.length]%(i+1);[pw[i],pw[j]]=[pw[j],pw[i]];}
+  const pwStr=pw.join('');
+  document.getElementById('gen-out').textContent=pwStr;
+  const{n,lbl,cls}=scoreP(pwStr);
   document.querySelectorAll('#gen-strength-row .bar').forEach((b,i)=>b.className='bar'+(i<n?` g${n}`:''));
   const l=document.getElementById('gen-slabel');if(l){l.textContent=lbl;l.className='slabel '+cls.replace('sl-','s');}
-  return pw;
+  return pwStr;
 }
 document.getElementById('gen-len').addEventListener('input',function(){
   document.getElementById('gen-len-val').textContent=this.value;
@@ -1015,7 +1043,10 @@ document.getElementById('btn-2fa').addEventListener('click',async()=>{
     if(sr.ok){
       document.getElementById('2fa-secret-text').textContent=sr.secret;
       const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(sr.otpauth)}`;
-      document.getElementById('qr-wrap').innerHTML=`<img src="${qrUrl}" width="160" height="160" style="border-radius:8px;background:#fff;padding:6px" />`;
+      const qrEl=document.getElementById('qr-wrap');qrEl.innerHTML='';
+        const qrImg=document.createElement('img');qrImg.width=160;qrImg.height=160;
+        qrImg.style.borderRadius='8px';qrImg.style.background='#fff';qrImg.style.padding='6px';
+        qrImg.src=qrUrl;qrEl.appendChild(qrImg);
     }
     const newOk=okBtn.cloneNode(true);okBtn.parentNode.replaceChild(newOk,okBtn);
     newOk.hidden=false;
