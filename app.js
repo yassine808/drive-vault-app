@@ -47,50 +47,47 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
 (function initCanvas(){
   const canvas=document.getElementById('bg-canvas');
   const ctx=canvas.getContext('2d');
-  let W,H,mouse={x:-9999,y:-9999},click={x:0,y:0,r:0,active:false};
+  let W,H,mouse={x:-9999,y:-9999};
   const particles=[];
 
   function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
   window.addEventListener('resize',resize);resize();
 
-  // Slower base speed (0.12 instead of 0.45)
-  for(let i=0;i<70;i++) particles.push({
+  for(let i=0;i<55;i++) particles.push({
     x:Math.random()*1200,y:Math.random()*800,
-    vx:(Math.random()-.5)*.12,vy:(Math.random()-.5)*.12,
-    r:Math.random()*1.8+.4,alpha:Math.random()*.45+.1,hue:Math.random()*60+240,
+    vx:(Math.random()-.5)*.08,vy:(Math.random()-.5)*.08,
+    r:Math.random()*1.2+.3,
+    alpha:Math.random()*.25+.05,
   });
 
   window.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
-  window.addEventListener('mousedown',e=>{click.x=e.clientX;click.y=e.clientY;click.r=0;click.active=true;});
 
   function draw(){
     ctx.clearRect(0,0,W,H);
     for(let i=0;i<particles.length;i++){
       const p=particles[i];
       const dx=p.x-mouse.x,dy=p.y-mouse.y,dist=Math.sqrt(dx*dx+dy*dy);
-      // Mouse repulsion (gentle push)
-      if(dist<140&&dist>0){p.vx+=dx/dist*.04;p.vy+=dy/dist*.04;}
-      // Click ripple burst
-      if(click.active){const cx=p.x-click.x,cy=p.y-click.y,cd=Math.sqrt(cx*cx+cy*cy);
-        if(Math.abs(cd-click.r)<50&&cd>0){p.vx-=cx/cd*.4;p.vy-=cy/cd*.4;}}
-      // Dampen back to slow drift
-      p.vx*=.97;p.vy*=.97;
-      // Enforce a min-speed so they never fully stop
+      if(dist<120&&dist>0){p.vx+=dx/dist*.02;p.vy+=dy/dist*.02;}
+      p.vx*=.98;p.vy*=.98;
       const spd=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
-      if(spd<.04&&spd>0){const f=.04/spd;p.vx*=f;p.vy*=f;}
+      if(spd<.03&&spd>0){const f=.03/spd;p.vx*=f;p.vy*=f;}
       p.x+=p.vx;p.y+=p.vy;
       if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
       for(let j=i+1;j<particles.length;j++){
         const q=particles[j];const ex=p.x-q.x,ey=p.y-q.y,d=Math.sqrt(ex*ex+ey*ey);
-        if(d<150){ctx.beginPath();ctx.strokeStyle=`hsla(260,80%,70%,${(1-d/150)*.2})`;ctx.lineWidth=.5;ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();}
+        if(d<130){
+          const alpha=(1-d/130)*.08;
+          ctx.beginPath();
+          ctx.strokeStyle=`rgba(212,165,116,${alpha})`;
+          ctx.lineWidth=.5;
+          ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+          ctx.stroke();
+        }
       }
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=`hsla(${p.hue},80%,75%,${p.alpha})`;ctx.fill();
-    }
-    if(click.active){
-      click.r+=6;
-      ctx.beginPath();ctx.arc(click.x,click.y,click.r,0,Math.PI*2);
-      ctx.strokeStyle=`rgba(167,139,250,${Math.max(0,.7-click.r/200)})`;ctx.lineWidth=1.5;ctx.stroke();
-      if(click.r>200)click.active=false;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(212,165,116,${p.alpha})`;
+      ctx.fill();
     }
     requestAnimationFrame(draw);
   }
@@ -900,7 +897,7 @@ async function loadMonitor(){
       <div class="mon-card"><div class="mon-num">${st.items}</div><div class="mon-lbl">Vault items</div></div>
       <div class="mon-card"><div class="mon-num">${st.trash}</div><div class="mon-lbl">In trash</div></div>
       <div class="mon-card"><div class="mon-num">${st.jobs}</div><div class="mon-lbl">Job apps</div></div>
-      <div class="mon-card mon-wide"><div class="mon-num" style="font-size:12px;font-family:var(--mono)">ltqqqsaodxjqwsyzxurf.supabase.co</div><div class="mon-lbl">EU West (Ireland) · Log: ${esc(sr.logPath||'')}</div></div>`;
+      <div class="mon-card mon-wide"><div class="mon-num" style="font-size:12px;font-family:var(--mono)">Supabase</div><div class="mon-lbl">EU West (Ireland) · Log: ${esc(sr.logPath||'')}</div></div>`;
   }
   if(lr.ok){const el=document.getElementById('log-view');el.textContent=lr.log||'(no errors logged)';el.scrollTop=el.scrollHeight;}
 }

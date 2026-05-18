@@ -357,15 +357,15 @@ async function googleOAuth() {
   body{height:100vh;overflow:hidden;background:#060612;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',sans-serif}
   canvas{position:fixed;inset:0;z-index:0}
   .card{position:relative;z-index:1;text-align:center;padding:44px 52px;
-    background:rgba(10,10,28,.85);border:1px solid rgba(167,139,250,.25);
+    background:rgba(20,17,14,.88);border:1px solid rgba(212,165,116,.2);
     border-radius:20px;backdrop-filter:blur(20px);animation:up .6s cubic-bezier(.22,1,.36,1)}
   @keyframes up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-  .shield{width:72px;height:72px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);
+  .shield{width:72px;height:72px;background:rgba(212,165,116,.1);border:1px solid rgba(212,165,116,.25);
     border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:32px}
-  h2{color:#a78bfa;font-size:22px;font-weight:600;margin-bottom:10px}
+  h2{color:#d4a574;font-size:22px;font-weight:600;margin-bottom:10px}
   p{color:#64748b;font-size:13px;line-height:1.6}
   .bar{width:220px;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin:20px auto 0;overflow:hidden}
-  .fill{height:100%;background:linear-gradient(90deg,#a78bfa,#6d28d9);border-radius:2px;animation:fill 5s linear forwards}
+  .fill{height:100%;background:linear-gradient(90deg,#d4a574,#b8864a);border-radius:2px;animation:fill 5s linear forwards}
   @keyframes fill{from{width:0}to{width:100%}}
   .tick{color:#34d399;font-size:36px;margin-bottom:4px}
 </style>
