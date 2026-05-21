@@ -153,7 +153,7 @@ document.getElementById('btn-login').addEventListener('click',async()=>{
   if(btn.disabled)return;
   btn.textContent='Opening browser…';btn.disabled=true;
   const r=await api.login();
-  if(!r.ok){const err=document.getElementById('login-err');err.hidden=false;err.textContent=r.error;btn.textContent='Sign in with Google';btn.disabled=false;return;}
+  if(!r.ok){const err=document.getElementById('login-err');err.hidden=false;err.textContent=r.error;console.error('[login] error:', r.error);btn.textContent='Sign in with Google';btn.disabled=false;return;}
   if(r.needs2fa){S.user=r.user;screen('s-2fa');btn.textContent='Sign in with Google';btn.disabled=false;return;}
   if(r.token)window.__vaultToken.set(r.token);
   S.user=r.user;loadVault(r.vault);await loadSettings();enterApp();

@@ -39,7 +39,8 @@ const LOG_PATH = path.join(
 
 // ─── LOGGING ─────────────────────────────────────────────────────────────────
 function logError(ctx, err) {
-  const line = `[${new Date().toISOString()}] [${ctx}] ${err?.message||err}\n${err?.stack||''}\n---\n`;
+  const extra = err?.response?.data ? ` | response: ${JSON.stringify(err.response.data)}` : '';
+  const line = `[${new Date().toISOString()}] [${ctx}] ${err?.message||err}${extra}\ncode: ${err?.code||'none'} | status: ${err?.response?.status||'none'}\n${err?.stack||''}\n---\n`;
   try { fs.appendFileSync(LOG_PATH, line); } catch {}
   console.error(line);
 }
@@ -114,7 +115,7 @@ async function dbUpsertUser({ googleId, email, name, avatar }) {
   const { data, error } = await supabase.from('vault_users')
     .upsert({ google_id:googleId, email, name, avatar, last_seen:new Date().toISOString() },{ onConflict:'google_id' })
     .select('id').single();
-  if (error) throw error;
+  if (error) { console.error('[dbUpsertUser] Supabase error:', JSON.stringify(error)); throw new Error('dbUpsertUser failed: ' + error.message + ' | code: ' + error.code + ' | details: ' + error.details + ' | hint: ' + error.hint); }
   return data.id;
 }
 
@@ -417,7 +418,10 @@ setTimeout(()=>window.close(),5000);
           name:     me.data.names?.[0]?.displayName    || '',
           avatar:   me.data.photos?.[0]?.url           || null,
         });
-      } catch (e) { reject(e); }
+      } catch (e) {
+        console.error('[oauth] error:', e.message, '| code:', e.code, '| response:', JSON.stringify(e.response?.data));
+        reject(e);
+      }
     });
     oauthServer.listen(42813, '127.0.0.1', () => shell.openExternal(authUrl));
     setTimeout(() => {
@@ -449,7 +453,12 @@ ipcMain.handle('auth:login', async () => {
     session = { ...profile, userId, encKey, pending2fa:false };
     playSound('login');
     return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken, vault };
-  } catch (e) { logError('auth:login', e); return { ok:false, error:e.message }; }
+  } catch (e) {
+    console.error('[auth:login] error:', e.message, '| code:', e.code, '| response:', JSON.stringify(e.response?.data));
+    logError('auth:login', e);
+    const detailMsg = e.response?.data?.error_description || e.response?.data?.error || e.message;
+    return { ok:false, error: detailMsg || 'Unknown error' };
+  }
 });
 
 ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
@@ -483,7 +492,7 @@ ipcMain.handle('auth:reauth', async () => {
     sessionToken = genSessionToken();
     playSound('login');
     return { ok:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken, vault };
-  } catch (e) { logError('auth:reauth', e); return { ok:false, error:e.message }; }
+  } catch (e) { console.error('[auth:reauth] error:', e.message, '| code:', e.code, '| response:', JSON.stringify(e.response?.data)); logError('auth:reauth', e); return { ok:false, error:e.message }; }
 });
 
 // ─── SENSITIVE HANDLERS (token-validated) ─────────────────────────────────────

@@ -15,32 +15,26 @@
   <div class="tb-left">
     <div class="tb-logo">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="url(#lg)"/>
-        <path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <defs><linearGradient id="lg" x1="4" y1="2" x2="20" y2="22">
-          <stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6d28d9"/>
-        </linearGradient></defs>
+        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="var(--accent)"/>
+        <path d="M9 12l2 2 4-4" stroke="var(--bg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <span class="tb-title">Vault</span>
   </div>
   <div class="tb-right">
-    <button class="wb" id="wb-min">─</button>
-    <button class="wb" id="wb-max">□</button>
-    <button class="wb danger" id="wb-close">✕</button>
+    <button class="wb" id="wb-min" aria-label="Minimize">─</button>
+    <button class="wb" id="wb-max" aria-label="Maximize">□</button>
+    <button class="wb danger" id="wb-close" aria-label="Close">✕</button>
   </div>
 </header>
 
 <!-- LOGIN -->
 <div class="screen center" id="s-login">
-  <div class="card login-card">
+  <div class="login-card">
     <div class="login-shield">
-      <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="url(#lg2)"/>
-        <path d="M9 12l2 2 4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <defs><linearGradient id="lg2" x1="4" y1="2" x2="20" y2="22">
-          <stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6d28d9"/>
-        </linearGradient></defs>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="var(--accent)" fill-opacity=".85"/>
+        <path d="M9 12l2 2 4-4" stroke="var(--bg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <h1>Vault</h1>
@@ -59,27 +53,27 @@
   </div>
 </div>
 
-<!-- 2FA LOGIN SCREEN — CENTERED -->
+<!-- 2FA LOGIN SCREEN -->
 <div class="screen center" id="s-2fa" hidden>
-  <div class="card login-card">
-    <div class="login-shield" style="background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.2)">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1" fill="#fbbf24"/>
+  <div class="login-card">
+    <div class="login-shield" style="background:var(--amber-dim);border-color:oklch(0.82 0.1 85 / 0.12)">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1" fill="var(--amber)"/>
       </svg>
     </div>
     <h1 style="font-size:20px">Two-factor auth</h1>
     <p class="sub">Enter the 6-digit code from your authenticator app.</p>
     <input class="fi twofa-input" id="twofa-code" placeholder="000000" maxlength="6" inputmode="numeric" style="text-align:center;font-size:22px;letter-spacing:.3em;font-family:var(--mono)" />
-    <button class="btn-primary" id="btn-verify2fa" style="width:100%;justify-content:center;margin-top:8px">Verify code</button>
+    <button class="btn-primary" id="btn-verify2fa" style="width:100%;justify-content:center;margin-top:10px">Verify code</button>
     <p class="err" id="twofa-err" hidden></p>
   </div>
 </div>
 
 <!-- LOCK -->
 <div class="screen center" id="s-lock" hidden>
-  <div class="card login-card">
+  <div class="login-card">
     <div class="login-shield lock-idle">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
     </div>
@@ -99,7 +93,7 @@
 
 <!-- APP -->
 <div class="screen row" id="s-app" hidden>
-  <aside class="sidebar glass">
+  <aside class="sidebar">
     <div class="user-chip" id="user-chip"></div>
     <nav class="nav">
       <button class="nav-btn active" data-tab="passwords">
@@ -167,12 +161,12 @@
       </div>
       <div class="search-row"><div class="search">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" id="pw-search" placeholder="Search…" />
+        <input type="text" id="pw-search" placeholder="Search passwords…" />
       </div></div>
       <div class="list" id="pw-list">
         <div class="empty" id="pw-empty">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <p>No passwords yet.<br><strong>Add password</strong> to get started.</p>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".15"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <p>No passwords yet.<br><strong>Add your first password</strong> to get started.</p>
         </div>
       </div>
     </section>
@@ -189,7 +183,7 @@
       <div class="notes-layout">
         <div class="notes-list" id="notes-list">
           <div class="empty" id="notes-empty">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <p>No notes yet.</p>
           </div>
         </div>
@@ -242,7 +236,7 @@
     <!-- Authenticator (TOTP Vault) -->
     <section class="tab" id="tab-totp" hidden>
       <div class="tab-head">
-        <div><h2>Authenticator</h2><p class="sub">Your 2FA codes — encrypted &amp; synced</p></div>
+        <div><h2>Authenticator</h2><p class="sub">Your 2FA codes, encrypted and synced</p></div>
         <button class="btn-primary" id="btn-add-totp">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Add account
@@ -250,7 +244,7 @@
       </div>
       <div class="totp-grid" id="totp-grid">
         <div class="empty" id="totp-empty">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".15"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
           <p>No accounts yet.<br>Add your first 2FA account.</p>
         </div>
       </div>
@@ -267,7 +261,7 @@
       </div>
       <div class="list" id="trash-list">
         <div class="empty" id="trash-empty">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity=".15"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
           <p>Trash is empty.</p>
         </div>
       </div>
@@ -276,7 +270,7 @@
     <!-- Monitor -->
     <section class="tab" id="tab-monitor" hidden>
       <div class="tab-head">
-        <div><h2>Monitor</h2><p class="sub">Database &amp; app stats</p></div>
+        <div><h2>Monitor</h2><p class="sub">Database and app stats</p></div>
         <button class="btn-primary" id="btn-refresh-monitor">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
           Refresh
@@ -305,7 +299,7 @@
             </div>
             <div class="settings-control">
               <input type="number" class="fi settings-num" id="s-lock-timeout" min="0" max="120" value="5" style="width:70px;text-align:center" />
-              <span style="font-size:12px;color:var(--muted);margin-left:6px">min</span>
+              <span style="font-size:12px;color:var(--txt-muted);margin-left:6px">min</span>
             </div>
           </div>
           <div class="settings-row">
@@ -316,7 +310,7 @@
             <div class="settings-control">
               <select class="fi" id="s-lock-action" style="width:160px">
                 <option value="lock">Lock the app</option>
-                <option value="exit">Lock &amp; exit</option>
+                <option value="exit">Lock and exit</option>
               </select>
             </div>
           </div>
@@ -329,7 +323,7 @@
               <div class="settings-desc">Require a TOTP code after signing in with Google.</div>
             </div>
             <div class="settings-control">
-              <div id="s-2fa-status" style="font-size:12px;color:var(--muted)">Loading…</div>
+              <div id="s-2fa-status" style="font-size:12px;color:var(--txt-muted)">Loading…</div>
               <button class="btn-primary" id="s-btn-2fa" style="margin-left:10px">Manage</button>
             </div>
           </div>
@@ -345,14 +339,14 @@
 
 <!-- PASSWORD MODAL -->
 <div class="overlay" id="modal-overlay" hidden>
-  <div class="modal glass">
+  <div class="modal">
     <h3 id="modal-title">Add password</h3>
     <div class="fg"><label>Site / App</label><input class="fi" id="f-site" placeholder="e.g. GitHub" /></div>
     <div class="fg"><label>Email / Username</label><input class="fi" id="f-user" placeholder="you@example.com" /></div>
     <div class="fg"><label>Password</label>
       <div class="pw-wrap">
         <input class="fi" id="f-pw" type="password" placeholder="••••••••" />
-        <button class="eye-btn" type="button" id="eye-btn">
+        <button class="eye-btn" type="button" id="eye-btn" aria-label="Toggle password visibility">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
       </div>
@@ -360,7 +354,7 @@
         <div class="sm-bars"><div class="sm-bar"></div><div class="sm-bar"></div><div class="sm-bar"></div><div class="sm-bar"></div></div>
         <span class="sm-lbl">—</span>
       </div>
-      <button class="use-gen" type="button" id="use-gen-btn">⚡ Generate strong password</button>
+      <button class="use-gen" type="button" id="use-gen-btn">Generate strong password</button>
     </div>
     <div class="fg"><label>Notes (optional)</label><textarea class="fta" id="f-notes" placeholder="Any extra info…"></textarea></div>
     <div class="modal-foot">
@@ -372,11 +366,11 @@
 
 <!-- GENERATOR -->
 <div class="overlay" id="gen-overlay" hidden>
-  <div class="modal glass" style="width:460px">
+  <div class="modal" style="width:460px">
     <h3>Password generator</h3>
     <div class="gen-out-row">
       <div class="gen-out" id="gen-out">—</div>
-      <button class="icon-btn" id="gen-copy" title="Copy">
+      <button class="icon-btn" id="gen-copy" title="Copy" aria-label="Copy password">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       </button>
     </div>
@@ -400,7 +394,7 @@
 
 <!-- JOB MODAL -->
 <div class="overlay" id="job-overlay" hidden>
-  <div class="modal glass" style="width:480px">
+  <div class="modal" style="width:480px">
     <h3 id="job-modal-title">Add application</h3>
     <div class="fg"><label>Company</label><input class="fi" id="j-company" placeholder="e.g. Google" /></div>
     <div class="fg"><label>Role</label><input class="fi" id="j-role" placeholder="e.g. Software Engineer" /></div>
@@ -423,13 +417,13 @@
 
 <!-- TOTP MODAL -->
 <div class="overlay" id="totp-overlay" hidden>
-  <div class="modal glass" style="width:440px">
+  <div class="modal" style="width:440px">
     <h3 id="totp-modal-title">Add 2FA account</h3>
     <div class="fg"><label>Account name</label><input class="fi" id="t-name" placeholder="e.g. GitHub, Google" /></div>
     <div class="fg"><label>Issuer (optional)</label><input class="fi" id="t-issuer" placeholder="e.g. GitHub" /></div>
     <div class="fg"><label>Secret key (from QR / setup page)</label>
       <input class="fi" id="t-secret" placeholder="JBSWY3DPEHPK3PXP" style="font-family:var(--mono);letter-spacing:.05em" />
-      <p style="font-size:11px;color:var(--muted);margin-top:5px">Paste the secret key shown during 2FA setup (not the 6-digit code)</p>
+      <p style="font-size:11px;color:var(--txt-muted);margin-top:6px">Paste the secret key shown during 2FA setup (not the 6-digit code).</p>
     </div>
     <div class="fg"><label>Icon (emoji)</label><input class="fi" id="t-icon" placeholder="🔐" style="font-size:18px;width:60px" maxlength="4" /></div>
     <div class="modal-foot">
@@ -441,7 +435,7 @@
 
 <!-- 2FA SETTINGS MODAL -->
 <div class="overlay" id="twofa-overlay" hidden>
-  <div class="modal glass" style="width:420px;text-align:center">
+  <div class="modal" style="width:420px;text-align:center">
     <h3 id="twofa-modal-title">Two-factor authentication</h3>
     <div id="twofa-modal-body"></div>
     <div class="modal-foot" style="justify-content:center">
@@ -454,7 +448,7 @@
 
 <!-- CONFIRM -->
 <div class="overlay" id="confirm-overlay" hidden>
-  <div class="modal glass confirm-modal">
+  <div class="confirm-modal">
     <div class="confirm-icon" id="confirm-icon">🗑️</div>
     <h3 id="confirm-title">Delete this item?</h3>
     <p class="confirm-msg" id="confirm-msg">It will be moved to Trash and auto-deleted after 30 days.</p>
