@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-21T18:00:00Z",
+  "title": "Design System: Vault",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Warm Brass",
+        "canonical": "oklch(0.72 0.06 70)",
+        "tonalRamp": [
+          "oklch(0.15 0.02 70)",
+          "oklch(0.25 0.03 70)",
+          "oklch(0.35 0.04 70)",
+          "oklch(0.45 0.045 70)",
+          "oklch(0.55 0.05 70)",
+          "oklch(0.65 0.055 70)",
+          "oklch(0.72 0.06 70)",
+          "oklch(0.85 0.05 70)"
+        ]
+      },
+      "green": {
+        "role": "secondary",
+        "displayName": "Signal Green",
+        "canonical": "oklch(0.78 0.12 145)",
+        "tonalRamp": [
+          "oklch(0.15 0.03 145)",
+          "oklch(0.25 0.05 145)",
+          "oklch(0.35 0.07 145)",
+          "oklch(0.45 0.08 145)",
+          "oklch(0.55 0.10 145)",
+          "oklch(0.65 0.11 145)",
+          "oklch(0.78 0.12 145)",
+          "oklch(0.90 0.08 145)"
+        ]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Signal Amber",
+        "canonical": "oklch(0.82 0.1 85)",
+        "tonalRamp": [
+          "oklch(0.15 0.02 85)",
+          "oklch(0.25 0.04 85)",
+          "oklch(0.35 0.06 85)",
+          "oklch(0.45 0.07 85)",
+          "oklch(0.55 0.08 85)",
+          "oklch(0.65 0.09 85)",
+          "oklch(0.82 0.1 85)",
+          "oklch(0.93 0.06 85)"
+        ]
+      },
+      "red": {
+        "role": "secondary",
+        "displayName": "Signal Red",
+        "canonical": "oklch(0.72 0.14 25)",
+        "tonalRamp": [
+          "oklch(0.15 0.03 25)",
+          "oklch(0.25 0.05 25)",
+          "oklch(0.35 0.07 25)",
+          "oklch(0.45 0.09 25)",
+          "oklch(0.55 0.11 25)",
+          "oklch(0.72 0.14 25)",
+          "oklch(0.85 0.10 25)",
+          "oklch(0.93 0.05 25)"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Foundation Dark",
+        "canonical": "oklch(0.14 0.008 70)",
+        "tonalRamp": [
+          "oklch(0.08 0.006 70)",
+          "oklch(0.11 0.007 70)",
+          "oklch(0.14 0.008 70)",
+          "oklch(0.17 0.007 70)",
+          "oklch(0.21 0.006 70)",
+          "oklch(0.27 0.006 70)",
+          "oklch(0.33 0.006 70)",
+          "oklch(0.40 0.005 70)"
+        ]
+      },
+      "txt": {
+        "role": "neutral",
+        "displayName": "Quiet Text",
+        "canonical": "oklch(0.92 0.004 70)",
+        "tonalRamp": [
+          "oklch(0.40 0.004 70)",
+          "oklch(0.52 0.005 70)",
+          "oklch(0.68 0.006 70)",
+          "oklch(0.78 0.005 70)",
+          "oklch(0.85 0.004 70)",
+          "oklch(0.89 0.004 70)",
+          "oklch(0.92 0.004 70)",
+          "oklch(0.96 0.003 70)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Login heading, 2FA heading. Once per screen maximum." },
+      "headline": { "displayName": "Headline", "purpose": "Tab titles. Screen-level identity." },
+      "title": { "displayName": "Title", "purpose": "Modal headings, settings section titles. Container-level identity." },
+      "body": { "displayName": "Body", "purpose": "All running text, nav labels, form values, descriptions." },
+      "label": { "displayName": "Label", "purpose": "Form labels, column headers, status words. Uppercase, tracked." },
+      "mono": { "displayName": "Mono", "purpose": "Passwords, codes, usernames, timestamps, metadata. Machine data only." }
+    },
+    "shadows": [
+      { "name": "sm", "value": "0 1px 2px oklch(0 0 0 / 0.25), 0 1px 1px oklch(0 0 0 / 0.15)", "purpose": "List row hover, login card rest. Subtle ground-hugging." },
+      { "name": "md", "value": "0 4px 12px oklch(0 0 0 / 0.3), 0 1px 3px oklch(0 0 0 / 0.2)", "purpose": "Primary button hover, modal surfaces. Mid elevation." },
+      { "name": "lg", "value": "0 8px 32px oklch(0 0 0 / 0.4), 0 2px 8px oklch(0 0 0 / 0.25)", "purpose": "Login card, modals, confirm dialogs, toast. Deepest shadow — floating panels." },
+      { "name": "inset", "value": "inset 0 1px 0 oklch(1 0 0 / 0.04)", "purpose": "Top-edge highlight on login card and modals. Physical-object light catch." },
+      { "name": "focus-ring", "value": "0 0 0 3px oklch(0.72 0.06 70 / 0.12)", "purpose": "Focused inputs and hovered google button. Brass-tinted glow." },
+      { "name": "ambient-glow", "value": "0 0 40px oklch(0.72 0.06 70 / 0.06)", "purpose": "Login shield icon only. 6% opacity brass ambient glow." }
+    ],
+    "motion": [
+      { "name": "fast", "value": "120ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Nav hover, icon button hover, badge changes." },
+      { "name": "base", "value": "180ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Row hover, panel transitions, toast opacity." },
+      { "name": "slow", "value": "280ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "fadeUp animation — login card entrance, modal entrance, chip appearance." }
+    ],
+    "breakpoints": [
+      { "name": "app-min", "value": "900px" },
+      { "name": "app-min-h", "value": "580px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action button. Brass background, dark text. Used for Save, Add, Generate, Refresh.",
+      "html": "<button class=\"ds-btn-primary\">Save</button>",
+      "css": ".ds-btn-primary { display: flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 10px; background: oklch(0.72 0.06 70); border: 1px solid oklch(0.72 0.06 70 / 0.2); color: oklch(0.14 0.008 70); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 1px 2px oklch(0 0 0 / 0.25), 0 1px 1px oklch(0 0 0 / 0.15); } .ds-btn-primary:hover { background: oklch(0.78 0.07 70); box-shadow: 0 4px 16px oklch(0.72 0.06 70 / 0.12); transform: translateY(-1px); } .ds-btn-primary:active { transform: none; box-shadow: 0 1px 2px oklch(0 0 0 / 0.25), 0 1px 1px oklch(0 0 0 / 0.15); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action. Transparent with border. Used for Cancel, Close, Reset.",
+      "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
+      "css": ".ds-btn-ghost { padding: 9px 18px; border-radius: 10px; background: transparent; border: 1px solid oklch(1 0 0 / 0.05); color: oklch(0.68 0.006 70); font-size: 12px; cursor: pointer; transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-ghost:hover { background: oklch(0.17 0.007 70); color: oklch(0.92 0.004 70); border-color: oklch(1 0 0 / 0.09); }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive action. Red-tinted background. Used for Empty trash, Delete forever.",
+      "html": "<button class=\"ds-btn-danger\">Empty trash</button>",
+      "css": ".ds-btn-danger { display: flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 10px; background: oklch(0.72 0.14 25 / 0.08); border: 1px solid oklch(0.72 0.14 25 / 0.15); color: oklch(0.72 0.14 25); font-size: 12px; font-weight: 500; cursor: pointer; transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-danger:hover { background: oklch(0.72 0.14 25 / 0.15); }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Text input for forms. Used in password modal, job modal, TOTP modal, settings.",
+      "html": "<input class=\"ds-input\" placeholder=\"e.g. GitHub\" />",
+      "css": ".ds-input { width: 100%; height: 38px; padding: 0 13px; background: oklch(0.19 0.005 70); border: 1px solid oklch(1 0 0 / 0.05); border-radius: 10px; color: oklch(0.92 0.004 70); font-size: 12.5px; outline: none; transition: border-color 180ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 180ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-input:focus { border-color: oklch(0.72 0.06 70 / 0.5); box-shadow: 0 0 0 3px oklch(0.72 0.06 70 / 0.12); } .ds-input::placeholder { color: oklch(0.4 0.004 70); }"
+    },
+    {
+      "name": "Primary Nav Button (Active)",
+      "kind": "nav",
+      "refersTo": "nav-btn-active",
+      "description": "Active sidebar navigation item. Brass-tinted background, brass text.",
+      "html": "<button class=\"ds-nav-btn\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><rect x=\"3\" y=\"11\" width=\"18\" height=\"11\" rx=\"2\"/><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/></svg>Passwords <span class=\"ds-badge\">13</span></button>",
+      "css": ".ds-nav-btn { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 7px; background: oklch(0.72 0.06 70 / 0.08); border: 1px solid transparent; color: oklch(0.72 0.06 70); font-size: 12.5px; font-weight: 500; cursor: pointer; text-align: left; transition: all 120ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-badge { margin-left: auto; font-size: 10px; background: oklch(0.72 0.06 70 / 0.1); color: oklch(0.72 0.06 70); padding: 1px 6px; border-radius: 999px; border: 1px solid oklch(0.72 0.06 70 / 0.1); }"
+    },
+    {
+      "name": "Surface Card",
+      "kind": "card",
+      "refersTo": "card-surface",
+      "description": "Default surface for stat cards, TOTP cards, settings panels, job table container.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-num\">13</div><div class=\"ds-card-lbl\">Passwords</div></div>",
+      "css": ".ds-card { background: oklch(0.17 0.007 70); border: 1px solid oklch(1 0 0 / 0.05); border-radius: 14px; padding: 18px; text-align: center; transition: border-color 180ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-card:hover { border-color: oklch(1 0 0 / 0.09); } .ds-card-num { font-size: 26px; font-weight: 600; color: oklch(0.72 0.06 70); margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; } .ds-card-lbl { font-size: 10px; color: oklch(0.4 0.004 70); text-transform: uppercase; letter-spacing: 0.07em; }"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": null,
+      "description": "30×30px action buttons on list rows. Default, Copy (green), Delete (red).",
+      "html": "<button class=\"ds-icon-btn\" title=\"Edit\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7\"/><path d=\"M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z\"/></svg></button>",
+      "css": ".ds-icon-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: oklch(0.4 0.004 70); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 120ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-icon-btn:hover { background: oklch(0.21 0.006 70); color: oklch(0.92 0.004 70); border-color: oklch(1 0 0 / 0.05); } .ds-icon-btn.ds-copy:hover { background: oklch(0.78 0.12 145 / 0.08); color: oklch(0.78 0.12 145); border-color: oklch(0.78 0.12 145 / 0.15); } .ds-icon-btn.ds-del:hover { background: oklch(0.72 0.14 25 / 0.08); color: oklch(0.72 0.14 25); border-color: oklch(0.72 0.14 25 / 0.15); }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "Fixed bottom-center notification. Fades in/out. No motion animation.",
+      "html": "<div class=\"ds-toast ds-toast-show\">Password copied!</div>",
+      "css": ".ds-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: oklch(0.17 0.007 70); border: 1px solid oklch(1 0 0 / 0.09); color: oklch(0.92 0.004 70); padding: 10px 22px; border-radius: 999px; font-size: 12px; z-index: 999; pointer-events: none; opacity: 0; transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1); white-space: nowrap; box-shadow: 0 4px 12px oklch(0 0 0 / 0.3), 0 1px 3px oklch(0 0 0 / 0.2); } .ds-toast.ds-toast-show { opacity: 1; }"
+    },
+    {
+      "name": "Status Chip (Accepted)",
+      "kind": "chip",
+      "refersTo": null,
+      "description": "Pill-shaped status indicators in the job tracker.",
+      "html": "<span class=\"ds-chip ds-chip-accepted\">✅ Accepted</span>",
+      "css": ".ds-chip { font-size: 10px; padding: 3px 9px; border-radius: 999px; font-weight: 500; white-space: nowrap; display: inline-block; } .ds-chip.ds-chip-accepted { background: oklch(0.78 0.12 145 / 0.08); color: oklch(0.78 0.12 145); border: 1px solid oklch(0.78 0.12 145 / 0.15); } .ds-chip.ds-chip-wait { background: oklch(0.82 0.1 85 / 0.08); color: oklch(0.82 0.1 85); border: 1px solid oklch(0.82 0.1 85 / 0.15); } .ds-chip.ds-chip-rejected { background: oklch(0.72 0.14 25 / 0.08); color: oklch(0.72 0.14 25); border: 1px solid oklch(0.72 0.14 25 / 0.15); }"
+    },
+    {
+      "name": "Toggle Switch",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "36×20px toggle for password generator options and settings.",
+      "html": "<label class=\"ds-toggle\"><input type=\"checkbox\" checked /><span></span></label>",
+      "css": ".ds-toggle { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; } .ds-toggle input { opacity: 0; width: 0; height: 0; } .ds-toggle span { position: absolute; inset: 0; border-radius: 20px; background: oklch(0.21 0.006 70); border: 1px solid oklch(1 0 0 / 0.05); cursor: pointer; transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-toggle span::before { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: oklch(0.4 0.004 70); left: 2px; top: 2px; transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-toggle input:checked + span { background: oklch(0.72 0.06 70 / 0.08); border-color: oklch(0.72 0.06 70 / 0.25); } .ds-toggle input:checked + span::before { transform: translateX(16px); background: oklch(0.72 0.06 70); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Warm Vault",
+    "overview": "Vault feels like opening a personal safe made of dark walnut and aged brass. Every surface is quiet. Every accent is earned. The warm stone palette (hue 70°, lightness 14–21% for surfaces) wraps the user in something that feels considered and permanent — not a disposable SaaS dashboard, but a trusted daily companion.\n\nThis system rejects the reflexes that make AI tools look interchangeable: no glassmorphism, no gradient noise, no purple, no big-metric hero sections, no card grids with identical icon+heading+text triplets. Depth comes from tonal layering — five surface steps from --bg (14% lightness) to --bg-raised (21%) — and from the single brass accent that glows only where it matters. Shadows are structural, never decorative. Motion is state-only: elements respond, they don't perform.",
+    "keyCharacteristics": [
+      "One accent, ≤10% surface coverage",
+      "Five-step tonal layering for depth",
+      "Borders at 5% and 9% white opacity — strictly structural",
+      "Outfit for human language, JetBrains Mono for machine data",
+      "Border-radius scale from 4px to 999px"
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "The brass accent appears on ≤10% of any given screen. Its rarity is the point — when it glows, it means something.", "section": "colors" },
+      { "name": "The Nine-Five Rule", "body": "Neutral surfaces never reach pure black or pure white. The darkest surface is 14% lightness, not 0%. The brightest text is 92%, not 100%.", "section": "colors" },
+      { "name": "The Mono Boundary Rule", "body": "Monospace is used exclusively for data the user did not write in prose: passwords, usernames, emails, codes, timestamps, metadata tags. Never for headings, navigation, or body copy.", "section": "typography" },
+      { "name": "The Letter-Spacing Axis", "body": "Display sizes use negative tracking (tighter, more impactful). Labels use positive tracking (wider, more scannable). Body stays at zero.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Shadows appear only as response to state (hover → sm, floating → lg). If every card had a shadow at rest, nothing would feel elevated.", "section": "elevation" },
+      { "name": "The Inset Highlight Rule", "body": "Any surface that uses shadow-lg also gets shadow-in on the same element. The hairline of white at the top edge turns a dark rectangle into something that feels like a physical object.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use the brass accent on ≤10% of any screen. Its scarcity creates meaning.",
+      "Do use --bg-raised for hover states. The five-step tonal ramp is the primary depth system.",
+      "Do keep rows flat at rest. Show border and shadow-sm only on hover or focus.",
+      "Do use JetBrains Mono for machine data and Outfit for everything human-written.",
+      "Do respect --border (5% white) as the default. Borders define space, never decorate.",
+      "Do use shadow-lg + shadow-in together on the same element.",
+      "Do use opacity-based fills (8%/12%) for status tints, not opaque backgrounds.",
+      "Do animate only state transitions using --t-fast (120ms) or --t-base (180ms).",
+      "Do respect prefers-reduced-motion: reduce to kill all animation."
+    ],
+    "donts": [
+      "Don't use border-left or border-right greater than 1px as a colored accent.",
+      "Don't use background-clip: text with gradients.",
+      "Don't use glassmorphism decoratively. Blur is functional (titlebar, toast) never decorative.",
+      "Don't use the hero-metric template. No big number + small label + gradient glow.",
+      "Don't build identical card grids.",
+      "Don't wrap every element in a container.",
+      "Don't use modals when inline would work.",
+      "Don't use em dashes in copy.",
+      "Don't let the accent leak into neutrals. Gray chroma stays at 0.004–0.008."
+    ]
+  }
+}
