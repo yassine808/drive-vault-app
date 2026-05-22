@@ -3,11 +3,20 @@
 const fs = require('fs');
 const path = require('path');
 
-// ─── LOG FILE PATH ────────────────────────────────────────────────────────────
-// Write to project directory (two levels up from src/)
-const LOG_DIR = path.join(__dirname, '..');
-const LOG_FILE = path.join(LOG_DIR, 'vault-debug.log');
-const ERROR_FILE = path.join(LOG_DIR, 'vault-errors.log');
+// ─── LOG DIRECTORY ───────────────────────────────────────────────────────────
+const LOG_DIR = path.join(__dirname, '..', 'Logs');
+
+// Map each level name to its own file
+const LEVEL_FILES = {
+  DEBUG:   'debug.log',
+  INFO:    'info.log',
+  SUCCESS: 'success.log',
+  WARN:    'warn.log',
+  ERROR:   'error.log',
+  AUTH:    'auth.log',
+  IPC:     'ipc.log',
+  DB:      'db.log',
+};
 
 // ─── LEVELS ───────────────────────────────────────────────────────────────────
 const LEVELS = { DEBUG: 0, INFO: 1, SUCCESS: 2, WARN: 3, ERROR: 4, AUTH: 5, IPC: 6, DB: 7 };
@@ -21,22 +30,27 @@ function init() {
   if (initialized) return;
   initialized = true;
   try {
-    // Write header for new session
-    const header = `\n${'='.repeat(80)}\n[${ts()}] [INFO] ═══════════════════════════════════════════════════════\n[${ts()}] [INFO] Vault session started\n[${ts()}] [INFO] ═══════════════════════════════════════════════════════\n${'='.repeat(80)}\n`;
-    fs.appendFileSync(LOG_FILE, header);
+    fs.mkdirSync(LOG_DIR, { recursive: true });
   } catch (e) {
-    console.error('[logger] Failed to init log file:', e.message);
+    console.error('[logger] Failed to create Logs directory:', e.message);
   }
 }
 
 // ─── TIMESTAMP ────────────────────────────────────────────────────────────────
 function ts() { return new Date().toISOString(); }
 
+// ─── GET FILE PATH FOR A LEVEL ────────────────────────────────────────────────
+function fileForLevel(levelName) {
+  const name = String(levelName).toUpperCase();
+  const filename = LEVEL_FILES[name] || 'unknown.log';
+  return path.join(LOG_DIR, filename);
+}
+
 // ─── CORE WRITE ───────────────────────────────────────────────────────────────
 function write(level, ctx, msg, data) {
   init();
   const levelName = LEVEL_NAMES[level] || 'UNKNOWN';
-  let line = `[${ts()}] [${levelName}] [${ctx}] ${msg}`;
+  let line = `[${ts()}] [${ctx}] ${msg}`;
   if (data !== undefined) {
     try {
       const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 0) : String(data);
@@ -44,19 +58,28 @@ function write(level, ctx, msg, data) {
     } catch { line += ' | data: [unserializable]'; }
   }
   line += '\n';
-  try { fs.appendFileSync(LOG_FILE, line); } catch {}
-  // Also mirror to console for dev
+
+  // Write to the level-specific file
+  try { fs.appendFileSync(fileForLevel(levelName), line); } catch {}
+
+  // Also write to a combined catch-all file
+  try {
+    fs.appendFileSync(path.join(LOG_DIR, 'all.log'), `[${levelName}] ${line}`);
+  } catch {}
+
+  // Mirror to console
   if (level >= LEVELS.ERROR) console.error(line.trim());
   else if (level >= LEVELS.WARN) console.warn(line.trim());
   else console.log(line.trim());
 }
 
-// ─── ERROR FILE (dedicated error log) ─────────────────────────────────────────
+// ─── LEGACY ERROR WRITER (keeps old vault-errors.log working) ─────────────────
 function writeError(ctx, err) {
   init();
   const extra = err?.response?.data ? ` | response: ${JSON.stringify(err.response.data)}` : '';
   const line = `[${ts()}] [${ctx}] ${err?.message || err}${extra}\ncode: ${err?.code || 'none'} | status: ${err?.response?.status || 'none'}\n${err?.stack || ''}\n---\n`;
-  try { fs.appendFileSync(ERROR_FILE, line); } catch {}
+  try { fs.appendFileSync(fileForLevel('ERROR'), line); } catch {}
+  try { fs.appendFileSync(path.join(LOG_DIR, 'all.log'), `[ERROR] ${line}`); } catch {}
   console.error(line);
 }
 
@@ -72,38 +95,78 @@ function db(ctx, msg, data)       { write(LEVELS.DB, ctx, msg, data); }
 
 // ─── LOG ROTATION ─────────────────────────────────────────────────────────────
 function rotateIfNeeded(maxSize = 5 * 1024 * 1024) {
+  init();
   try {
-    const stat = fs.statSync(LOG_FILE);
-    if (stat.size > maxSize) {
-      const rotated = LOG_FILE + '.' + Date.now() + '.bak';
-      fs.renameSync(LOG_FILE, rotated);
-      info('logger', 'Log file rotated', { from: LOG_FILE, to: rotated, size: stat.size });
+    for (const filename of Object.values(LEVEL_FILES)) {
+      const filePath = path.join(LOG_DIR, filename);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.size > maxSize) {
+          const rotated = filePath + '.' + Date.now() + '.bak';
+          fs.renameSync(filePath, rotated);
+          console.log(`[logger] Rotated ${filename} → ${path.basename(rotated)}`);
+        }
+      } catch {}
     }
+    // Also rotate all.log
+    const allPath = path.join(LOG_DIR, 'all.log');
+    try {
+      const stat = fs.statSync(allPath);
+      if (stat.size > maxSize) {
+        const rotated = allPath + '.' + Date.now() + '.bak';
+        fs.renameSync(allPath, rotated);
+        console.log(`[logger] Rotated all.log → ${path.basename(rotated)}`);
+      }
+    } catch {}
   } catch {}
 }
 
-// ─── READ LOG ─────────────────────────────────────────────────────────────────
-function readLog(maxChars = 10000) {
+// ─── READ / CLEAR ─────────────────────────────────────────────────────────────
+function readLog(levelName, maxChars = 10000) {
   try {
-    if (!fs.existsSync(LOG_FILE)) return '(no log file)';
-    const content = fs.readFileSync(LOG_FILE, 'utf8');
+    const filePath = fileForLevel(levelName);
+    if (!fs.existsSync(filePath)) return `(no ${levelName.toLowerCase()}.log file)`;
+    const content = fs.readFileSync(filePath, 'utf8');
     return content.slice(-maxChars);
-  } catch { return '(could not read log)'; }
+  } catch { return `(could not read ${levelName.toLowerCase()}.log)`; }
 }
 
-function clearLog() {
-  try { fs.writeFileSync(LOG_FILE, ''); return true; } catch { return false; }
+function readAllLog(maxChars = 10000) {
+  try {
+    const allPath = path.join(LOG_DIR, 'all.log');
+    if (!fs.existsSync(allPath)) return '(no all.log file)';
+    const content = fs.readFileSync(allPath, 'utf8');
+    return content.slice(-maxChars);
+  } catch { return '(could not read all.log)'; }
 }
 
-function getLogPath() { return LOG_FILE; }
-function getErrorLogPath() { return ERROR_FILE; }
+function clearLog(levelName) {
+  try {
+    fs.writeFileSync(fileForLevel(levelName), '');
+    return true;
+  } catch { return false; }
+}
+
+function clearAllLogs() {
+  init();
+  try {
+    for (const filename of Object.values(LEVEL_FILES)) {
+      fs.writeFileSync(path.join(LOG_DIR, filename), '');
+    }
+    fs.writeFileSync(path.join(LOG_DIR, 'all.log'), '');
+    return true;
+  } catch { return false; }
+}
+
+function getLogDir() { return LOG_DIR; }
+function getLogPath(levelName) { return fileForLevel(levelName); }
 
 module.exports = {
   init, ts,
   debug, info, success, warn, error,
   auth, ipc, db,
   writeError,
-  rotateIfNeeded, readLog, clearLog,
-  getLogPath, getErrorLogPath,
-  LEVELS,
+  rotateIfNeeded, readLog, readAllLog, clearLog, clearAllLogs,
+  getLogDir, getLogPath,
+  LEVELS, LEVEL_FILES,
 };

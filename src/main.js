@@ -44,7 +44,7 @@ const LOG_PATH = path.join(
   process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath) || app.getPath('userData'),
   'vault-errors.log'
 );
-logger.info('main', 'Log paths', { debugLog: logger.getLogPath(), errorLog: LOG_PATH });
+logger.info('main', 'Log paths', { logDir: logger.getLogDir(), errorLog: LOG_PATH });
 
 // ─── LEGACY logError (routes through logger) ─────────────────────────────────
 function logError(ctx, err) {
@@ -816,17 +816,17 @@ ipcMain.handle('2fa:disable', requireAuthNoArgs(async () => {
 
 ipcMain.handle('monitor:stats', requireAuthNoArgs(async () => {
   logger.ipc('monitor:stats', 'Loading monitor stats');
-  try { const stats=await dbGetStats(session.userId); logger.success('monitor:stats', 'Stats loaded', stats); return {ok:true,stats,logPath:LOG_PATH}; } catch(e){ logError('monitor:stats',e);return{ok:false,error:e.message};}
+  try { const stats=await dbGetStats(session.userId); logger.success('monitor:stats', 'Stats loaded', stats); return {ok:true,stats,logPath:LOG_PATH,logDir:logger.getLogDir()}; } catch(e){ logError('monitor:stats',e);return{ok:false,error:e.message};}
 }));
 
 ipcMain.handle('log:read', requireAuthNoArgs(async () => {
   logger.ipc('log:read', 'Reading log');
-  try { const t=fs.existsSync(LOG_PATH)?fs.readFileSync(LOG_PATH,'utf8'):'(no errors logged)';return{ok:true,log:t.slice(-10000)}; } catch(e){return{ok:true,log:'(could not read log)'};}
+  try { const t=fs.existsSync(LOG_PATH)?fs.readFileSync(LOG_PATH,'utf8'):'(no errors logged)';return{ok:true,log:t.slice(-10000),logDir:logger.getLogDir()}; } catch(e){return{ok:true,log:'(could not read log)'};}
 }));
 
 ipcMain.handle('log:clear', requireAuthNoArgs(async () => {
   logger.ipc('log:clear', 'Clearing log');
-  try { fs.writeFileSync(LOG_PATH,''); logger.success('log:clear', 'Log cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
+  try { fs.writeFileSync(LOG_PATH,''); logger.clearAllLogs(); logger.success('log:clear', 'All logs cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
 }));
 
 ipcMain.on('win:minimize', () => { logger.ipc('win:minimize', 'Window minimized'); win?.minimize(); });

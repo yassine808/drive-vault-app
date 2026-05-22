@@ -23,6 +23,7 @@ desktop.ini
 # Logs
 *.log
 npm-debug.log*
+Logs/
 
 # Electron specific
 electron-builder.yml
