@@ -78,7 +78,7 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
         if(d<130){
           const alpha=(1-d/130)*.08;
           ctx.beginPath();
-          ctx.strokeStyle=`rgba(212,165,116,${alpha})`;
+          ctx.strokeStyle=`rgba(167,139,250,${alpha})`;
           ctx.lineWidth=.5;
           ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
           ctx.stroke();
@@ -86,7 +86,7 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
       }
       ctx.beginPath();
       ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle=`rgba(212,165,116,${p.alpha})`;
+      ctx.fillStyle=`rgba(167,139,250,${p.alpha})`;
       ctx.fill();
     }
     requestAnimationFrame(draw);
