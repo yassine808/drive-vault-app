@@ -106,7 +106,17 @@ function recordFailedAttempt() {
 function resetRateLimit() { rateLimit.attempts = []; rateLimit.lockoutUntil = 0; }
 
 // ─── CRYPTO ───────────────────────────────────────────────────────────────────
-function deriveKey(googleId) { return crypto.createHash('sha256').update('vault:'+googleId).digest('hex').slice(0,32); }
+const KDF_ITERATIONS = 100_000;
+	const KDF_KEYLEN = 32; // 256 bits for AES-256
+	const KDF_DIGEST = 'sha512';
+	function deriveKey(password, salt) {
+	  return new Promise((resolve, reject) => {
+	    crypto.pbkdf2(password, salt, KDF_ITERATIONS, KDF_KEYLEN, KDF_DIGEST, (err, key) => {
+	      if (err) reject(err); else resolve(key.toString('hex'));
+	    });
+	  });
+	}
+	function genSalt() { return crypto.randomBytes(32).toString('hex'); }
 function enc(obj, key) { return CryptoJS.AES.encrypt(JSON.stringify(obj), key).toString(); }
 function dec(str, key) { try { return JSON.parse(CryptoJS.AES.decrypt(str,key).toString(CryptoJS.enc.Utf8)); } catch { return null; } }
 
@@ -118,6 +128,14 @@ async function dbUpsertUser({ googleId, email, name, avatar }) {
   if (error) { console.error('[dbUpsertUser] Supabase error:', JSON.stringify(error)); throw new Error('dbUpsertUser failed: ' + error.message + ' | code: ' + error.code + ' | details: ' + error.details + ' | hint: ' + error.hint); }
   return data.id;
 }
+
+async function dbGetSalt(userId) {
+	  const { data } = await supabase.from('vault_users').select('kdf_salt').eq('id', userId).single();
+	  return data?.kdf_salt || null;
+	}
+	async function dbSetSalt(userId, salt) {
+	  await supabase.from('vault_users').update({ kdf_salt: salt }).eq('id', userId);
+	}
 
 async function dbLoadItems(userId, encKey) {
   const { data, error } = await supabase.from('vault_items')

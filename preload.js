@@ -19,9 +19,8 @@ contextBridge.exposeInMainWorld('api', {
   logout:       ()            => { clearToken(); return ipcRenderer.invoke('auth:logout'); },
   reauth:       ()            => ipcRenderer.invoke('auth:reauth'),
   verify2fa:    (token)       => ipcRenderer.invoke('auth:verify2fa', { token }),
-  onToken:      (cb) => { /* renderer calls this to store token from login response */ },
 
-  // Sensitive — token prepended automatically
+// Sensitive — token prepended automatically
   save:         (type, item)  => ipcRenderer.invoke('vault:save',    sessionToken, { type, item }),
   delete:       (dbId)        => ipcRenderer.invoke('vault:delete',  sessionToken, { dbId }),
   sync:         ()            => ipcRenderer.invoke('vault:sync',    sessionToken),

@@ -460,7 +460,7 @@ function openNote(id){
 }
 
 // ═══ VERTICAL-ONLY DRAG ═══════════════════════════════════════════════════════
-let dragSrc=null,ghostEl=null;
+let dragSrc=null;
 function addVerticalDrag(el,listId,onReorder){
   el.addEventListener('dragstart',e=>{
     dragSrc=el;
