@@ -7,13 +7,35 @@ const S = {
   settings:{ lock_timeout:5, lock_action:'lock' },
 };
 
+// ═══ LOGGER ═══════════════════════════════════════════════════════════════════
+const RLOG_KEY = 'vault-renderer-log';
+const RLOG_MAX = 2000;
+function rlog(level, ctx, msg, data) {
+  const entry = { ts: new Date().toISOString(), level, ctx, msg, data };
+  try {
+    const arr = JSON.parse(localStorage.getItem(RLOG_KEY) || '[]');
+    arr.push(entry);
+    if (arr.length > RLOG_MAX) arr.splice(0, arr.length - RLOG_MAX);
+    localStorage.setItem(RLOG_KEY, JSON.stringify(arr));
+  } catch {}
+  const prefix = `[${entry.ts}] [${level}] [${ctx}]`;
+  if (level === 'ERROR') console.error(prefix, msg, data || '');
+  else if (level === 'WARN') console.warn(prefix, msg, data || '');
+  else console.log(prefix, msg, data || '');
+}
+const logInfo = (ctx, msg, data) => rlog('INFO', ctx, msg, data);
+const logOk   = (ctx, msg, data) => rlog('OK', ctx, msg, data);
+const logWarn = (ctx, msg, data) => rlog('WARN', ctx, msg, data);
+const logErr  = (ctx, msg, data) => rlog('ERROR', ctx, msg, data);
+logInfo('app', 'Renderer initialized');
+
 // ═══ UTILS ════════════════════════════════════════════════════════════════════
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
 const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const wc   = t => { t=(t||'').trim(); return t?t.split(/\s+/).length:0; };
 const days = d => Math.max(0,Math.ceil((30*86400000-(Date.now()-new Date(d)))/86400000));
 
-function toast(msg,ms=2400){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),ms);}
+function toast(msg,ms=2400){logInfo('ui', 'Toast: ' + msg);const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),ms);}
 function show(id){document.getElementById(id).hidden=false;}
 function hide(id){document.getElementById(id).hidden=true;}
 function screen(s){['s-login','s-2fa','s-lock','s-app'].forEach(id=>document.getElementById(id).hidden=id!==s);}
@@ -29,17 +51,20 @@ function playTone(freq,type='sine',dur=0.15,vol=0.18,delay=0){
   osc.connect(gain);gain.connect(ctx.destination);osc.start(now);osc.stop(now+dur);}catch{}
 }
 function playSound(type){
+  logDebug('sound', 'playSound: ' + type);
   switch(type){
     case 'login': [523,659,784,1047].forEach((f,i)=>playTone(f,'sine',0.2,0.15,i*0.1));break;
     case 'logout':[784,659,523].forEach((f,i)=>playTone(f,'sine',0.18,0.12,i*0.09));break;
     case 'lock': playTone(440,'sine',0.12,0.1,0);playTone(330,'sine',0.12,0.08,0.1);break;
   }
 }
+function logDebug(ctx, msg) { console.log(`[DEBUG] [${ctx}] ${msg}`); }
 api.onPlaySound(type=>playSound(type));
 
 // ═══ WINDOWS SNAP ═════════════════════════════════════════════════════════════
 document.getElementById('titlebar').addEventListener('dblclick',e=>{
   if(e.target.closest('.tb-right'))return;
+  logInfo('ui', 'Titlebar double-clicked — maximize toggle');
   api.maximize();
 });
 
@@ -96,17 +121,18 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
 
 // ═══ CONFIRM ══════════════════════════════════════════════════════════════════
 function confirm(opts){
+  logInfo('ui', 'Confirm dialog shown', { title: opts.title });
   document.getElementById('confirm-title').textContent=opts.title||'Are you sure?';
   document.getElementById('confirm-msg').textContent=opts.msg||'';
   document.getElementById('confirm-icon').textContent=opts.icon||'🗑️';
   const okBtn=document.getElementById('confirm-ok');
   const newOk=okBtn.cloneNode(true);okBtn.parentNode.replaceChild(newOk,okBtn);
   newOk.textContent=opts.okLabel||'Delete';newOk.className=opts.okClass||'btn-danger';
-  newOk.addEventListener('click',()=>{hide('confirm-overlay');opts.onOk();});
+  newOk.addEventListener('click',()=>{hide('confirm-overlay');logInfo('ui', 'Confirm dialog accepted', { title: opts.title });opts.onOk();});
   show('confirm-overlay');
 }
-document.getElementById('confirm-cancel').addEventListener('click',()=>hide('confirm-overlay'));
-document.getElementById('confirm-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('confirm-overlay'))hide('confirm-overlay');});
+document.getElementById('confirm-cancel').addEventListener('click',()=>{ hide('confirm-overlay'); logInfo('ui', 'Confirm dialog cancelled'); });
+document.getElementById('confirm-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('confirm-overlay')){ hide('confirm-overlay'); logInfo('ui', 'Confirm dialog dismissed (overlay click)'); }});
 
 // ═══ AUTO-LOCK ════════════════════════════════════════════════════════════════
 let LOCK_MS=5*60*1000;
@@ -116,10 +142,11 @@ function applyLockSettings(){
   LOCK_MS=t>0?t*60*1000:Infinity;
   const row=document.getElementById('lock-row');
   if(row)row.hidden=(t===0);
+  logInfo('settings', 'Lock settings applied', { timeout: t, lockMs: LOCK_MS });
 }
 function armLock(){
   clearTimeout(lockTimer);clearInterval(lockTick);
-  if(S.settings.lock_timeout===0)return; // never lock
+  if(S.settings.lock_timeout===0)return;
   lockDeadline=Date.now()+LOCK_MS;
   const row=document.getElementById('lock-row');if(row)row.hidden=false;
   lockTick=setInterval(()=>{
@@ -130,80 +157,90 @@ function armLock(){
     if(rem<=0)clearInterval(lockTick);
   },1000);
   lockTimer=setTimeout(()=>{
+    logInfo('auth', 'Auto-lock timer expired');
     playSound('lock');
-    if(S.settings.lock_action==='exit'){ api.close(); } else doLock();
+    if(S.settings.lock_action==='exit'){ logInfo('auth', 'Lock action: exit'); api.close(); } else doLock();
   },LOCK_MS);
 }
 function disarmLock(){clearTimeout(lockTimer);clearInterval(lockTick);const row=document.getElementById('lock-row');if(row)row.hidden=true;}
-function doLock(){disarmLock();screen('s-lock');}
+function doLock(){logInfo('auth', 'Locking vault'); disarmLock();api.lock();screen('s-lock');}
 ['mousemove','keydown','mousedown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(S.user&&S.settings.lock_timeout>0)armLock();},{passive:true}));
 
 document.getElementById('btn-unlock').addEventListener('click',async()=>{
   const btn=document.getElementById('btn-unlock');
   if(btn.disabled)return;
+  logInfo('auth', 'Unlock button clicked');
   btn.textContent='Opening browser…';btn.disabled=true;
   const r=await api.reauth();
-  if(r.ok){if(r.token)window.__vaultToken.set(r.token);S.user=r.user;loadVault(r.vault);screen('s-app');armLock();toast('Vault unlocked');}
-  else{btn.textContent='Unlock with Google';btn.disabled=false;toast('Unlock failed: '+r.error);}
+  if(r.ok){if(r.token)window.__vaultToken.set(r.token);S.user=r.user;loadVault(r.vault);screen('s-app');armLock();toast('Vault unlocked');logOk('auth', 'Vault unlocked via reauth', { email: S.user?.email });}
+  else{btn.textContent='Unlock with Google';btn.disabled=false;toast('Unlock failed: '+r.error);logErr('auth', 'Unlock failed', r.error);}
 });
 
 // ═══ AUTH ═════════════════════════════════════════════════════════════════════
 document.getElementById('btn-login').addEventListener('click',async()=>{
   const btn=document.getElementById('btn-login');
   if(btn.disabled)return;
+  logInfo('auth', 'Login button clicked');
   btn.textContent='Opening browser…';btn.disabled=true;
   const r=await api.login();
-  if(!r.ok){const err=document.getElementById('login-err');err.hidden=false;err.textContent=r.error;console.error('[login] error:', r.error);btn.textContent='Sign in with Google';btn.disabled=false;return;}
-  if(r.needs2fa){S.user=r.user;screen('s-2fa');btn.textContent='Sign in with Google';btn.disabled=false;return;}
+  if(!r.ok){const err=document.getElementById('login-err');err.hidden=false;err.textContent=r.error;logErr('auth', 'Login failed', r.error);btn.textContent='Sign in with Google';btn.disabled=false;return;}
+  if(r.needs2fa){S.user=r.user;screen('s-2fa');btn.textContent='Sign in with Google';btn.disabled=false;logInfo('auth', 'Login requires 2FA', { email: S.user?.email });return;}
   if(r.token)window.__vaultToken.set(r.token);
   S.user=r.user;loadVault(r.vault);await loadSettings();enterApp();
+  logOk('auth', 'Login successful', { email: S.user?.email });
 });
 document.getElementById('btn-verify2fa').addEventListener('click',async()=>{
   const token=document.getElementById('twofa-code').value.trim();
+  logInfo('auth', '2FA verify attempt');
   const r=await api.verify2fa(token);
-  if(!r.ok){document.getElementById('twofa-err').hidden=false;document.getElementById('twofa-err').textContent=r.error;return;}
+  if(!r.ok){document.getElementById('twofa-err').hidden=false;document.getElementById('twofa-err').textContent=r.error;logWarn('auth', '2FA verify failed', r.error);return;}
   if(r.token)window.__vaultToken.set(r.token);
   loadVault(r.vault);await loadSettings();enterApp();
+  logOk('auth', '2FA verified, login complete');
 });
 document.getElementById('twofa-code').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('btn-verify2fa').click();});
 
 document.getElementById('btn-logout').addEventListener('click',async()=>{
+  logInfo('auth', 'Logout clicked', { user: S.user?.email });
   playSound('logout');await api.logout();
   S.user=null;S.passwords=[];S.notes=[];S.trash=[];S.jobs=[];S.totp=[];S.activeNote=null;
   disarmLock();clearAllInputs();screen('s-login');
   document.getElementById('btn-login').textContent='Sign in with Google';
   document.getElementById('btn-login').disabled=false;
   document.getElementById('login-err').hidden=true;
+  logOk('auth', 'Logged out, state cleared');
 });
 
-function loadVault(v){S.passwords=v?.passwords||[];S.notes=v?.notes||[];}
+function loadVault(v){S.passwords=v?.passwords||[];S.notes=v?.notes||[];logInfo('vault', 'Vault loaded into memory', { passwords: S.passwords.length, notes: S.notes.length });}
 async function loadSettings(){
   const r=await api.settings.load();
   if(r.ok)S.settings={...S.settings,...r.settings};
   applyLockSettings();
+  logInfo('settings', 'Settings loaded', S.settings);
 }
-function enterApp(){screen('s-app');renderUserChip();switchTab('passwords');armLock();}
+function enterApp(){logInfo('app', 'Entering app screen'); screen('s-app');renderUserChip();switchTab('passwords');armLock();}
 function renderUserChip(){
   const u=S.user;const init=(u.name||u.email||'?')[0].toUpperCase();
   const chip=document.getElementById('user-chip');chip.innerHTML='';
-	  if(u.avatar){
-	    const img=document.createElement('img');img.className='avatar';
-	    if(u.avatar.startsWith('https://')){img.src=u.avatar;}
-	    chip.appendChild(img);
-	  }else{
-	    const fb=document.createElement('div');fb.className='avatar-fb';fb.textContent=init;
-	    chip.appendChild(fb);
-	  }
-	  const info=document.createElement('div');
-	  const nm=document.createElement('div');nm.className='u-name';nm.textContent=u.name||'';
-	  const em=document.createElement('div');em.className='u-email';em.textContent=u.email||'';
-	  info.appendChild(nm);info.appendChild(em);
-	  chip.appendChild(info);
+  if(u.avatar){
+    const img=document.createElement('img');img.className='avatar';
+    if(u.avatar.startsWith('https://')){img.src=u.avatar;}
+    chip.appendChild(img);
+  }else{
+    const fb=document.createElement('div');fb.className='avatar-fb';fb.textContent=init;
+    chip.appendChild(fb);
+  }
+  const info=document.createElement('div');
+  const nm=document.createElement('div');nm.className='u-name';nm.textContent=u.name||'';
+  const em=document.createElement('div');em.className='u-email';em.textContent=u.email||'';
+  info.appendChild(nm);info.appendChild(em);
+  chip.appendChild(info);
 }
 
 // ═══ TABS ══════════════════════════════════════════════════════════════════════
 document.querySelectorAll('.nav-btn[data-tab]').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
 function switchTab(tab){
+  logInfo('ui', 'Tab switched', { tab });
   document.querySelectorAll('.nav-btn[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   ['passwords','notes','jobs','totp','trash','monitor','settings'].forEach(t=>document.getElementById('tab-'+t).hidden=t!==tab);
   if(tab==='passwords')renderPasswords();
@@ -223,16 +260,17 @@ function updateCounts(){
   document.getElementById('cnt-totp').textContent=S.totp.length;
 }
 document.getElementById('btn-sync').addEventListener('click',async()=>{
+  logInfo('vault', 'Sync triggered');
   const btn=document.getElementById('btn-sync');
   btn.style.opacity='.5';btn.style.pointerEvents='none';
   const r=await api.sync();
   btn.style.opacity='';btn.style.pointerEvents='';
-  if(r.ok){loadVault(r.vault);switchTab('passwords');toast('Synced ✓');}
-  else toast('Sync error: '+r.error);
+  if(r.ok){loadVault(r.vault);switchTab('passwords');toast('Synced ✓');logOk('vault', 'Sync successful');}
+  else { toast('Sync error: '+r.error); logErr('vault', 'Sync failed', r.error); }
 });
 
 // ═══ PASSWORDS ════════════════════════════════════════════════════════════════
-document.getElementById('btn-add-pw').addEventListener('click',()=>openPwModal());
+document.getElementById('btn-add-pw').addEventListener('click',()=>{ logInfo('password', 'Add password clicked'); openPwModal(); });
 document.getElementById('pw-search').addEventListener('input',renderPasswords);
 
 const logoCache={};
@@ -306,23 +344,19 @@ function renderPasswords(){
         el.innerHTML='';
         const img=document.createElement('img');img.width=22;img.height=22;
         img.style.borderRadius='4px';img.style.objectFit='contain';
-        // Only allow https favicon URLs
         if(url.startsWith('https://')){img.src=url;}
         img.addEventListener('error',()=>{img.remove();});
         el.appendChild(img);
       }
     });
-    // Hold to show — show while pressed, hide on release (no toggle)
     const eyeBtn=row.querySelector('.eye-inline');
     const hidSpan=row.querySelector('.pw-hidden');
     const revSpan=row.querySelector('.pw-real');
     const smWrap=document.getElementById('psm-'+pw.id);
     eyeBtn.addEventListener('mousedown',()=>{
       hidSpan.hidden=true;revSpan.hidden=false;
-      // Show inline strength meter
       smWrap.hidden=false;
       updateInlineSm(smWrap,pw.password||'');
-      // Check breach async
       checkBreach(pw.password||'').then(breached=>{
         const b=document.getElementById('breach-'+pw.id);
         if(b)b.hidden=!breached;
@@ -331,20 +365,21 @@ function renderPasswords(){
     const hideEye=()=>{hidSpan.hidden=false;revSpan.hidden=true;smWrap.hidden=true;};
     eyeBtn.addEventListener('mouseup',hideEye);
     eyeBtn.addEventListener('mouseleave',hideEye);
-    // Also support touch
     eyeBtn.addEventListener('touchstart',e=>{e.preventDefault();hidSpan.hidden=true;revSpan.hidden=false;smWrap.hidden=false;updateInlineSm(smWrap,pw.password||'');},{passive:false});
     eyeBtn.addEventListener('touchend',hideEye);
 
     const [copyBtn,editBtn,delBtn]=row.querySelectorAll('.pw-acts .icon-btn');
-    copyBtn.onclick=()=>{navigator.clipboard.writeText(pw.password||'');toast('Password copied!');};
-    editBtn.onclick=()=>openPwModal(pw);
+    copyBtn.onclick=()=>{navigator.clipboard.writeText(pw.password||'');toast('Password copied!');logInfo('password', 'Password copied to clipboard', { site: pw.site });};
+    editBtn.onclick=()=>{ logInfo('password', 'Edit password', { site: pw.site }); openPwModal(pw); };
     delBtn.onclick=()=>confirm({
       title:'Move to Trash?',msg:`"${pw.site}" will be moved to Trash and auto-deleted after 30 days.`,
       icon:'🗑️',okLabel:'Move to Trash',
       onOk:async()=>{
+        logInfo('password', 'Moving to trash', { site: pw.site, dbId: pw._dbId });
         if(pw._dbId)await api.delete(pw._dbId);
         S.passwords=S.passwords.filter(p=>p.id!==pw.id);
         renderPasswords();updateCounts();toast('Moved to Trash');
+        logOk('password', 'Moved to trash', { site: pw.site });
       }
     });
     wrap.appendChild(row);
@@ -360,6 +395,7 @@ function updateInlineSm(wrap,pw){
 let _pwEx=null;
 function openPwModal(existing=null){
   _pwEx=existing;
+  logInfo('password', existing ? 'Opening edit password modal' : 'Opening add password modal', { site: existing?.site });
   document.getElementById('modal-title').textContent=existing?'Edit password':'Add password';
   document.getElementById('f-site').value=existing?.site||'';
   document.getElementById('f-user').value=existing?.username||'';
@@ -388,11 +424,13 @@ document.getElementById('modal-ok').addEventListener('click',async()=>{
     const r=await api.save('password',existing);
     if(r.ok&&!existing._dbId)existing._dbId=r.dbId;
     toast('Updated');
+    logOk('password', 'Password updated', { site });
   }else{
     const item={id:uid(),site,username,password,notes};
     const r=await api.save('password',item);
     if(r.ok)item._dbId=r.dbId;
     S.passwords.unshift(item);toast('Saved');
+    logOk('password', 'Password created', { site });
   }
   renderPasswords();updateCounts();
 });
@@ -401,6 +439,7 @@ document.getElementById('modal-overlay').addEventListener('click',e=>{if(e.targe
 
 // ═══ NOTES with drag reorder (vertical only) ═══════════════════════════════
 document.getElementById('btn-add-note').addEventListener('click',async()=>{
+  logInfo('note', 'New note created');
   const note={id:uid(),title:'Untitled',body:''};
   const r=await api.save('note',note);if(r.ok)note._dbId=r.dbId;
   S.notes.unshift(note);renderNotesList();updateCounts();openNote(note.id);
@@ -425,6 +464,7 @@ function renderNotesList(){
 
 function openNote(id){
   S.activeNote=id;const note=S.notes.find(n=>n.id===id);if(!note)return;
+  logInfo('note', 'Note opened', { noteId: id, title: note.title });
   renderNotesList();
   const editor=document.getElementById('note-editor');
   editor.innerHTML=`
@@ -444,12 +484,14 @@ function openNote(id){
     renderNotesList();document.getElementById('n-status').textContent='Saving…';
     const r=await api.save('note',note);if(r.ok&&!note._dbId)note._dbId=r.dbId;
     const s=document.getElementById('n-status');if(s)s.textContent='Saved';
+    logOk('note', 'Note auto-saved', { noteId: id, title: note.title });
   };
   document.getElementById('n-title').addEventListener('input',()=>{clearTimeout(st);st=setTimeout(autoSave,700);});
   document.getElementById('n-body').addEventListener('input', ()=>{clearTimeout(st);st=setTimeout(autoSave,700);});
   document.getElementById('n-del').addEventListener('click',()=>confirm({
     title:'Move to Trash?',msg:`"${note.title||'Untitled'}" will be moved to Trash.`,icon:'🗑️',okLabel:'Move to Trash',
     onOk:async()=>{
+      logInfo('note', 'Note moved to trash', { noteId: id, title: note.title });
       if(note._dbId)await api.delete(note._dbId);
       S.notes=S.notes.filter(n=>n.id!==id);S.activeNote=null;
       renderNotesList();updateCounts();
@@ -466,7 +508,6 @@ function addVerticalDrag(el,listId,onReorder){
     dragSrc=el;
     e.dataTransfer.effectAllowed='move';
     e.dataTransfer.setData('text/plain','');
-    // Create a ghost that is visually a copy but only has width of the element
     setTimeout(()=>el.classList.add('dragging'),0);
   });
   el.addEventListener('dragend',()=>{el.classList.remove('dragging');dragSrc=null;});
@@ -490,20 +531,23 @@ function addVerticalDrag(el,listId,onReorder){
 
 // ═══ TRASH ════════════════════════════════════════════════════════════════════
 async function loadAndRenderTrash(){
+  logInfo('trash', 'Loading trash');
   const wrap=document.getElementById('trash-list');
   wrap.querySelectorAll('.trash-row').forEach(e=>e.remove());
   wrap.querySelector('.trash-loading')?.remove();
   const loading=document.createElement('div');loading.className='empty trash-loading';
   loading.innerHTML='<p style="color:var(--muted)">Loading…</p>';wrap.appendChild(loading);
 
-  // Load both vault trash AND job trash
   const [r1,r2]=await Promise.all([api.trashLoad(),api.jobsTrash.load()]);
   loading.remove();
+  if (!r1.ok) logErr('trash', 'Failed to load vault trash', r1.error);
+  if (!r2.ok) logErr('trash', 'Failed to load job trash', r2.error);
   const vaultItems=r1.ok?r1.items:[];
   const jobItems=(r2.ok?r2.items:[]).map(j=>({...j,_type:'job',_dbId:j.id,_deletedAt:j.deleted_at}));
   S.trash=[...vaultItems,...jobItems].sort((a,b)=>new Date(b._deletedAt)-new Date(a._deletedAt));
   updateCounts();
   document.getElementById('trash-empty').hidden=!!S.trash.length;
+  logOk('trash', 'Trash loaded', { count: S.trash.length });
   if(!S.trash.length)return;
 
   S.trash.forEach(item=>{
@@ -534,19 +578,22 @@ async function loadAndRenderTrash(){
         else{const res=await api.trashRestore(item._dbId);ok=res.ok;
           if(ok){const restored={...item,id:item.id||uid(),_dbId:item._dbId};delete restored._type;delete restored._deletedAt;
             if(isNote)S.notes.unshift(restored);else S.passwords.unshift(restored);}}
-        if(!ok){toast('Restore failed');return;}
+        if(!ok){toast('Restore failed');logErr('trash', 'Restore failed', { label });return;}
         S.trash=S.trash.filter(t=>t._dbId!==item._dbId);
         loadAndRenderTrash();updateCounts();toast('Restored ✓');
+        logOk('trash', 'Item restored', { label });
       }
     });
     delBtn.onclick=()=>confirm({
       title:'Delete permanently?',msg:`"${label}" will be gone forever.`,icon:'⚠️',okLabel:'Delete forever',
       onOk:async()=>{
+        logInfo('trash', 'Permanently deleting', { label });
         if(isJob)await api.jobsTrash.purge(item._dbId);
         else await api.trashPurge(item._dbId);
         S.trash=S.trash.filter(t=>t._dbId!==item._dbId);
         row.remove();if(!S.trash.length)document.getElementById('trash-empty').hidden=false;
         updateCounts();toast('Permanently deleted');
+        logOk('trash', 'Item purged', { label });
       }
     });
     wrap.appendChild(row);
@@ -554,6 +601,7 @@ async function loadAndRenderTrash(){
 }
 document.getElementById('btn-empty-trash').addEventListener('click',()=>{
   if(!S.trash.length){toast('Trash is already empty');return;}
+  logInfo('trash', 'Empty trash clicked', { count: S.trash.length });
   confirm({title:'Empty Trash?',msg:`All ${S.trash.length} item(s) will be permanently deleted.`,icon:'⚠️',okLabel:'Empty Trash',
     onOk:async()=>{
       const vaultItems=S.trash.filter(t=>t._type!=='job');
@@ -563,6 +611,7 @@ document.getElementById('btn-empty-trash').addEventListener('click',()=>{
         ...jobItems.map(t=>api.jobsTrash.purge(t._dbId)),
       ]);
       S.trash=[];loadAndRenderTrash();updateCounts();toast('Trash emptied');
+      logOk('trash', 'Trash emptied');
     }
   });
 });
@@ -570,20 +619,21 @@ document.getElementById('btn-empty-trash').addEventListener('click',()=>{
 // ═══ JOBS — inline edit, sort, search, filter ═════════════════════════════════
 let _jobEdit=null;
 async function loadAndRenderJobs(){
-  const r=await api.jobsLoad();if(!r.ok)return;
+  logInfo('jobs', 'Loading jobs');
+  const r=await api.jobsLoad();if(!r.ok){ logErr('jobs', 'Failed to load jobs', r.error); return; }
   S.jobs=r.jobs;renderJobsTable();updateCounts();
+  logOk('jobs', 'Jobs loaded', { count: S.jobs.length });
 }
 
-// Sort + filter + search state
 S.jobSort={col:'',dir:1};S.jobFilter='all';
 
-// Wires
 document.getElementById('jobs-search').addEventListener('input',renderJobsTable);
 document.querySelectorAll('.filter-pill').forEach(btn=>{
   btn.addEventListener('click',()=>{
     document.querySelectorAll('.filter-pill').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     S.jobFilter=btn.dataset.filter;
+    logInfo('jobs', 'Filter changed', { filter: S.jobFilter });
     renderJobsTable();
   });
 });
@@ -594,6 +644,7 @@ document.querySelectorAll('.sortable').forEach(th=>{
     document.querySelectorAll('.sortable').forEach(h=>{
       h.querySelector('.sort-icon').textContent=h.dataset.col===S.jobSort.col?(S.jobSort.dir===1?'↑':'↓'):'⇅';
     });
+    logInfo('jobs', 'Sort changed', { col: S.jobSort.col, dir: S.jobSort.dir });
     renderJobsTable();
   });
 });
@@ -615,17 +666,17 @@ function getFilteredJobs(){
   return list;
 }
 
-// Status popup
 let _statusPopupJob=null;
 const popup=document.getElementById('status-popup');
 document.querySelectorAll('.status-pop-opt').forEach(btn=>{
   btn.addEventListener('click',async()=>{
     if(!_statusPopupJob)return;
     const newStatus=btn.dataset.val;
+    logInfo('jobs', 'Status changed', { jobId: _statusPopupJob.id, company: _statusPopupJob.company, from: _statusPopupJob.status, to: newStatus });
     _statusPopupJob.status=newStatus;
     hide('status-popup');
     const r=await api.jobsSave(_statusPopupJob);
-    if(!r.ok)toast('Save failed');
+    if(!r.ok){toast('Save failed');logErr('jobs', 'Status save failed', r.error);}
     renderJobsTable();
   });
 });
@@ -640,7 +691,6 @@ function renderJobsTable(){
   document.getElementById('jobs-empty-row').hidden=!!list.length;
   if(!S.jobs.length)return;
 
-  // Stats
   const acc=S.jobs.filter(j=>j.status==='accepted').length;
   const wait=S.jobs.filter(j=>j.status==='wait').length;
   const rej=S.jobs.filter(j=>j.status==='rejected').length;
@@ -656,7 +706,6 @@ function renderJobsTable(){
     const tr=document.createElement('tr');
     tr.className='draggable';tr.draggable=true;tr.dataset.id=job.id;
     const st=stMap[job.status]||stMap.wait;
-    // Build editable cells
     tr.innerHTML=`
       <td class="drag-handle-cell">⠿</td>
       <td class="editable-cell" data-field="company"><strong>${esc(job.company)}</strong></td>
@@ -677,14 +726,13 @@ function renderJobsTable(){
         </button>
       </td>`;
 
-    // Copy email
-    tr.querySelector('.copy-email-btn').onclick=e=>{e.stopPropagation();navigator.clipboard.writeText(job.email||'');toast('Email copied!');};
+    tr.querySelector('.copy-email-btn').onclick=e=>{e.stopPropagation();navigator.clipboard.writeText(job.email||'');toast('Email copied!');logInfo('jobs', 'Email copied', { company: job.company });};
 
-    // Inline double-click edit for text cells
     tr.querySelectorAll('.editable-cell').forEach(td=>{
       td.addEventListener('dblclick',()=>{
         const field=td.dataset.field;
         const current=job[field]||'';
+        logInfo('jobs', 'Inline edit started', { jobId: job.id, field, company: job.company });
         const inp=document.createElement('input');
         inp.type=field==='applied_at'?'date':'text';
         inp.value=current;
@@ -702,7 +750,6 @@ function renderJobsTable(){
       });
     });
 
-    // Status cell: single click → show popup
     tr.querySelector('.job-status-cell').addEventListener('click',e=>{
       e.stopPropagation();
       _statusPopupJob=job;
@@ -712,18 +759,17 @@ function renderJobsTable(){
       show('status-popup');
     });
 
-    // Delete → soft-delete (go to trash)
     tr.querySelector('.del-job-btn').onclick=()=>confirm({
       title:'Move to Trash?',msg:`"${job.company}" will be moved to Trash.`,icon:'🗑️',okLabel:'Move to Trash',
-      onOk:async()=>{
+      onOk:async ()=>{
+        logInfo('jobs', 'Job moved to trash', { jobId: job.id, company: job.company });
         const res=await api.jobsDelete(job.id);
-        if(!res.ok){toast('Delete failed');return;}
+        if(!res.ok){toast('Delete failed');logErr('jobs', 'Delete failed', { jobId: job.id });return;}
         S.jobs=S.jobs.filter(j=>j.id!==job.id);
         renderJobsTable();updateCounts();toast('Moved to Trash');
       }
     });
 
-    // Drag vertical only
     tr.addEventListener('dragstart',e=>{
       dragSrc=tr;tr.classList.add('dragging');
       e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','');
@@ -749,6 +795,7 @@ function renderJobsTable(){
 
 function openJobModal(existing=null){
   _jobEdit=existing;
+  logInfo('jobs', existing ? 'Edit job modal opened' : 'Add job modal opened', { company: existing?.company });
   document.getElementById('job-modal-title').textContent=existing?'Edit application':'Add application';
   document.getElementById('j-company').value=existing?.company||'';
   document.getElementById('j-role').value=existing?.role||'';
@@ -778,7 +825,8 @@ document.getElementById('job-ok').addEventListener('click',async()=>{
     if(_jobEdit)Object.assign(_jobEdit,job);
     else{job.id=r.id;S.jobs.unshift(job);}
     renderJobsTable();updateCounts();toast(_jobEdit?'Updated':'Saved');
-  }else toast('Save failed: '+r.error);
+    logOk('jobs', _jobEdit?'Job updated':'Job created', { company, status });
+  }else { toast('Save failed: '+r.error); logErr('jobs', 'Job save failed', { company, error: r.error }); }
 });
 document.getElementById('job-cancel').addEventListener('click',()=>hide('job-overlay'));
 document.getElementById('job-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('job-overlay'))hide('job-overlay');});
@@ -786,9 +834,11 @@ document.getElementById('job-overlay').addEventListener('click',e=>{if(e.target=
 // ═══ TOTP VAULT ════════════════════════════════════════════════════════════════
 let totpTimers=[];
 async function loadAndRenderTotp(){
+  logInfo('totp', 'Loading TOTP accounts');
   totpTimers.forEach(t=>clearInterval(t));totpTimers=[];
-  const r=await api.totpLoad();if(!r.ok){toast('Could not load accounts');return;}
+  const r=await api.totpLoad();if(!r.ok){toast('Could not load accounts');logErr('totp', 'Failed to load', r.error);return;}
   S.totp=r.items;renderTotpGrid();updateCounts();
+  logOk('totp', 'TOTP accounts loaded', { count: S.totp.length });
 }
 function renderTotpGrid(){
   const grid=document.getElementById('totp-grid');
@@ -811,11 +861,11 @@ function renderTotpGrid(){
       </div>`;
     card.querySelector('.totp-del').onclick=()=>confirm({
       title:'Remove account?',msg:`"${item.name}" will be removed.`,icon:'🗑️',okLabel:'Remove',
-      onOk:async()=>{await api.totpDelete(item.id);S.totp=S.totp.filter(t=>t.id!==item.id);renderTotpGrid();updateCounts();toast('Removed');}
+      onOk:async()=>{logInfo('totp', 'TOTP account removed', { name: item.name });await api.totpDelete(item.id);S.totp=S.totp.filter(t=>t.id!==item.id);renderTotpGrid();updateCounts();toast('Removed');}
     });
     card.querySelector('.totp-copy').onclick=()=>{
       const code=document.getElementById(codeId).textContent.replace(/\s/g,'');
-      if(code&&code!=='——'){navigator.clipboard.writeText(code);toast('Code copied!');}
+      if(code&&code!=='——'){navigator.clipboard.writeText(code);toast('Code copied!');logInfo('totp', 'TOTP code copied', { name: item.name });}
     };
     grid.appendChild(card);
     function updateCode(){
@@ -854,6 +904,7 @@ let _totpEdit=null;
 document.getElementById('btn-add-totp').addEventListener('click',()=>{
   _totpEdit=null;
   ['t-name','t-issuer','t-secret','t-icon'].forEach(id=>document.getElementById(id).value='');
+  logInfo('totp', 'Add TOTP account modal opened');
   show('totp-overlay');setTimeout(()=>document.getElementById('t-name').focus(),60);
 });
 document.getElementById('totp-ok').addEventListener('click',async()=>{
@@ -864,21 +915,23 @@ document.getElementById('totp-ok').addEventListener('click',async()=>{
   hide('totp-overlay');
   const r=await api.totpSave(item);
   if(r.ok){if(_totpEdit)Object.assign(_totpEdit,item);else{item.id=r.id;S.totp.unshift(item);}
-    renderTotpGrid();updateCounts();toast('Saved');}
-  else toast('Save failed: '+r.error);
+    renderTotpGrid();updateCounts();toast('Saved');
+    logOk('totp', _totpEdit?'TOTP account updated':'TOTP account created', { name });}
+  else { toast('Save failed: '+r.error); logErr('totp', 'TOTP save failed', { name, error: r.error }); }
 });
 document.getElementById('totp-cancel').addEventListener('click',()=>hide('totp-overlay'));
 document.getElementById('totp-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('totp-overlay'))hide('totp-overlay');});
 
 // ═══ MONITOR with circle gauges ═══════════════════════════════════════════════
 async function loadMonitor(){
+  logInfo('monitor', 'Loading monitor data');
   const [sr,lr]=await Promise.all([api.monitor.stats(),api.monitor.readLog()]);
   if(sr.ok){
     const st=sr.stats;
     const fmt=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';
-    const DB_LIMIT=500*1024*1024; // 500 MB free tier limit
+    const DB_LIMIT=500*1024*1024;
     const dbPct=st.dbSizeBytes?Math.min(100,Math.round(st.dbSizeBytes/DB_LIMIT*100)):0;
-    const logPct=Math.min(100,Math.round(st.logSize/(5*1024*1024)*100)); // 5 MB log gauge
+    const logPct=Math.min(100,Math.round(st.logSize/(5*1024*1024)*100));
 
     document.getElementById('monitor-circles').innerHTML=`
       <div class="mon-circle-wrap">
@@ -898,8 +951,11 @@ async function loadMonitor(){
       <div class="mon-card"><div class="mon-num">${st.trash}</div><div class="mon-lbl">In trash</div></div>
       <div class="mon-card"><div class="mon-num">${st.jobs}</div><div class="mon-lbl">Job apps</div></div>
       <div class="mon-card mon-wide"><div class="mon-num" style="font-size:12px;font-family:var(--mono)">Supabase</div><div class="mon-lbl">EU West (Ireland) · Log: ${esc(sr.logPath||'')}</div></div>`;
+    logOk('monitor', 'Monitor data loaded', { items: st.items, jobs: st.jobs, trash: st.trash });
+  } else {
+    logErr('monitor', 'Failed to load stats', sr.error);
   }
-  if(lr.ok){const el=document.getElementById('log-view');el.textContent=lr.log||'(no errors logged)';el.scrollTop=el.scrollHeight;}
+  if(lr.ok){const el=document.getElementById('log-view');el.textContent=lr.log||'(no errors logged)';el.scrollTop=el.height;}
 }
 
 function makeCircleSvg(pct,color){
@@ -914,20 +970,23 @@ function makeCircleSvg(pct,color){
   </svg>`;
 }
 
-document.getElementById('btn-refresh-monitor').addEventListener('click',loadMonitor);
+document.getElementById('btn-refresh-monitor').addEventListener('click',()=>{ logInfo('monitor', 'Refresh clicked'); loadMonitor(); });
 document.getElementById('btn-clear-log').addEventListener('click',async()=>{
+  logInfo('monitor', 'Clear log clicked');
   await api.monitor.clearLog();document.getElementById('log-view').textContent='(log cleared)';toast('Log cleared');
+  logOk('monitor', 'Log cleared');
 });
 
 // ═══ SETTINGS ══════════════════════════════════════════════════════════════════
 async function loadSettingsTab(){
+  logInfo('settings', 'Loading settings tab');
   const r=await api.settings.load();
   if(r.ok)S.settings={...S.settings,...r.settings};
   document.getElementById('s-lock-timeout').value=S.settings.lock_timeout??5;
   document.getElementById('s-lock-action').value=S.settings.lock_action||'lock';
-  // 2FA status
   const r2=await api.twofa.status();
   document.getElementById('s-2fa-status').textContent=r2.enabled?'✅ Enabled':'❌ Disabled';
+  logOk('settings', 'Settings tab loaded', { ...S.settings, twofa: r2.enabled });
 }
 document.getElementById('btn-save-settings').addEventListener('click',async()=>{
   const timeout=parseInt(document.getElementById('s-lock-timeout').value)||0;
@@ -937,14 +996,17 @@ document.getElementById('btn-save-settings').addEventListener('click',async()=>{
   applyLockSettings();armLock();
   await api.settings.save(S.settings);
   toast('Settings saved ✓');
+  logOk('settings', 'Settings saved', { lock_timeout: S.settings.lock_timeout, lock_action: S.settings.lock_action });
 });
 document.getElementById('btn-reset-settings').addEventListener('click',async()=>{
+  logInfo('settings', 'Reset to defaults clicked');
   S.settings={lock_timeout:5,lock_action:'lock'};
   document.getElementById('s-lock-timeout').value=5;
   document.getElementById('s-lock-action').value='lock';
   applyLockSettings();armLock();
   await api.settings.save(S.settings);
   toast('Reset to defaults');
+  logOk('settings', 'Settings reset to defaults');
 });
 document.getElementById('s-btn-2fa').addEventListener('click',()=>{
   hide('tab-settings');
@@ -977,18 +1039,17 @@ function doGenerate(){
   if(document.getElementById('go-nums').checked)classes.push(NUMS);
   if(document.getElementById('go-syms').checked)classes.push(SYMS);
   const allCs=classes.join('');
-  // Guarantee at least one char from each enabled class, fill rest randomly, then shuffle
   const arr=new Uint32Array(len);crypto.getRandomValues(arr);
   const guaranteed=classes.map((cs,i)=>cs[arr[i]%cs.length]);
   const rest=Array.from(arr).slice(classes.length).map(n=>allCs[n%allCs.length]);
   let pw=[...guaranteed,...rest];
-  // Fisher-Yates shuffle with CSPRNG
   for(let i=pw.length-1;i>0;i--){const j=arr[i<arr.length?i:i%arr.length]%(i+1);[pw[i],pw[j]]=[pw[j],pw[i]];}
   const pwStr=pw.join('');
   document.getElementById('gen-out').textContent=pwStr;
   const{n,lbl,cls}=scoreP(pwStr);
   document.querySelectorAll('#gen-strength-row .bar').forEach((b,i)=>b.className='bar'+(i<n?` g${n}`:''));
   const l=document.getElementById('gen-slabel');if(l){l.textContent=lbl;l.className='slabel '+cls.replace('sl-','s');}
+  logInfo('generator', 'Password generated', { length: len, strength: lbl });
   return pwStr;
 }
 document.getElementById('gen-len').addEventListener('input',function(){
@@ -996,6 +1057,7 @@ document.getElementById('gen-len').addEventListener('input',function(){
   if(document.getElementById('gen-out').textContent!=='—')doGenerate();
 });
 function openGen(fillMode=false){
+  logInfo('generator', 'Generator opened', { fillMode });
   show('gen-overlay');
   const useBtn=document.getElementById('gen-use');
   const newUse=useBtn.cloneNode(true);useBtn.parentNode.replaceChild(newUse,useBtn);
@@ -1014,13 +1076,14 @@ document.getElementById('gen-close').addEventListener('click',closeGen);
 document.getElementById('gen-generate').addEventListener('click',doGenerate);
 document.getElementById('gen-copy').addEventListener('click',()=>{
   const pw=document.getElementById('gen-out').textContent;
-  if(pw&&pw!=='—'){navigator.clipboard.writeText(pw);toast('Copied!');}
+  if(pw&&pw!=='—'){navigator.clipboard.writeText(pw);toast('Copied!');logInfo('generator', 'Password copied to clipboard');}
 });
 document.querySelector('#gen-overlay .modal').addEventListener('click',e=>e.stopPropagation());
 document.getElementById('gen-overlay').addEventListener('click',closeGen);
 
 // ═══ 2FA SETTINGS MODAL ════════════════════════════════════════════════════════
 document.getElementById('btn-2fa').addEventListener('click',async()=>{
+  logInfo('2fa', '2FA settings opened');
   const r=await api.twofa.status();
   const body=document.getElementById('twofa-modal-body');
   const okBtn=document.getElementById('twofa-ok');const disBtn=document.getElementById('twofa-disable');
@@ -1028,6 +1091,7 @@ document.getElementById('btn-2fa').addEventListener('click',async()=>{
     document.getElementById('twofa-modal-title').textContent='2FA is enabled';
     body.innerHTML=`<p class="sub" style="margin:12px 0">Two-factor authentication is active.<br>Disable it below.</p>`;
     okBtn.hidden=true;disBtn.hidden=false;
+    logInfo('2fa', '2FA is currently enabled');
   }else{
     document.getElementById('twofa-modal-title').textContent='Enable 2FA';
     body.innerHTML=`<p class="sub" style="margin-bottom:14px">Scan this QR code with your authenticator app,<br>then enter the 6-digit code to confirm.</p>
@@ -1044,32 +1108,38 @@ document.getElementById('btn-2fa').addEventListener('click',async()=>{
         const qrImg=document.createElement('img');qrImg.width=160;qrImg.height=160;
         qrImg.style.borderRadius='8px';qrImg.style.background='#fff';qrImg.style.padding='6px';
         qrImg.src=qrUrl;qrEl.appendChild(qrImg);
+      logOk('2fa', '2FA setup initiated');
+    } else {
+      logErr('2fa', '2FA setup failed', sr.error);
     }
     const newOk=okBtn.cloneNode(true);okBtn.parentNode.replaceChild(newOk,okBtn);
     newOk.hidden=false;
     newOk.addEventListener('click',async()=>{
       const token=document.getElementById('twofa-setup-code')?.value.trim();
       const er=await api.twofa.enable(token);
-      if(!er.ok){const el=document.getElementById('twofa-setup-err');el.hidden=false;el.textContent=er.error;return;}
+      if(!er.ok){const el=document.getElementById('twofa-setup-err');el.hidden=false;el.textContent=er.error;logWarn('2fa', '2FA enable failed', er.error);return;}
       hide('twofa-overlay');toast('2FA enabled ✓');
+      logOk('2fa', '2FA enabled');
     });
   }
   const newDis=disBtn.cloneNode(true);disBtn.parentNode.replaceChild(newDis,disBtn);
   newDis.hidden=!r.enabled;
-  newDis.addEventListener('click',async()=>{await api.twofa.disable();hide('twofa-overlay');toast('2FA disabled');});
+  newDis.addEventListener('click',async()=>{logInfo('2fa', '2FA disable clicked');await api.twofa.disable();hide('twofa-overlay');toast('2FA disabled');logOk('2fa', '2FA disabled');});
   show('twofa-overlay');
 });
 document.getElementById('twofa-cancel').addEventListener('click',()=>hide('twofa-overlay'));
 document.getElementById('twofa-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('twofa-overlay'))hide('twofa-overlay');});
 
 // ═══ TITLEBAR + KEYBOARD ══════════════════════════════════════════════════════
-document.getElementById('wb-min').addEventListener('click',()=>api.minimize());
-document.getElementById('wb-max').addEventListener('click',()=>api.maximize());
-document.getElementById('wb-close').addEventListener('click',()=>api.close());
+document.getElementById('wb-min').addEventListener('click',()=>{ logInfo('ui', 'Minimize clicked'); api.minimize(); });
+document.getElementById('wb-max').addEventListener('click',()=>{ logInfo('ui', 'Maximize clicked'); api.maximize(); });
+document.getElementById('wb-close').addEventListener('click',()=>{ logInfo('ui', 'Close clicked'); api.close(); });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
+    logInfo('ui', 'Escape pressed — closing overlays');
     ['modal-overlay','gen-overlay','confirm-overlay','twofa-overlay','job-overlay','totp-overlay','status-popup'].forEach(id=>hide(id));
   }
 });
 
 screen('s-login');
+logInfo('app', 'App initialized, showing login screen');

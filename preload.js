@@ -5,74 +5,185 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Every sensitive IPC call automatically includes the token as the first argument.
 let sessionToken = null;
 
-function setToken(t) { sessionToken = t; }
-function clearToken() { sessionToken = null; }
+function setToken(t) {
+  sessionToken = t;
+  // Notify main process about token changes for logging
+  ipcRenderer.send('preload:token', t ? 'set' : 'present');
+}
+function clearToken() {
+  sessionToken = null;
+  ipcRenderer.send('preload:token', 'cleared');
+}
 
 // Wraps an IPC call to prepend the session token
 function withToken(...args) {
   return ipcRenderer.invoke(...args);
 }
 
+// Helper to log bridge calls via a fire-and-forget IPC to main
+function bridgeLog(action, channel, ok, detail) {
+  ipcRenderer.send('preload:log', { action, channel, ok, detail, ts: Date.now() });
+}
+
 contextBridge.exposeInMainWorld('api', {
   // Auth — no token needed (token is returned on success)
-  login:        ()            => ipcRenderer.invoke('auth:login'),
-  logout:       ()            => { clearToken(); return ipcRenderer.invoke('auth:logout'); },
-  reauth:       ()            => ipcRenderer.invoke('auth:reauth'),
-  verify2fa:    (token)       => ipcRenderer.invoke('auth:verify2fa', { token }),
-
-// Sensitive — token prepended automatically
-  save:         (type, item)  => ipcRenderer.invoke('vault:save',    sessionToken, { type, item }),
-  delete:       (dbId)        => ipcRenderer.invoke('vault:delete',  sessionToken, { dbId }),
-  sync:         ()            => ipcRenderer.invoke('vault:sync',    sessionToken),
-  reorder:      (type, items) => ipcRenderer.invoke('vault:reorder', sessionToken, { type, items }),
-
-  trashLoad:    ()            => ipcRenderer.invoke('trash:load',    sessionToken),
-  trashRestore: (dbId)        => ipcRenderer.invoke('trash:restore', sessionToken, { dbId }),
-  trashPurge:   (dbId)        => ipcRenderer.invoke('trash:purge',   sessionToken, { dbId }),
-
-  logoFetch:    (site)        => ipcRenderer.invoke('logo:fetch',    sessionToken, { site }),
-
-  jobsLoad:     ()            => ipcRenderer.invoke('jobs:load',   sessionToken),
-  jobsSave:     (job)         => ipcRenderer.invoke('jobs:save',   sessionToken, { job }),
-  jobsDelete:   (id)          => ipcRenderer.invoke('jobs:delete', sessionToken, { id }),
-  jobsReorder:  (jobs)        => ipcRenderer.invoke('jobs:reorder', sessionToken, { jobs }),
-  jobsTrash: {
-    load:    ()   => ipcRenderer.invoke('jobs:trash:load',    sessionToken),
-    restore: (id) => ipcRenderer.invoke('jobs:trash:restore', sessionToken, { id }),
-    purge:   (id) => ipcRenderer.invoke('jobs:trash:purge',   sessionToken, { id }),
+  login: () => {
+    bridgeLog('call', 'auth:login', true);
+    return ipcRenderer.invoke('auth:login');
+  },
+  logout: () => {
+    clearToken();
+    bridgeLog('call', 'auth:logout', true);
+    return ipcRenderer.invoke('auth:logout');
+  },
+  lock: () => {
+    clearToken();
+    bridgeLog('call', 'auth:lock', true);
+    return ipcRenderer.invoke('auth:lock');
+  },
+  reauth: () => {
+    bridgeLog('call', 'auth:reauth', true);
+    return ipcRenderer.invoke('auth:reauth');
+  },
+  verify2fa: (token) => {
+    bridgeLog('call', 'auth:verify2fa', true);
+    return ipcRenderer.invoke('auth:verify2fa', { token });
   },
 
-  totpLoad:     ()            => ipcRenderer.invoke('totp:load',   sessionToken),
-  totpSave:     (item)        => ipcRenderer.invoke('totp:save',   sessionToken, { item }),
-  totpDelete:   (id)          => ipcRenderer.invoke('totp:delete', sessionToken, { id }),
+  // Sensitive — token prepended automatically
+  save: (type, item) => {
+    bridgeLog('call', 'vault:save', true, { type, dbId: item?._dbId });
+    return ipcRenderer.invoke('vault:save', sessionToken, { type, item });
+  },
+  delete: (dbId) => {
+    bridgeLog('call', 'vault:delete', true, { dbId });
+    return ipcRenderer.invoke('vault:delete', sessionToken, { dbId });
+  },
+  sync: () => {
+    bridgeLog('call', 'vault:sync', true);
+    return ipcRenderer.invoke('vault:sync', sessionToken);
+  },
+  reorder: (type, items) => {
+    bridgeLog('call', 'vault:reorder', true, { type, count: items?.length });
+    return ipcRenderer.invoke('vault:reorder', sessionToken, { type, items });
+  },
+
+  trashLoad: () => {
+    bridgeLog('call', 'trash:load', true);
+    return ipcRenderer.invoke('trash:load', sessionToken);
+  },
+  trashRestore: (dbId) => {
+    bridgeLog('call', 'trash:restore', true, { dbId });
+    return ipcRenderer.invoke('trash:restore', sessionToken, { dbId });
+  },
+  trashPurge: (dbId) => {
+    bridgeLog('call', 'trash:purge', true, { dbId });
+    return ipcRenderer.invoke('trash:purge', sessionToken, { dbId });
+  },
+
+  logoFetch: (site) => {
+    bridgeLog('call', 'logo:fetch', true, { site });
+    return ipcRenderer.invoke('logo:fetch', sessionToken, { site });
+  },
+
+  jobsLoad: () => {
+    bridgeLog('call', 'jobs:load', true);
+    return ipcRenderer.invoke('jobs:load', sessionToken);
+  },
+  jobsSave: (job) => {
+    bridgeLog('call', 'jobs:save', true, { jobId: job?.id, company: job?.company });
+    return ipcRenderer.invoke('jobs:save', sessionToken, { job });
+  },
+  jobsDelete: (id) => {
+    bridgeLog('call', 'jobs:delete', true, { jobId: id });
+    return ipcRenderer.invoke('jobs:delete', sessionToken, { id });
+  },
+  jobsReorder: (jobs) => {
+    bridgeLog('call', 'jobs:reorder', true, { count: jobs?.length });
+    return ipcRenderer.invoke('jobs:reorder', sessionToken, { jobs });
+  },
+  jobsTrash: {
+    load: () => {
+      bridgeLog('call', 'jobs:trash:load', true);
+      return ipcRenderer.invoke('jobs:trash:load', sessionToken);
+    },
+    restore: (id) => {
+      bridgeLog('call', 'jobs:trash:restore', true, { jobId: id });
+      return ipcRenderer.invoke('jobs:trash:restore', sessionToken, { id });
+    },
+    purge: (id) => {
+      bridgeLog('call', 'jobs:trash:purge', true, { jobId: id });
+      return ipcRenderer.invoke('jobs:trash:purge', sessionToken, { id });
+    },
+  },
+
+  totpLoad: () => {
+    bridgeLog('call', 'totp:load', true);
+    return ipcRenderer.invoke('totp:load', sessionToken);
+  },
+  totpSave: (item) => {
+    bridgeLog('call', 'totp:save', true, { itemId: item?.id, name: item?.name });
+    return ipcRenderer.invoke('totp:save', sessionToken, { item });
+  },
+  totpDelete: (id) => {
+    bridgeLog('call', 'totp:delete', true, { itemId: id });
+    return ipcRenderer.invoke('totp:delete', sessionToken, { id });
+  },
 
   twofa: {
-    status:  ()      => ipcRenderer.invoke('2fa:status',  sessionToken),
-    setup:   ()      => ipcRenderer.invoke('2fa:setup',   sessionToken),
-    enable:  (token) => ipcRenderer.invoke('2fa:enable',  sessionToken, { token }),
-    disable: ()      => ipcRenderer.invoke('2fa:disable', sessionToken),
+    status: () => {
+      bridgeLog('call', '2fa:status', true);
+      return ipcRenderer.invoke('2fa:status', sessionToken);
+    },
+    setup: () => {
+      bridgeLog('call', '2fa:setup', true);
+      return ipcRenderer.invoke('2fa:setup', sessionToken);
+    },
+    enable: (token) => {
+      bridgeLog('call', '2fa:enable', true);
+      return ipcRenderer.invoke('2fa:enable', sessionToken, { token });
+    },
+    disable: () => {
+      bridgeLog('call', '2fa:disable', true);
+      return ipcRenderer.invoke('2fa:disable', sessionToken);
+    },
   },
 
   settings: {
-    load: ()        => ipcRenderer.invoke('settings:load', sessionToken),
-    save: (s)       => ipcRenderer.invoke('settings:save', sessionToken, { settings: s }),
+    load: () => {
+      bridgeLog('call', 'settings:load', true);
+      return ipcRenderer.invoke('settings:load', sessionToken);
+    },
+    save: (s) => {
+      bridgeLog('call', 'settings:save', true, s);
+      return ipcRenderer.invoke('settings:save', sessionToken, { settings: s });
+    },
   },
 
   monitor: {
-    stats:    () => ipcRenderer.invoke('monitor:stats', sessionToken),
-    readLog:  () => ipcRenderer.invoke('log:read',     sessionToken),
-    clearLog: () => ipcRenderer.invoke('log:clear',    sessionToken),
+    stats: () => {
+      bridgeLog('call', 'monitor:stats', true);
+      return ipcRenderer.invoke('monitor:stats', sessionToken);
+    },
+    readLog: () => {
+      bridgeLog('call', 'log:read', true);
+      return ipcRenderer.invoke('log:read', sessionToken);
+    },
+    clearLog: () => {
+      bridgeLog('call', 'log:clear', true);
+      return ipcRenderer.invoke('log:clear', sessionToken);
+    },
   },
 
   onPlaySound: (cb) => ipcRenderer.on('play-sound', (_e, type) => cb(type)),
 
-  minimize: () => ipcRenderer.send('win:minimize'),
-  maximize: () => ipcRenderer.send('win:maximize'),
-  close:    () => ipcRenderer.send('win:close'),
+  minimize: () => { bridgeLog('call', 'win:minimize', true); ipcRenderer.send('win:minimize'); },
+  maximize: () => { bridgeLog('call', 'win:maximize', true); ipcRenderer.send('win:maximize'); },
+  close: () => { bridgeLog('call', 'win:close', true); ipcRenderer.send('win:close'); },
 });
 
 // Expose token management so the renderer can store the token from login responses
 contextBridge.exposeInMainWorld('__vaultToken', {
-  set: (t) => { sessionToken = t; },
-  clear: () => { sessionToken = null; },
+  set: (t) => { setToken(t); },
+  clear: () => { clearToken(); },
 });
