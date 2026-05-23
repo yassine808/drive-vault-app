@@ -287,9 +287,10 @@
     <!-- Settings -->
     <section class="tab" id="tab-settings" hidden>
       <div class="tab-head">
-        <div><h2>Settings</h2><p class="sub">App preferences</p></div>
+        <div><h2>Settings</h2><p class="sub">Changes apply instantly</p></div>
       </div>
       <div class="settings-body">
+
         <div class="settings-card">
           <h3 class="settings-section-title">Security</h3>
           <div class="settings-row">
@@ -314,8 +315,139 @@
               </select>
             </div>
           </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Show lock countdown</div>
+              <div class="settings-desc">Display a timer in the titlebar before auto-lock triggers.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-lock-countdown" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Lock on minimize</div>
+              <div class="settings-desc">Automatically lock the vault when the window is minimized.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-lock-minimize" /><span class="toggle-track"></span></label>
+            </div>
+          </div>
         </div>
-        <div class="settings-card" style="margin-top:14px">
+
+        <div class="settings-card">
+          <h3 class="settings-section-title">Appearance</h3>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Compact mode</div>
+              <div class="settings-desc">Reduce spacing and item height in list views.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-compact" /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Animations</div>
+              <div class="settings-desc">Enable transitions and motion effects throughout the app.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-animations" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Accent color</div>
+              <div class="settings-desc">Highlight color used for buttons, links, and active elements.</div>
+            </div>
+            <div class="settings-control" style="gap:6px">
+              <button class="accent-swatch" data-accent="violet" style="background:oklch(0.65 0.22 290)" title="Violet"></button>
+              <button class="accent-swatch" data-accent="blue" style="background:oklch(0.62 0.20 250)" title="Blue"></button>
+              <button class="accent-swatch" data-accent="teal" style="background:oklch(0.62 0.18 190)" title="Teal"></button>
+              <button class="accent-swatch" data-accent="green" style="background:oklch(0.65 0.20 145)" title="Green"></button>
+              <button class="accent-swatch" data-accent="orange" style="background:oklch(0.68 0.20 55)" title="Orange"></button>
+              <button class="accent-swatch" data-accent="rose" style="background:oklch(0.62 0.22 15)" title="Rose"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3 class="settings-section-title">Passwords</h3>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Default password length</div>
+              <div class="settings-desc">Number of characters for the password generator.</div>
+            </div>
+            <div class="settings-control">
+              <input type="number" class="fi settings-num" id="s-gen-length" min="8" max="128" value="20" style="width:70px;text-align:center" />
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Include symbols</div>
+              <div class="settings-desc">Add special characters like !@#$% to generated passwords.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-gen-symbols" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Include numbers</div>
+              <div class="settings-desc">Add digits 0-9 to generated passwords.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-gen-numbers" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Exclude ambiguous</div>
+              <div class="settings-desc">Remove characters that look similar (0, O, l, 1, I).</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-gen-ambiguous" /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Copy on generate</div>
+              <div class="settings-desc">Automatically copy new passwords to clipboard.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-gen-copy" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3 class="settings-section-title">Notifications</h3>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Sound effects</div>
+              <div class="settings-desc">Play audio feedback for login, lock, and actions.</div>
+            </div>
+            <div class="settings-control">
+              <label class="toggle"><input type="checkbox" id="s-sounds" checked /><span class="toggle-track"></span></label>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <div class="settings-name">Toast duration</div>
+              <div class="settings-desc">How long notification toasts stay visible.</div>
+            </div>
+            <div class="settings-control">
+              <select class="fi" id="s-toast-duration" style="width:120px">
+                <option value="1500">1.5 seconds</option>
+                <option value="2400" selected>2.4 seconds</option>
+                <option value="3500">3.5 seconds</option>
+                <option value="5000">5 seconds</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-card">
           <h3 class="settings-section-title">Two-factor authentication</h3>
           <div class="settings-row">
             <div class="settings-label">
@@ -328,10 +460,7 @@
             </div>
           </div>
         </div>
-        <div style="margin-top:20px;display:flex;gap:10px">
-          <button class="btn-primary" id="btn-save-settings">Save settings</button>
-          <button class="btn-ghost" id="btn-reset-settings">Reset to defaults</button>
-        </div>
+
       </div>
     </section>
   </main>

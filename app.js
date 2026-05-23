@@ -35,7 +35,7 @@ const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/
 const wc   = t => { t=(t||'').trim(); return t?t.split(/\s+/).length:0; };
 const days = d => Math.max(0,Math.ceil((30*86400000-(Date.now()-new Date(d)))/86400000));
 
-function toast(msg,ms=2400){logInfo('ui', 'Toast: ' + msg);const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),ms);}
+function toast(msg,ms){if(ms===undefined)ms=S.settings.toast_duration||2400;logInfo('ui', 'Toast: ' + msg);const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),ms);}
 function show(id){document.getElementById(id).hidden=false;}
 function hide(id){document.getElementById(id).hidden=true;}
 function screen(s){['s-login','s-2fa','s-lock','s-app'].forEach(id=>document.getElementById(id).hidden=id!==s);}
@@ -51,6 +51,7 @@ function playTone(freq,type='sine',dur=0.15,vol=0.18,delay=0){
   osc.connect(gain);gain.connect(ctx.destination);osc.start(now);osc.stop(now+dur);}catch{}
 }
 function playSound(type){
+  if (window.__soundsEnabled === false) return;
   logDebug('sound', 'playSound: ' + type);
   switch(type){
     case 'login': [523,659,784,1047].forEach((f,i)=>playTone(f,'sine',0.2,0.15,i*0.1));break;
@@ -141,14 +142,16 @@ function applyLockSettings(){
   const t=S.settings.lock_timeout;
   LOCK_MS=t>0?t*60*1000:Infinity;
   const row=document.getElementById('lock-row');
-  if(row)row.hidden=(t===0);
+  const showCountdown = S.settings.lock_countdown !== false;
+  if(row)row.hidden=(t===0 || !showCountdown);
   logInfo('settings', 'Lock settings applied', { timeout: t, lockMs: LOCK_MS });
 }
 function armLock(){
   clearTimeout(lockTimer);clearInterval(lockTick);
   if(S.settings.lock_timeout===0)return;
   lockDeadline=Date.now()+LOCK_MS;
-  const row=document.getElementById('lock-row');if(row)row.hidden=false;
+  const row=document.getElementById('lock-row');
+  if(row && S.settings.lock_countdown !== false)row.hidden=false;
   lockTick=setInterval(()=>{
     const rem=Math.max(0,lockDeadline-Date.now());
     const m=Math.floor(rem/60000),s=Math.floor((rem%60000)/1000);
@@ -978,37 +981,123 @@ document.getElementById('btn-clear-log').addEventListener('click',async()=>{
 });
 
 // ═══ SETTINGS ══════════════════════════════════════════════════════════════════
+const DEFAULT_SETTINGS = {
+  lock_timeout: 5, lock_action: 'lock',
+  lock_countdown: true, lock_on_minimize: false,
+  compact: false, animations: true, accent: 'violet',
+  gen_length: 20, gen_symbols: true, gen_numbers: true, gen_ambiguous: false, gen_copy: true,
+  sounds: true, toast_duration: 2400,
+};
+
+function applySetting(key, value) {
+  S.settings[key] = value;
+  // Instant side-effects
+  if (key === 'lock_timeout' || key === 'lock_action' || key === 'lock_countdown') {
+    applyLockSettings();
+    armLock();
+  }
+  if (key === 'compact') {
+    document.body.classList.toggle('compact', !!value);
+  }
+  if (key === 'animations') {
+    document.body.style.setProperty('--transition', value ? '' : '0s');
+  }
+  if (key === 'accent') {
+    const map = {
+      violet:  'oklch(0.65 0.22 290)',
+      blue:    'oklch(0.62 0.20 250)',
+      teal:    'oklch(0.62 0.18 190)',
+      green:   'oklch(0.65 0.20 145)',
+      orange:  'oklch(0.68 0.20 55)',
+      rose:    'oklch(0.62 0.22 15)',
+    };
+    const c = map[value] || map.violet;
+    document.documentElement.style.setProperty('--accent', c);
+    document.documentElement.style.setProperty('--accent-dim', c.replace(')', ' / 0.1)').replace('oklch(', 'oklch('));
+    document.documentElement.style.setProperty('--accent-glow', c.replace(')', ' / 0.15)').replace('oklch(', 'oklch('));
+    document.documentElement.style.setProperty('--accent-strong', c.replace(/0\.\d+/, m => String(Math.min(1, parseFloat(m) + 0.08))));
+    document.documentElement.style.setProperty('--accent-glass', c.replace(')', ' / 0.18)').replace('oklch(', 'oklch('));
+    document.querySelectorAll('.accent-swatch').forEach(s => s.classList.toggle('active', s.dataset.accent === value));
+  }
+  if (key === 'sounds') {
+    window.__soundsEnabled = !!value;
+  }
+  // Persist to DB (debounced)
+  __saveSettings();
+}
+let __saveTimer = null;
+function __saveSettings() {
+  clearTimeout(__saveTimer);
+  __saveTimer = setTimeout(async () => {
+    try { await api.settings.save(S.settings); } catch {}
+  }, 400);
+}
+
 async function loadSettingsTab(){
   logInfo('settings', 'Loading settings tab');
-  const r=await api.settings.load();
-  if(r.ok)S.settings={...S.settings,...r.settings};
-  document.getElementById('s-lock-timeout').value=S.settings.lock_timeout??5;
-  document.getElementById('s-lock-action').value=S.settings.lock_action||'lock';
-  const r2=await api.twofa.status();
-  document.getElementById('s-2fa-status').textContent=r2.enabled?'✅ Enabled':'❌ Disabled';
+  const r = await api.settings.load();
+  if (r.ok) S.settings = { ...DEFAULT_SETTINGS, ...r.settings };
+  // Ensure defaults for any new keys not in DB
+  for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+    if (S.settings[k] === undefined) S.settings[k] = v;
+  }
+
+  // Bind all controls
+  const bind = (id, key, type) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    // Set initial value
+    if (type === 'toggle') el.checked = !!S.settings[key];
+    else el.value = S.settings[key] ?? '';
+    // Listen for changes
+    el.addEventListener('change', () => {
+      let val;
+      if (type === 'toggle') val = el.checked;
+      else if (type === 'number') val = parseInt(el.value) || 0;
+      else val = el.value;
+      applySetting(key, val);
+      toast('Setting updated', 1200);
+    });
+  };
+
+  bind('s-lock-timeout', 'lock_timeout', 'number');
+  bind('s-lock-action', 'lock_action', 'select');
+  bind('s-lock-countdown', 'lock_countdown', 'toggle');
+  bind('s-lock-minimize', 'lock_on_minimize', 'toggle');
+  bind('s-compact', 'compact', 'toggle');
+  bind('s-animations', 'animations', 'toggle');
+  bind('s-gen-length', 'gen_length', 'number');
+  bind('s-gen-symbols', 'gen_symbols', 'toggle');
+  bind('s-gen-numbers', 'gen_numbers', 'toggle');
+  bind('s-gen-ambiguous', 'gen_ambiguous', 'toggle');
+  bind('s-gen-copy', 'gen_copy', 'toggle');
+  bind('s-sounds', 'sounds', 'toggle');
+  bind('s-toast-duration', 'toast_duration', 'select');
+
+  // Accent swatches
+  document.querySelectorAll('.accent-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.accent === S.settings.accent);
+    s.addEventListener('click', () => applySetting('accent', s.dataset.accent));
+  });
+
+  // Apply current visual settings immediately
+  applySetting('compact', S.settings.compact);
+  applySetting('animations', S.settings.animations);
+  applySetting('accent', S.settings.accent);
+  window.__soundsEnabled = !!S.settings.sounds;
+
+  // 2FA status
+  const r2 = await api.twofa.status();
+  document.getElementById('s-2fa-status').textContent = r2.enabled ? '✅ Enabled' : '❌ Disabled';
   logOk('settings', 'Settings tab loaded', { ...S.settings, twofa: r2.enabled });
 }
-document.getElementById('btn-save-settings').addEventListener('click',async()=>{
-  const timeout=parseInt(document.getElementById('s-lock-timeout').value)||0;
-  const action=document.getElementById('s-lock-action').value;
-  S.settings.lock_timeout=Math.max(0,Math.min(120,timeout));
-  S.settings.lock_action=action;
-  applyLockSettings();armLock();
-  await api.settings.save(S.settings);
-  toast('Settings saved ✓');
-  logOk('settings', 'Settings saved', { lock_timeout: S.settings.lock_timeout, lock_action: S.settings.lock_action });
+
+// Lock-on-minimize handler
+api.onMinimize(() => {
+  if (S.settings.lock_on_minimize && S.user) doLock();
 });
-document.getElementById('btn-reset-settings').addEventListener('click',async()=>{
-  logInfo('settings', 'Reset to defaults clicked');
-  S.settings={lock_timeout:5,lock_action:'lock'};
-  document.getElementById('s-lock-timeout').value=5;
-  document.getElementById('s-lock-action').value='lock';
-  applyLockSettings();armLock();
-  await api.settings.save(S.settings);
-  toast('Reset to defaults');
-  logOk('settings', 'Settings reset to defaults');
-});
-document.getElementById('s-btn-2fa').addEventListener('click',()=>{
+
+document.getElementById('s-btn-2fa').addEventListener('click', () => {
   hide('tab-settings');
   document.getElementById('btn-2fa').click();
 });
@@ -1049,6 +1138,7 @@ function doGenerate(){
   const{n,lbl,cls}=scoreP(pwStr);
   document.querySelectorAll('#gen-strength-row .bar').forEach((b,i)=>b.className='bar'+(i<n?` g${n}`:''));
   const l=document.getElementById('gen-slabel');if(l){l.textContent=lbl;l.className='slabel '+cls.replace('sl-','s');}
+  if (S.settings.gen_copy) { try { navigator.clipboard.writeText(pwStr); } catch {} }
   logInfo('generator', 'Password generated', { length: len, strength: lbl });
   return pwStr;
 }
@@ -1058,6 +1148,10 @@ document.getElementById('gen-len').addEventListener('input',function(){
 });
 function openGen(fillMode=false){
   logInfo('generator', 'Generator opened', { fillMode });
+  document.getElementById('gen-len').value = S.settings.gen_length || 20;
+  document.getElementById('gen-len-val').textContent = S.settings.gen_length || 20;
+  document.getElementById('go-syms').checked = !!S.settings.gen_symbols;
+  document.getElementById('go-nums').checked = !!S.settings.gen_numbers;
   show('gen-overlay');
   const useBtn=document.getElementById('gen-use');
   const newUse=useBtn.cloneNode(true);useBtn.parentNode.replaceChild(newUse,useBtn);

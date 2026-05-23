@@ -833,6 +833,7 @@ function createWindow() {
     webPreferences:{ preload:path.join(__dirname, '..', 'preload.js'), contextIsolation:true, nodeIntegration:false, spellcheck:false },
   });
   win.loadFile(path.join(__dirname, '..', 'index.html'));
+  win.on('minimize', () => { win.webContents.send('win:minimized'); });
   logger.success('window', 'Main window created and loaded');
   if (process.argv.includes('--dev')) win.webContents.openDevTools({ mode:'detach' });
 }
