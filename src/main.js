@@ -135,17 +135,11 @@ function recordFailedAttempt() {
 function resetRateLimit() { rateLimit.attempts = []; rateLimit.lockoutUntil = 0; }
 
 // ─── CRYPTO ───────────────────────────────────────────────────────────────────
-const KDF_ITERATIONS = 100_000;
-const KDF_KEYLEN = 32;
-const KDF_DIGEST = 'sha512';
-function deriveKey(password, salt) {
-  return new Promise((resolve, reject) => {
-    crypto.pbkdf2(password, salt, KDF_ITERATIONS, KDF_KEYLEN, KDF_DIGEST, (err, key) => {
-      if (err) reject(err); else resolve(key.toString('hex'));
-    });
-  });
+function deriveKey(googleId) {
+  // Must stay as SHA-256 truncated to 32 hex chars — this is what all existing
+  // encrypted data was encrypted with. Changing this will make all data unreadable.
+  return crypto.createHash('sha256').update('vault:' + googleId).digest('hex').slice(0, 32);
 }
-function genSalt() { return crypto.randomBytes(32).toString('hex'); }
 function enc(obj, key) { return CryptoJS.AES.encrypt(JSON.stringify(obj), key).toString(); }
 function dec(str, key) { try { return JSON.parse(CryptoJS.AES.decrypt(str,key).toString(CryptoJS.enc.Utf8)); } catch { return null; } }
 
@@ -158,16 +152,6 @@ async function dbUpsertUser({ googleId, email, name, avatar }) {
   if (error) { logger.error('dbUpsertUser', 'Supabase error', JSON.stringify(error)); throw new Error('dbUpsertUser failed: ' + error.message + ' | code: ' + error.code + ' | details: ' + error.details + ' | hint: ' + error.hint); }
   logger.db('dbUpsertUser', 'User upserted', { userId: data.id });
   return data.id;
-}
-
-async function dbGetSalt(userId) {
-  logger.db('dbGetSalt', 'Getting salt', { userId });
-  const { data } = await supabase.from('vault_users').select('kdf_salt').eq('id', userId).single();
-  return data?.kdf_salt || null;
-}
-async function dbSetSalt(userId, salt) {
-  logger.db('dbSetSalt', 'Setting salt', { userId });
-  await supabase.from('vault_users').update({ kdf_salt: salt }).eq('id', userId);
 }
 
 async function dbLoadItems(userId, encKey) {
@@ -563,9 +547,7 @@ ipcMain.handle('auth:login', async () => {
   try {
     const profile = await googleOAuth();
     const userId  = await dbUpsertUser(profile);
-    let salt = await dbGetSalt(userId);
-    if (!salt) { salt = genSalt(); await dbSetSalt(userId, salt); }
-    const encKey  = await deriveKey(profile.googleId, salt);
+    const encKey  = deriveKey(profile.googleId);
     sessionToken = genSessionToken();
     const twofa   = await db2faGet(userId);
     if (twofa?.enabled) {
@@ -648,9 +630,7 @@ ipcMain.handle('auth:reauth', async () => {
       return { ok:false, error:'Different account' };
     }
     const userId = await dbUpsertUser(profile);
-    let salt = await dbGetSalt(userId);
-    if (!salt) { salt = genSalt(); await dbSetSalt(userId, salt); }
-    const encKey = await deriveKey(profile.googleId, salt);
+    const encKey = deriveKey(profile.googleId);
     const vault  = await dbLoadItems(userId, encKey);
     session = { ...profile, userId, encKey, pending2fa:false };
     sessionToken = genSessionToken();
