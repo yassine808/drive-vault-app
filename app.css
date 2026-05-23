@@ -1,4 +1,4 @@
-/* ═══════════════════════════════════════════════════════════════════
+﻿/* ═══════════════════════════════════════════════════════════════════
    VAULT — Black + Purple
    Deep black base with purple accent. Glass morphism on interaction.
    ═══════════════════════════════════════════════════════════════════ */
@@ -7,14 +7,14 @@
 
 :root {
   /* ── Palette — Deep black base, purple accent ────────────────── */
-  --bg:             oklch(0.08 0.01 280);
-  --bg-surface:     oklch(0.11 0.012 280);
-  --bg-raised:      oklch(0.15 0.014 280);
-  --bg-input:       oklch(0.13 0.011 280);
-  --bg-overlay:     oklch(0.06 0.008 280 / 0.92);
+  --bg:             oklch(0.14 0.012 280);
+  --bg-surface:     oklch(0.17 0.014 280);
+  --bg-raised:      oklch(0.21 0.016 280);
+  --bg-input:       oklch(0.19 0.013 280);
+  --bg-overlay:     oklch(0.10 0.01 280 / 0.92);
 
-  --border:         oklch(0.55 0.08 290 / 0.08);
-  --border-h:       oklch(0.55 0.08 290 / 0.15);
+  --border:         oklch(0.55 0.08 290 / 0.12);
+  --border-h:       oklch(0.55 0.08 290 / 0.22);
   --border-focus:   oklch(0.6 0.18 290 / 0.5);
 
   --accent:         oklch(0.65 0.22 290);
@@ -36,7 +36,7 @@
   --txt-dim:        oklch(0.4 0.005 280);
 
   /* ── Glass ───────────────────────────────────────────────────── */
-  --glass-bg:       oklch(0.15 0.02 280 / 0.45);
+  --glass-bg:       oklch(0.20 0.02 280 / 0.50);
   --glass-border:   oklch(0.65 0.22 290 / 0.12);
   --glass-blur:     blur(16px) saturate(1.4);
 
@@ -81,7 +81,7 @@ html, body {
 /* ═══════════════════════════════════════════════════════════════
    CANVAS BACKGROUND
    ═══════════════════════════════════════════════════════════════ */
-#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.35}
+#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.50}
 
 /* ═══════════════════════════════════════════════════════════════
    TITLEBAR
@@ -90,7 +90,7 @@ html, body {
   position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 200;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 18px;
-  background: oklch(0.06 0.008 280 / 0.85);
+  background: oklch(0.12 0.01 280 / 0.85);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(20px) saturate(1.3);
   -webkit-backdrop-filter: blur(20px) saturate(1.3);
@@ -191,7 +191,7 @@ html, body {
   display: flex; flex-direction: column;
   border-right: 1px solid var(--border);
   padding: 14px 10px;
-  background: oklch(0.08 0.01 280 / 0.6);
+  background: oklch(0.14 0.012 280 / 0.6);
   backdrop-filter: blur(16px) saturate(1.2);
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
   gap: 0;
@@ -208,7 +208,7 @@ html, body {
   transition: all var(--t-base);
 }
 .user-chip:hover {
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   border-color: oklch(0.65 0.22 290 / 0.2);
 }
 
@@ -359,7 +359,7 @@ html, body {
   animation: fadeUp var(--t-base) ease;
 }
 .pw-row:hover {
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   border-color: var(--glass-border);
   box-shadow: var(--shadow-sm), var(--shadow-purple);
 }
@@ -459,7 +459,7 @@ html, body {
   display: flex; align-items: flex-start; gap: 8px;
 }
 .note-chip:hover {
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   border-color: var(--glass-border);
 }
 .note-chip.active {
@@ -764,7 +764,7 @@ html, body {
   animation: fadeUp var(--t-base) ease;
 }
 .trash-row:hover {
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   border-color: var(--glass-border);
 }
 .trash-icon{font-size:18px;width:36px;text-align:center;flex-shrink:0}
@@ -807,7 +807,7 @@ html, body {
   transition: all var(--t-base);
 }
 .job-stat:hover {
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   border-color: oklch(0.65 0.22 290 / 0.2);
 }
 .job-stat span{font-size:24px;font-weight:600;color:var(--txt);font-family:var(--mono)}
@@ -826,7 +826,7 @@ html, body {
   color: var(--txt-sec); font-size: 11px; cursor: pointer;
   transition: all var(--t-fast);
 }
-.filter-pill:hover{border-color:var(--glass-border);color:var(--txt);background:oklch(0.15 0.02 280 / 0.45)}
+.filter-pill:hover{border-color:var(--glass-border);color:var(--txt);background:oklch(0.20 0.02 280 / 0.50)}
 .filter-pill.active {
   background: var(--accent-glass);
   color: var(--accent);
@@ -930,7 +930,7 @@ html, body {
   transition: all var(--t-base);
 }
 .mon-card:hover {
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   border-color: oklch(0.65 0.22 290 / 0.2);
 }
 .mon-card.mon-wide{grid-column:span 4}
@@ -982,7 +982,7 @@ html, body {
 }
 .totp-card:hover {
   border-color: oklch(0.65 0.22 290 / 0.25);
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   box-shadow: var(--shadow-sm), var(--shadow-purple);
 }
 .totp-header{display:flex;align-items:center;gap:10px}
@@ -1002,28 +1002,34 @@ html, body {
 /* ═══════════════════════════════════════════════════════════════
    SETTINGS
    ═══════════════════════════════════════════════════════════════ */
-.settings-body{display:flex;flex-direction:column;max-width:600px}
+.settings-body{
+  display:flex;flex-direction:column;gap:14px;
+  max-width:640px;padding-bottom:24px;
+}
 .settings-card {
   background: var(--glass-bg); border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg); padding: 22px;
+  border-radius: var(--r-lg); padding: 20px 22px 18px;
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
 }
 .settings-card:hover {
-  background: oklch(0.15 0.02 280 / 0.55);
+  background: oklch(0.20 0.02 280 / 0.60);
   border-color: oklch(0.65 0.22 290 / 0.2);
 }
-.settings-section-title{font-size:13px;font-weight:600;margin-bottom:16px;color:var(--txt);letter-spacing:-0.01em}
+.settings-section-title{
+  font-size:11px;font-weight:600;margin-bottom:14px;color:var(--txt-muted);
+  letter-spacing:0.06em;text-transform:uppercase;
+}
 .settings-row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; padding: 12px 0;
+  gap: 16px; padding: 10px 0;
   border-bottom: 1px solid var(--border);
 }
 .settings-row:last-child{border-bottom:none}
-.settings-label{flex:1}
+.settings-label{flex:1;min-width:0}
 .settings-name{font-size:12px;font-weight:500;color:var(--txt)}
 .settings-desc{font-size:11px;color:var(--txt-dim);margin-top:2px;line-height:1.5}
-.settings-control{display:flex;align-items:center}
+.settings-control{display:flex;align-items:center;flex-shrink:0}
 .settings-num{text-align:center}
 
 /* ─── Toggle switch ───────────────────────────────────────────── */
@@ -1075,7 +1081,7 @@ body.compact .settings-card{padding:16px}
    ═══════════════════════════════════════════════════════════════ */
 .draggable{cursor:grab}
 .draggable:active{cursor:grabbing}
-.dragging{opacity:.35}
+.dragging{opacity:.50}
 .drag-handle{color:var(--txt-dim);font-size:13px;margin-right:8px;cursor:grab;flex-shrink:0}
 .drag-handle-cell{color:var(--txt-dim);cursor:grab;text-align:center;width:28px;padding:0 4px !important}
 .note-chip .drag-handle{margin-top:2px}
