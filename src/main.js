@@ -367,7 +367,7 @@ function verify2fa(secret, token) {
 async function dbLoadSettings(userId) {
   logger.db('dbLoadSettings', 'Loading settings', { userId });
   const { data } = await supabase.from('vault_settings').select('*').eq('user_id',userId).single();
-  const result = data || { lock_timeout: 5, lock_action: 'lock' };
+  const result = data || {};
   logger.db('dbLoadSettings', 'Settings loaded', result);
   return result;
 }
@@ -746,8 +746,25 @@ ipcMain.handle('settings:save', requireAuth(async (_e,{settings}) => {
     if(!settings||typeof settings!=='object'){ logger.warn('settings:save', 'Invalid settings'); return{ok:false,error:'Invalid settings'}; }
     const t=parseInt(settings.lock_timeout);if(isNaN(t)||t<0||t>120){ logger.warn('settings:save', 'Invalid timeout', { timeout: t }); return{ok:false,error:'Lock timeout must be 0-120 minutes'}; }
     if(!['lock','exit'].includes(settings.lock_action)){ logger.warn('settings:save', 'Invalid lock action', { action: settings.lock_action }); return{ok:false,error:'Invalid lock action'}; }
-    await dbSaveSettings(session.userId,{lock_timeout:t,lock_action:settings.lock_action});
-    logger.success('settings:save', 'Settings saved', { lock_timeout: t, lock_action: settings.lock_action });
+    const validAccents = ['violet','blue','teal','green','orange','rose','red','pink','yellow','amber','cyan','indigo','lime'];
+    const accent = validAccents.includes(settings.accent) ? settings.accent : 'violet';
+    const gl = parseInt(settings.gen_length); const gen_length = (isNaN(gl)||gl<8||gl>128) ? 20 : gl;
+    const td = parseInt(settings.toast_duration); const toast_duration = [1500,2400,3500,5000].includes(td) ? td : 2400;
+    const out = {
+      lock_timeout:t, lock_action:settings.lock_action,
+      lock_countdown:!!settings.lock_countdown, lock_on_minimize:!!settings.lock_on_minimize,
+      compact:!!settings.compact, animations:!!settings.animations, accent,
+      gen_length, gen_symbols:!!settings.gen_symbols, gen_numbers:!!settings.gen_numbers,
+      gen_ambiguous:!!settings.gen_ambiguous, gen_copy:!!settings.gen_copy,
+      sounds:!!settings.sounds,
+      sound_login:!!settings.sound_login, sound_exit:!!settings.sound_exit, sound_hover:!!settings.sound_hover,
+      sound_login_tone: typeof settings.sound_login_tone==='string' ? settings.sound_login_tone : 'chime',
+      sound_exit_tone: typeof settings.sound_exit_tone==='string' ? settings.sound_exit_tone : 'chime',
+      sound_hover_tone: typeof settings.sound_hover_tone==='string' ? settings.sound_hover_tone : 'click',
+      toast_duration,
+    };
+    await dbSaveSettings(session.userId, out);
+    logger.success('settings:save', 'Settings saved');
     return{ok:true};
   } catch(e){ logError('settings:save',e);return{ok:false};}
 }));
@@ -810,7 +827,15 @@ ipcMain.handle('log:clear', requireAuthNoArgs(async () => {
 }));
 
 ipcMain.on('win:minimize', () => { logger.ipc('win:minimize', 'Window minimized'); win?.minimize(); });
-ipcMain.on('win:maximize', () => { logger.ipc('win:maximize', 'Window maximize toggled'); if(win?.isMaximized())win.unmaximize(); else win?.maximize(); });
+ipcMain.on('win:maximize', () => {
+	  logger.ipc('win:maximize', 'Window maximize toggled');
+	  if(win?.isMaximized()){ win.unmaximize(); }
+	  else { win?.maximize(); }
+	  // Notify renderer of new state after a tick
+	  setTimeout(() => {
+	    if(!win.isDestroyed()) win.webContents.send('win:maximized-state', win.isMaximized());
+	  }, 50);
+	});
 ipcMain.on('win:close', () => { logger.ipc('win:close', 'Window close requested'); win?.close(); });
 
 // ─── PRELOAD BRIDGE LOGGING ───────────────────────────────────────────────────
@@ -834,6 +859,8 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, '..', 'index.html'));
   win.on('minimize', () => { win.webContents.send('win:minimized'); });
+  win.on('maximize', () => { if(!win.isDestroyed()) win.webContents.send('win:maximized-state', true); });
+  win.on('unmaximize', () => { if(!win.isDestroyed()) win.webContents.send('win:maximized-state', false); });
   logger.success('window', 'Main window created and loaded');
   if (process.argv.includes('--dev')) win.webContents.openDevTools({ mode:'detach' });
 }

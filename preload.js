@@ -177,6 +177,7 @@ contextBridge.exposeInMainWorld('api', {
 
   onPlaySound: (cb) => ipcRenderer.on('play-sound', (_e, type) => cb(type)),
   onMinimize: (cb) => ipcRenderer.on('win:minimized', () => cb()),
+  onMaximizedState: (cb) => ipcRenderer.on('win:maximized-state', (_e, maximized) => cb(maximized)),
 
   minimize: () => { bridgeLog('call', 'win:minimize', true); ipcRenderer.send('win:minimize'); },
   maximize: () => { bridgeLog('call', 'win:maximize', true); ipcRenderer.send('win:maximize'); },

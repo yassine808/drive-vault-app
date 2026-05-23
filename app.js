@@ -50,13 +50,40 @@ function playTone(freq,type='sine',dur=0.15,vol=0.18,delay=0){
   gain.gain.linearRampToValueAtTime(vol,now+0.02);gain.gain.exponentialRampToValueAtTime(0.001,now+dur);
   osc.connect(gain);gain.connect(ctx.destination);osc.start(now);osc.stop(now+dur);}catch{}
 }
+const TONES = {
+  chime:  { freqs:[523,659,784,1047],      type:'sine',     dur:0.2,  vol:0.15, gap:0.1  },
+  ding:   { freqs:[880,1100],               type:'sine',     dur:0.18, vol:0.18, gap:0.08 },
+  soft:   { freqs:[440,554],                type:'sine',     dur:0.25, vol:0.10, gap:0.12 },
+  bright: { freqs:[660,880,1100,1320],      type:'triangle', dur:0.15, vol:0.16, gap:0.07 },
+  click:  { freqs:[1200],                   type:'square',   dur:0.03, vol:0.06, gap:0    },
+  tap:    { freqs:[800],                    type:'sine',     dur:0.04, vol:0.08, gap:0    },
+  pop:    { freqs:[600,900],                type:'sine',     dur:0.06, vol:0.10, gap:0.03 },
+};
+function playToneSeq(toneName){
+  const t = TONES[toneName] || TONES.chime;
+  t.freqs.forEach((f,i)=>playTone(f, t.type, t.dur, t.vol, i*t.gap));
+}
 function playSound(type){
   if (window.__soundsEnabled === false) return;
-  logDebug('sound', 'playSound: ' + type);
+  const s = S.settings;
   switch(type){
-    case 'login': [523,659,784,1047].forEach((f,i)=>playTone(f,'sine',0.2,0.15,i*0.1));break;
-    case 'logout':[784,659,523].forEach((f,i)=>playTone(f,'sine',0.18,0.12,i*0.09));break;
-    case 'lock': playTone(440,'sine',0.12,0.1,0);playTone(330,'sine',0.12,0.08,0.1);break;
+    case 'login':
+      if (!s.sound_login) return;
+      playToneSeq(s.sound_login_tone || 'chime');
+      break;
+    case 'logout': case 'lock':
+      if (!s.sound_exit) return;
+      if (s.sound_exit_tone && TONES[s.sound_exit_tone]) {
+        const t = TONES[s.sound_exit_tone];
+        t.freqs.slice().reverse().forEach((f,i)=>playTone(f, t.type, t.dur, t.vol*0.8, i*t.gap));
+      } else {
+        [784,659,523].forEach((f,i)=>playTone(f,'sine',0.18,0.12,i*0.09));
+      }
+      break;
+    case 'hover':
+      if (!s.sound_hover) return;
+      playToneSeq(s.sound_hover_tone || 'click');
+      break;
   }
 }
 function logDebug(ctx, msg) { console.log(`[DEBUG] [${ctx}] ${msg}`); }
@@ -987,6 +1014,8 @@ const DEFAULT_SETTINGS = {
   compact: false, animations: true, accent: 'violet',
   gen_length: 20, gen_symbols: true, gen_numbers: true, gen_ambiguous: false, gen_copy: true,
   sounds: true, toast_duration: 2400,
+  sound_login: true, sound_exit: true, sound_hover: false,
+  sound_login_tone: 'chime', sound_exit_tone: 'chime', sound_hover_tone: 'click',
 };
 
 function applySetting(key, value) {
@@ -1010,6 +1039,13 @@ function applySetting(key, value) {
       green:   'oklch(0.65 0.20 145)',
       orange:  'oklch(0.68 0.20 55)',
       rose:    'oklch(0.62 0.22 15)',
+      red:     'oklch(0.62 0.22 25)',
+      pink:    'oklch(0.65 0.20 350)',
+      yellow:  'oklch(0.78 0.16 95)',
+      amber:   'oklch(0.72 0.18 70)',
+      cyan:    'oklch(0.65 0.16 210)',
+      indigo:  'oklch(0.58 0.20 270)',
+      lime:    'oklch(0.72 0.20 130)',
     };
     const c = map[value] || map.violet;
     document.documentElement.style.setProperty('--accent', c);
@@ -1072,6 +1108,12 @@ async function loadSettingsTab(){
   bind('s-gen-ambiguous', 'gen_ambiguous', 'toggle');
   bind('s-gen-copy', 'gen_copy', 'toggle');
   bind('s-sounds', 'sounds', 'toggle');
+  bind('s-sound-login', 'sound_login', 'toggle');
+  bind('s-sound-exit', 'sound_exit', 'toggle');
+  bind('s-sound-hover', 'sound_hover', 'toggle');
+  bind('s-sound-login-tone', 'sound_login_tone', 'select');
+  bind('s-sound-exit-tone', 'sound_exit_tone', 'select');
+  bind('s-sound-hover-tone', 'sound_hover_tone', 'select');
   bind('s-toast-duration', 'toast_duration', 'select');
 
   // Accent swatches
@@ -1165,6 +1207,15 @@ function openGen(fillMode=false){
   doGenerate();
 }
 function closeGen(){hide('gen-overlay');}
+['go-upper','go-nums','go-syms'].forEach(id=>{
+  document.getElementById(id).addEventListener('change',()=>{
+    if(document.getElementById('gen-overlay').hidden) return;
+    doGenerate();
+    if(id==='go-syms') S.settings.gen_symbols=document.getElementById(id).checked;
+    if(id==='go-nums') S.settings.gen_numbers=document.getElementById(id).checked;
+    __saveSettings();
+  });
+});
 document.getElementById('btn-gen').addEventListener('click',()=>openGen(false));
 document.getElementById('gen-close').addEventListener('click',closeGen);
 document.getElementById('gen-generate').addEventListener('click',doGenerate);
@@ -1228,11 +1279,25 @@ document.getElementById('twofa-overlay').addEventListener('click',e=>{if(e.targe
 document.getElementById('wb-min').addEventListener('click',()=>{ logInfo('ui', 'Minimize clicked'); api.minimize(); });
 document.getElementById('wb-max').addEventListener('click',()=>{ logInfo('ui', 'Maximize clicked'); api.maximize(); });
 document.getElementById('wb-close').addEventListener('click',()=>{ logInfo('ui', 'Close clicked'); api.close(); });
+// Update maximize button icon on state change
+const maxBtn = document.getElementById('wb-max');
+function updateMaxBtn(maximized){ maxBtn.textContent = maximized ? '❐' : '□'; }
+api.onMaximizedState(m=>{ updateMaxBtn(m); logInfo('ui', 'Window maximized state: ' + m); });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     logInfo('ui', 'Escape pressed — closing overlays');
     ['modal-overlay','gen-overlay','confirm-overlay','twofa-overlay','job-overlay','totp-overlay','status-popup'].forEach(id=>hide(id));
   }
+});
+
+// ═══ HOVER SOUNDS ══════════════════════════════════════════════════════════════
+let __hoverTimer = null;
+document.addEventListener('mouseover', e => {
+  if (!S.settings.sound_hover || window.__soundsEnabled === false) return;
+  const t = e.target.closest('.nav-btn, .accent-swatch, .wb, .btn-primary, .btn-ghost, .icon-btn, .filter-pill, .job-stat');
+  if (!t) return;
+  clearTimeout(__hoverTimer);
+  __hoverTimer = setTimeout(() => playSound('hover'), 20);
 });
 
 screen('s-login');
