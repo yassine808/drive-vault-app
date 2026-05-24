@@ -29,3 +29,6 @@ Logs/
 electron-builder.yml
 
 package-lock.json
+# Build tool installers
+vs_buildtools.exe
+node-gyp/
