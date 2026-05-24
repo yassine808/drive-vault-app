@@ -968,12 +968,23 @@ function setupTray(){
   }
   tray = new Tray(trayIcon);
   tray.setToolTip('Vault');
-  const trayMenu = Menu.buildFromTemplate([
+  const buildTrayMenu = () => Menu.buildFromTemplate([
     { label: 'Show Vault', click: () => { if(win){ win.show(); win.focus(); win.setSkipTaskbar(false); } } },
+    { type: 'separator' },
+    { label: 'Lock Vault', enabled: !!sessionToken, click: () => {
+      logger.info('tray', 'Lock vault from tray');
+      if(win){ win.webContents.send('tray:lock'); }
+    }},
+    { type: 'separator' },
+    { label: 'Logout', enabled: !!sessionToken, click: () => {
+      logger.info('tray', 'Logout from tray');
+      if(win){ win.webContents.send('tray:logout'); }
+    }},
     { type: 'separator' },
     { label: 'Quit', click: () => { logger.info('tray', 'Quit from tray menu'); app.isQuitting = true; app.quit(); } },
   ]);
-  tray.setContextMenu(trayMenu);
+  tray.setContextMenu(buildTrayMenu());
+  tray.on('right-click', () => { tray.setContextMenu(buildTrayMenu()); });
   tray.on('double-click', () => { if(win){ win.show(); win.focus(); win.setSkipTaskbar(false); } });
 }
 

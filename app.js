@@ -84,6 +84,8 @@ function playSound(type){
 }
 function logDebug(ctx, msg) { /* noop */ }
 api.onPlaySound(type=>playSound(type));
+api.onTrayLock(()=>{ if(S.user){ logInfo('auth', 'Tray lock'); doLock(); hide('tab-monitor'); } });
+api.onTrayLogout(()=>{ if(S.user){ logInfo('auth', 'Tray logout'); doLogout(); hide('tab-monitor'); } });
 
 // ═══ SOUND TEST BUTTONS ════════════════════════════════════════════════════════
 function testSound(soundType) {
@@ -259,7 +261,7 @@ document.getElementById('btn-verify2fa').addEventListener('click',async()=>{
 });
 document.getElementById('twofa-code').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('btn-verify2fa').click();});
 
-document.getElementById('btn-logout').addEventListener('click',async()=>{
+async function doLogout(){
   logInfo('auth', 'Logout clicked', { user: S.user?.email });
   playSound('logout');await api.logout();
   S.user=null;S.passwords=[];S.notes=[];S.trash=[];S.jobs=[];S.totp=[];S.activeNote=null;
@@ -268,7 +270,8 @@ document.getElementById('btn-logout').addEventListener('click',async()=>{
   document.getElementById('btn-login').disabled=false;
   document.getElementById('login-err').hidden=true;
   logOk('auth', 'Logged out, state cleared');
-});
+}
+document.getElementById('btn-logout').addEventListener('click',()=>doLogout());
 
 function loadVault(v){S.passwords=v?.passwords||[];S.notes=v?.notes||[];logInfo('vault', 'Vault loaded into memory', { passwords: S.passwords.length, notes: S.notes.length });}
 async function loadSettings(){

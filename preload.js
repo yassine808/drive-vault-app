@@ -189,6 +189,8 @@ contextBridge.exposeInMainWorld('api', {
   onPlaySound: (cb) => ipcRenderer.on('play-sound', (_e, type) => cb(type)),
   onMinimize: (cb) => ipcRenderer.on('win:minimized', () => cb()),
   onMaximizedState: (cb) => ipcRenderer.on('win:maximized-state', (_e, maximized) => cb(maximized)),
+  onTrayLock: (cb) => ipcRenderer.on('tray:lock', () => cb()),
+  onTrayLogout: (cb) => ipcRenderer.on('tray:logout', () => cb()),
 
   minimize: () => { bridgeLog('call', 'win:minimize', true); return ipcRenderer.invoke('win:minimize', sessionToken); },
   maximize: () => { bridgeLog('call', 'win:maximize', true); return ipcRenderer.invoke('win:maximize', sessionToken); },
