@@ -848,7 +848,7 @@ ipcMain.handle('log:read', requireAuthNoArgs(async () => {
 
 ipcMain.handle('log:clear', requireAuthNoArgs(async () => {
   logger.ipc('log:clear', 'Clearing log');
-  try { fs.writeFileSync(LOG_PATH,''); logger.clearAllLogs(); logger.success('log:clear', 'All logs cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
+  try { logger.clearAllLogs(); logger.success('log:clear', 'All logs cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
 }));
 
 
@@ -909,8 +909,11 @@ function createWindow() {
   logger.info('window', 'Creating main window');
   win = new BrowserWindow({
     width:1100, height:720, minWidth:900, minHeight:580,
-    frame:true,
+    frame:false, transparent:false,
+    titleBarStyle:'hidden',
+    titleBarOverlay:{ color:'#00000000', symbolColor:'#a78bfa', height:40 },
     icon: path.join(__dirname, '..', 'icon.png'),
+    backgroundColor:'#0a0a0f',
     webPreferences:{ preload:path.join(__dirname, '..', 'preload.js'), contextIsolation:true, nodeIntegration:false, spellcheck:false },
   });
   win.loadFile(path.join(__dirname, '..', 'index.html'));

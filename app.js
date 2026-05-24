@@ -314,6 +314,8 @@ function renderUserChip(){
 // ═══ TABS ══════════════════════════════════════════════════════════════════════
 document.querySelectorAll('.nav-btn[data-tab]').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
 function switchTab(tab){
+  // Admin guard: non-admins can't open the monitor tab
+  if(tab==='monitor'&&!isAdmin()){logWarn('ui', 'Non-admin tried to open monitor tab');return;}
   logInfo('ui', 'Tab switched', { tab });
   document.querySelectorAll('.nav-btn[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   ['passwords','notes','jobs','totp','trash','monitor','settings'].forEach(t=>document.getElementById('tab-'+t).hidden=t!==tab);
@@ -1375,14 +1377,7 @@ document.getElementById('btn-2fa').addEventListener('click',async()=>{
 document.getElementById('twofa-cancel').addEventListener('click',()=>hide('twofa-overlay'));
 document.getElementById('twofa-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('twofa-overlay'))hide('twofa-overlay');});
 
-// ═══ TITLEBAR + KEYBOARD ══════════════════════════════════════════════════════
-document.getElementById('wb-min').addEventListener('click',()=>{ logInfo('ui', 'Minimize clicked'); api.minimize(); });
-document.getElementById('wb-max').addEventListener('click',()=>{ logInfo('ui', 'Maximize clicked'); api.maximize(); });
-document.getElementById('wb-close').addEventListener('click',()=>{ logInfo('ui', 'Close clicked'); api.close(); });
-// Update maximize button icon on state change
-const maxBtn = document.getElementById('wb-max');
-function updateMaxBtn(maximized){ maxBtn.textContent = maximized ? '❐' : '□'; }
-api.onMaximizedState(m=>{ updateMaxBtn(m); logInfo('ui', 'Window maximized state: ' + m); });
+// ═══ KEYBOARD ═══════════════════════════════════════════════════════════
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     logInfo('ui', 'Escape pressed — closing overlays');

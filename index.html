@@ -21,11 +21,7 @@
     </div>
     <span class="tb-title">Vault</span>
   </div>
-  <div class="tb-right">
-    <button class="wb" id="wb-min" aria-label="Minimize">─</button>
-    <button class="wb" id="wb-max" aria-label="Maximize">□</button>
-    <button class="wb danger" id="wb-close" aria-label="Close">✕</button>
-  </div>
+  <div class="tb-right"></div>
 </header>
 
 <!-- LOGIN -->
@@ -56,15 +52,15 @@
 <!-- 2FA LOGIN SCREEN -->
 <div class="screen center" id="s-2fa" hidden>
   <div class="login-card">
-    <div class="login-shield" style="background:var(--amber-dim);border-color:oklch(0.82 0.1 85 / 0.15)">
+    <div class="login-shield login-shield-2fa">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1" fill="var(--amber)"/>
       </svg>
     </div>
-    <h1 style="font-size:20px">Two-factor auth</h1>
+    <h1 class="twofa-heading">Two-factor auth</h1>
     <p class="sub">Enter the 6-digit code from your authenticator app.</p>
-    <input class="fi twofa-input" id="twofa-code" placeholder="000000" maxlength="6" inputmode="numeric" style="text-align:center;font-size:22px;letter-spacing:.3em;font-family:var(--mono)" />
-    <button class="btn-primary" id="btn-verify2fa" style="width:100%;justify-content:center;margin-top:10px">Verify code</button>
+    <input class="fi twofa-input" id="twofa-code" placeholder="000000" maxlength="6" inputmode="numeric" />
+    <button class="btn-primary btn-verify2fa" id="btn-verify2fa">Verify code</button>
     <p class="err" id="twofa-err" hidden></p>
   </div>
 </div>
@@ -202,7 +198,7 @@
       </div>
       <div class="jobs-stats" id="jobs-stats"></div>
       <div class="jobs-toolbar">
-        <div class="search" style="flex:1;max-width:320px">
+        <div class="search search-jobs">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
           <input type="text" id="jobs-search" placeholder="Search all fields…" />
         </div>
@@ -293,7 +289,7 @@
         </div>
         <div class="admin-card">
           <div class="admin-card-title">All Users</div>
-          <div id="admin-users-list" style="display:flex;flex-direction:column;gap:4px"></div>
+          <div id="admin-users-list" class="admin-users-list"></div>
         </div>
       </div>
 
