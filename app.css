@@ -8,9 +8,9 @@
 :root {
   /* ── Palette — Deep black base, purple accent ────────────────── */
   --bg:             oklch(0.14 0.012 280);
-  --bg-surface:     oklch(0.17 0.014 280);
-  --bg-raised:      oklch(0.21 0.016 280);
-  --bg-input:       oklch(0.19 0.013 280);
+  --bg-surface:     oklch(0.17 0.014 280 / 0.45);
+  --bg-raised:      oklch(0.21 0.016 280 / 0.4);
+  --bg-input:       oklch(0.19 0.013 280 / 0.45);
   --bg-overlay:     oklch(0.10 0.01 280 / 0.92);
 
   --border:         oklch(0.55 0.08 290 / 0.12);
@@ -75,7 +75,7 @@ html, body {
 /* ═══════════════════════════════════════════════════════════════
 	   CANVAS BACKGROUND
 	   ═══════════════════════════════════════════════════════════════ */
-	#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.85}
+	#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.65}
 
 	/* ═══════════════════════════════════════════════════════════════
 	   AURORA BACKGROUND — adapted from Magic UI / 21st.dev
@@ -99,8 +99,8 @@ html, body {
 	      oklch(0.58 0.2 285) 30%);
 	  background-size:300% 200%;
 	  background-position:50% 50%;
-	  filter:blur(8px);
-	  opacity:0.55;
+	  filter:blur(10px);
+	  opacity:0.3;
 	  animation:aurora-shift 60s linear infinite;
 	  will-change:background-position,transform;
 	}
@@ -123,8 +123,8 @@ html, body {
 	  animation:aurora-shift 45s linear infinite reverse;
 	}
 	#aurora-bg{
-	  -webkit-mask-image:radial-gradient(ellipse at 100% 0%, black 20%, transparent 60%);
-	  mask-image:radial-gradient(ellipse at 100% 0%, black 20%, transparent 60%);
+	  -webkit-mask-image:radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+	  mask-image:radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
 	}
 	@keyframes aurora-shift{
 	  from{background-position:50% 50%}
@@ -138,10 +138,10 @@ html, body {
 	  position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 200;
 	  display: flex; align-items: center; justify-content: space-between;
 	  padding: 0 18px;
-	  background: oklch(0.12 0.01 280 / 0.7);
+	  background: oklch(0.12 0.01 280 / 0.35);
 	  border-bottom: 1px solid var(--border);
-	  backdrop-filter: blur(20px) saturate(1.3);
-	  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+	  backdrop-filter: blur(8px) saturate(1.3);
+	  -webkit-backdrop-filter: blur(8px) saturate(1.3);
 	  -webkit-app-region: drag;
 	}
 	.tb-left{display:flex;align-items:center;gap:12px}
@@ -231,9 +231,9 @@ html, body {
   display: flex; flex-direction: column;
   border-right: 1px solid var(--border);
   padding: 14px 10px;
-  background: oklch(0.14 0.012 280 / 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: oklch(0.14 0.012 280 / 0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   gap: 0;
 }
 
@@ -332,7 +332,7 @@ html, body {
 /* ═══════════════════════════════════════════════════════════════
    MAIN CONTENT
    ═══════════════════════════════════════════════════════════════ */
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:oklch(0.14 0.012 280 / 0.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;background:oklch(0.14 0.012 280 / 0.25);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
 .tab{flex:1;display:flex;flex-direction:column;padding:28px 32px;overflow-y:auto}
 .tab[hidden]{display:none!important}
 
