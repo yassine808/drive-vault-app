@@ -4,7 +4,11 @@
 const S = {
   user:null, passwords:[], notes:[], trash:[], jobs:[], totp:[], activeNote:null,
   jobSort:{ col:'', dir:1 }, jobFilter:'all',
-  settings:{ lock_timeout:5, lock_action:'lock' },
+  settings:{ lock_timeout:5, lock_action:'lock',
+    lock_countdown:true, lock_on_minimize:false, compact:false, animations:true,
+    accent:'violet', sounds:true, sound_login:true, sound_exit:true, sound_hover:false,
+    sound_login_tone:'chime', sound_exit_tone:'chime', sound_hover_tone:'click',
+  },
 };
 
 // ═══ LOGGER ═══════════════════════════════════════════════════════════════════
@@ -93,11 +97,9 @@ function testSound(soundType) {
   const s = S.settings;
   switch(soundType) {
     case 'login':
-      if (!s.sound_login) return;
       playToneSeq(s.sound_login_tone || 'chime');
       break;
     case 'exit':
-      if (!s.sound_exit) return;
       if (s.sound_exit_tone && TONES[s.sound_exit_tone]) {
         const t = TONES[s.sound_exit_tone];
         t.freqs.slice().reverse().forEach((f,i)=>playTone(f, t.type, t.dur, t.vol*0.8, i*t.gap));
@@ -106,7 +108,6 @@ function testSound(soundType) {
       }
       break;
     case 'hover':
-      if (!s.sound_hover) return;
       playToneSeq(s.sound_hover_tone || 'click');
       break;
   }
