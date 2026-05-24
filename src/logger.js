@@ -31,9 +31,7 @@ function init() {
   initialized = true;
   try {
     fs.mkdirSync(LOG_DIR, { recursive: true });
-  } catch (e) {
-    console.error('[logger] Failed to create Logs directory:', e.message);
-  }
+  } catch {}
 }
 
 // ─── TIMESTAMP ────────────────────────────────────────────────────────────────
@@ -67,10 +65,6 @@ function write(level, ctx, msg, data) {
     fs.appendFileSync(path.join(LOG_DIR, 'all.log'), `[${levelName}] ${line}`);
   } catch {}
 
-  // Mirror to console
-  if (level >= LEVELS.ERROR) console.error(line.trim());
-  else if (level >= LEVELS.WARN) console.warn(line.trim());
-  else console.log(line.trim());
 }
 
 // ─── LEGACY ERROR WRITER (keeps old vault-errors.log working) ─────────────────
@@ -80,7 +74,6 @@ function writeError(ctx, err) {
   const line = `[${ts()}] [${ctx}] ${err?.message || err}${extra}\ncode: ${err?.code || 'none'} | status: ${err?.response?.status || 'none'}\n${err?.stack || ''}\n---\n`;
   try { fs.appendFileSync(fileForLevel('ERROR'), line); } catch {}
   try { fs.appendFileSync(path.join(LOG_DIR, 'all.log'), `[ERROR] ${line}`); } catch {}
-  console.error(line);
 }
 
 // ─── PUBLIC API ───────────────────────────────────────────────────────────────
@@ -104,7 +97,7 @@ function rotateIfNeeded(maxSize = 5 * 1024 * 1024) {
         if (stat.size > maxSize) {
           const rotated = filePath + '.' + Date.now() + '.bak';
           fs.renameSync(filePath, rotated);
-          console.log(`[logger] Rotated ${filename} → ${path.basename(rotated)}`);
+          // rotated: filename → ${path.basename(rotated)}
         }
       } catch {}
     }
@@ -115,7 +108,7 @@ function rotateIfNeeded(maxSize = 5 * 1024 * 1024) {
       if (stat.size > maxSize) {
         const rotated = allPath + '.' + Date.now() + '.bak';
         fs.renameSync(allPath, rotated);
-        console.log(`[logger] Rotated all.log → ${path.basename(rotated)}`);
+        // rotated: all.log → ${path.basename(rotated)}
       }
     } catch {}
   } catch {}

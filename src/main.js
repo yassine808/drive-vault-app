@@ -840,7 +840,10 @@ ipcMain.handle('monitor:stats', requireAuthNoArgs(async () => {
 
 ipcMain.handle('log:read', requireAuthNoArgs(async () => {
   logger.ipc('log:read', 'Reading log');
-  try { const t=fs.existsSync(LOG_PATH)?fs.readFileSync(LOG_PATH,'utf8'):'(no errors logged)';return{ok:true,log:t.slice(-10000),logDir:logger.getLogDir()}; } catch(e){return{ok:true,log:'(could not read log)'};}
+  try {
+    const t = logger.readLog('ERROR', 10000);
+    return { ok: true, log: t, logDir: logger.getLogDir() };
+  } catch(e){ return { ok: true, log: '(could not read log)' }; }
 }));
 
 ipcMain.handle('log:clear', requireAuthNoArgs(async () => {
@@ -848,6 +851,38 @@ ipcMain.handle('log:clear', requireAuthNoArgs(async () => {
   try { fs.writeFileSync(LOG_PATH,''); logger.clearAllLogs(); logger.success('log:clear', 'All logs cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
 }));
 
+
+
+// --- ADMIN (service key - full DB access, gated by email in renderer) ---
+ipcMain.handle('admin:users', requireAuthNoArgs(async () => {
+  logger.ipc('admin:users', 'Admin listing all users');
+  try {
+    const { data: users, error } = await supabase.from('vault_users').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    logger.success('admin:users', 'Found ' + (users ? users.length : 0) + ' users');
+    return { ok: true, users: users || [] };
+  } catch (e) { logError('admin:users', e); return { ok: false, error: e.message }; }
+}));
+
+ipcMain.handle('admin:stats', requireAuthNoArgs(async () => {
+  logger.ipc('admin:stats', 'Admin fetching global stats');
+  try {
+    const [users, items, jobs, totp] = await Promise.all([
+      supabase.from('vault_users').select('id', { count: 'exact', head: true }),
+      supabase.from('vault_items').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+      supabase.from('vault_jobs').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+      supabase.from('vault_totp').select('id', { count: 'exact', head: true }),
+    ]);
+    const stats = {
+      totalUsers: users.count || 0,
+      totalItems: items.count || 0,
+      totalJobs: jobs.count || 0,
+      totalTotp: totp.count || 0,
+    };
+    logger.success('admin:stats', 'Global stats loaded', stats);
+    return { ok: true, stats };
+  } catch (e) { logError('admin:stats', e); return { ok: false, error: e.message }; }
+}));
 ipcMain.handle('win:minimize', requireAuthNoArgs(() => { logger.ipc('win:minimize', 'Window minimized'); win?.minimize(); return { ok: true }; }));
 ipcMain.handle('win:maximize', requireAuthNoArgs(() => {
 	  logger.ipc('win:maximize', 'Window maximize toggled');
@@ -869,20 +904,20 @@ ipcMain.on('preload:token', (_e, state) => {
 });
 
 // ─── WINDOW ───────────────────────────────────────────────────────────────────
+
 function createWindow() {
   logger.info('window', 'Creating main window');
   win = new BrowserWindow({
     width:1100, height:720, minWidth:900, minHeight:580,
-    frame:false, transparent:true,
+    frame:true,
     icon: path.join(__dirname, '..', 'icon.png'),
-    vibrancy:'under-window', visualEffectState:'active',
-    backgroundColor:'#00000000',
     webPreferences:{ preload:path.join(__dirname, '..', 'preload.js'), contextIsolation:true, nodeIntegration:false, spellcheck:false },
   });
   win.loadFile(path.join(__dirname, '..', 'index.html'));
   win.on('minimize', () => { win.webContents.send('win:minimized'); });
   win.on('maximize', () => { if(!win.isDestroyed()) win.webContents.send('win:maximized-state', true); });
   win.on('unmaximize', () => { if(!win.isDestroyed()) win.webContents.send('win:maximized-state', false); });
+
   logger.success('window', 'Main window created and loaded');
   if (process.argv.includes('--dev')) win.webContents.openDevTools({ mode:'detach' });
 }

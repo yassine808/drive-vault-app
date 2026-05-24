@@ -18,10 +18,6 @@ function rlog(level, ctx, msg, data) {
     if (arr.length > RLOG_MAX) arr.splice(0, arr.length - RLOG_MAX);
     localStorage.setItem(RLOG_KEY, JSON.stringify(arr));
   } catch {}
-  const prefix = `[${entry.ts}] [${level}] [${ctx}]`;
-  if (level === 'ERROR') console.error(prefix, msg, data || '');
-  else if (level === 'WARN') console.warn(prefix, msg, data || '');
-  else console.log(prefix, msg, data || '');
 }
 const logInfo = (ctx, msg, data) => rlog('INFO', ctx, msg, data);
 const logOk   = (ctx, msg, data) => rlog('OK', ctx, msg, data);
@@ -86,8 +82,36 @@ function playSound(type){
       break;
   }
 }
-function logDebug(ctx, msg) { console.log(`[DEBUG] [${ctx}] ${msg}`); }
+function logDebug(ctx, msg) { /* noop */ }
 api.onPlaySound(type=>playSound(type));
+
+// ═══ SOUND TEST BUTTONS ════════════════════════════════════════════════════════
+function testSound(soundType) {
+  if (window.__soundsEnabled === false) return;
+  const s = S.settings;
+  switch(soundType) {
+    case 'login':
+      if (!s.sound_login) return;
+      playToneSeq(s.sound_login_tone || 'chime');
+      break;
+    case 'exit':
+      if (!s.sound_exit) return;
+      if (s.sound_exit_tone && TONES[s.sound_exit_tone]) {
+        const t = TONES[s.sound_exit_tone];
+        t.freqs.slice().reverse().forEach((f,i)=>playTone(f, t.type, t.dur, t.vol*0.8, i*t.gap));
+      } else {
+        [784,659,523].forEach((f,i)=>playTone(f,'sine',0.18,0.12,i*0.09));
+      }
+      break;
+    case 'hover':
+      if (!s.sound_hover) return;
+      playToneSeq(s.sound_hover_tone || 'click');
+      break;
+  }
+}
+document.getElementById('btn-test-login-sound').addEventListener('click', () => testSound('login'));
+document.getElementById('btn-test-exit-sound').addEventListener('click', () => testSound('exit'));
+document.getElementById('btn-test-hover-sound').addEventListener('click', () => testSound('hover'));
 
 // ═══ WINDOWS SNAP ═════════════════════════════════════════════════════════════
 document.getElementById('titlebar').addEventListener('dblclick',e=>{
@@ -96,52 +120,57 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
   api.maximize();
 });
 
-// ═══ CANVAS ANIMATION ════════════════════════════════════════════════════════
+// ═══ AMBIENT BACKGROUND ══════════════════════════════════════════════════════
 (function initCanvas(){
   const canvas=document.getElementById('bg-canvas');
   const ctx=canvas.getContext('2d');
-  let W,H,mouse={x:-9999,y:-9999};
-  const particles=[];
+  let W,H;
+
+  // Slow-drifting purple nebulae — large, soft, barely-there
+  const nebulae=[
+    {x:.25,y:.35,r:.38,sx:.015,sy:.01,h:290},   // purple (upper-left)
+    {x:.75,y:.65,r:.42,sx:-.01,sy:.012,h:290},  // purple (lower-right)
+    {x:.5,y:.2,r:.32,sx:.008,sy:-.006,h:290},   // purple (top-center, subtle)
+    {x:.6,y:.8,r:.28,sx:-.005,sy:.008,h:270},   // deep indigo (bottom area)
+  ];
 
   function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
   window.addEventListener('resize',resize);resize();
 
-  for(let i=0;i<55;i++) particles.push({
-    x:Math.random()*1200,y:Math.random()*800,
-    vx:(Math.random()-.5)*.08,vy:(Math.random()-.5)*.08,
-    r:Math.random()*1.2+.3,
-    alpha:Math.random()*.25+.05,
-  });
-
-  window.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;});
-
+  let t=0;
   function draw(){
+    t+=.004;
     ctx.clearRect(0,0,W,H);
-    for(let i=0;i<particles.length;i++){
-      const p=particles[i];
-      const dx=p.x-mouse.x,dy=p.y-mouse.y,dist=Math.sqrt(dx*dx+dy*dy);
-      if(dist<120&&dist>0){p.vx+=dx/dist*.02;p.vy+=dy/dist*.02;}
-      p.vx*=.98;p.vy*=.98;
-      const spd=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
-      if(spd<.03&&spd>0){const f=.03/spd;p.vx*=f;p.vy*=f;}
-      p.x+=p.vx;p.y+=p.vy;
-      if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
-      for(let j=i+1;j<particles.length;j++){
-        const q=particles[j];const ex=p.x-q.x,ey=p.y-q.y,d=Math.sqrt(ex*ex+ey*ey);
-        if(d<130){
-          const alpha=(1-d/130)*.08;
-          ctx.beginPath();
-          ctx.strokeStyle=`rgba(167,139,250,${alpha})`;
-          ctx.lineWidth=.5;
-          ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
-          ctx.stroke();
-        }
+
+    for(const n of nebulae){
+      // Gentle figure-8 drift so shapes never feel static
+      const cx=W*(n.x+Math.sin(t*n.sx*10)*.08);
+      const cy=H*(n.y+Math.cos(t*n.sy*10)*.06);
+      const rad=Math.min(W,H)*n.r;
+
+      const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,rad);
+      if(n.h===290){
+        // Purple — very low opacity, shows depth not color
+        grad.addColorStop(0,'oklch(0.65 0.22 290 / 0.04)');
+        grad.addColorStop(.4,'oklch(0.6 0.18 290 / 0.018)');
+        grad.addColorStop(1,'oklch(0.6 0.18 290 / 0)');
+      }else{
+        // Deep indigo — cooler but distinct from purple
+        grad.addColorStop(0,'oklch(0.55 0.18 270 / 0.025)');
+        grad.addColorStop(.4,'oklch(0.52 0.16 270 / 0.01)');
+        grad.addColorStop(1,'oklch(0.52 0.16 270 / 0)');
       }
-      ctx.beginPath();
-      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle=`rgba(167,139,250,${p.alpha})`;
-      ctx.fill();
+      ctx.fillStyle=grad;
+      ctx.fillRect(0,0,W,H);
     }
+
+    // Subtle vignette — edges fall off, center stays open
+    const vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.25,W/2,H/2,Math.max(W,H)*.7);
+    vg.addColorStop(0,'oklch(0 0 0 / 0)');
+    vg.addColorStop(1,'oklch(0 0 0 / 0.25)');
+    ctx.fillStyle=vg;
+    ctx.fillRect(0,0,W,H);
+
     requestAnimationFrame(draw);
   }
   draw();
@@ -246,9 +275,24 @@ async function loadSettings(){
   const r=await api.settings.load();
   if(r.ok)S.settings={...S.settings,...r.settings};
   applyLockSettings();
+  // Apply visual settings immediately so they persist across tab switches
+  applyAccent(S.settings.accent || 'violet');
+  document.body.classList.toggle('compact', !!S.settings.compact);
+  document.body.style.setProperty('--transition', S.settings.animations ? '' : '0s');
+  window.__soundsEnabled = S.settings.sounds !== false;
   logInfo('settings', 'Settings loaded', S.settings);
 }
-function enterApp(){logInfo('app', 'Entering app screen'); screen('s-app');renderUserChip();switchTab('passwords');armLock();}
+const ADMIN_EMAIL = 'ysmagri@gmail.com';
+function isAdmin(){return S.user?.email === ADMIN_EMAIL;}
+function enterApp(){
+  logInfo('app', 'Entering app screen');
+  screen('s-app');renderUserChip();
+  // Show/hide admin-only nav items
+  const showAdmin = isAdmin();
+  document.querySelectorAll('.admin-only-nav').forEach(el=>el.hidden=!showAdmin);
+  if(!showAdmin && document.querySelector('.nav-btn.active')?.dataset.tab==='monitor')switchTab('passwords');
+  switchTab('passwords');armLock();
+}
 function renderUserChip(){
   const u=S.user;const init=(u.name||u.email||'?')[0].toUpperCase();
   const chip=document.getElementById('user-chip');chip.innerHTML='';
@@ -999,7 +1043,53 @@ async function loadMonitor(){
   } else {
     logErr('monitor', 'Failed to load stats', sr.error);
   }
-  if(lr.ok){const el=document.getElementById('log-view');el.textContent=lr.log||'(no errors logged)';el.scrollTop=el.height;}
+  if(lr.ok){const el=document.getElementById('log-view');el.textContent=lr.log||'(no errors logged)';el.scrollTop=el.scrollHeight;}
+
+  // Load admin dashboard if user is admin
+  if(isAdmin()){
+    document.getElementById('admin-dashboard').hidden=false;
+    loadAdminDashboard();
+  } else {
+    document.getElementById('admin-dashboard').hidden=true;
+  }
+}
+
+async function loadAdminDashboard(){
+  logInfo('admin', 'Loading admin dashboard');
+  const [usersRes, statsRes] = await Promise.all([api.admin.users(), api.admin.stats()]);
+
+  if(statsRes.ok){
+    const st=statsRes.stats;
+    document.getElementById('admin-total-users').textContent=st.totalUsers;
+    document.getElementById('admin-total-items').textContent=st.totalItems;
+    document.getElementById('admin-total-jobs').textContent=st.totalJobs;
+    document.getElementById('admin-total-totp').textContent=st.totalTotp;
+  }
+
+  const listEl=document.getElementById('admin-users-list');listEl.innerHTML='';
+  if(usersRes.ok && usersRes.users.length){
+    usersRes.users.forEach(u=>{
+      const row=document.createElement('div');row.className='admin-user-row';
+      const init=(u.name||u.email||'?')[0].toUpperCase();
+      if(u.avatar&&u.avatar.startsWith('https://')){const img=document.createElement('img');img.className='admin-user-avatar';img.src=u.avatar;row.appendChild(img);}
+      else{const fb=document.createElement('div');fb.className='admin-user-avatar admin-user-avatar-fb';fb.textContent=init;row.appendChild(fb);}
+      const info=document.createElement('div');info.className='admin-user-info';
+      const nm=document.createElement('div');nm.className='admin-user-name';nm.textContent=u.name||'—';
+      const em=document.createElement('div');em.className='admin-user-email';em.textContent=u.email||'—';
+      const joined=u.created_at?new Date(u.created_at).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}):'—';
+      const lastLogin=u.last_login?new Date(u.last_login).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}):'never';
+      const meta=document.createElement('div');meta.className='admin-user-meta';meta.textContent='Joined '+joined+' · Last login '+lastLogin;
+      info.appendChild(nm);info.appendChild(em);info.appendChild(meta);
+      row.appendChild(info);
+      if(u.email===ADMIN_EMAIL){
+        const badge=document.createElement('span');badge.className='admin-user-badge badge-admin';badge.textContent='admin';row.appendChild(badge);
+      }
+      listEl.appendChild(row);
+    });
+  } else {
+    const noUsers=document.createElement('div');noUsers.className='admin-no-users';noUsers.textContent='No users found';listEl.appendChild(noUsers);
+  }
+  logOk('admin', 'Admin dashboard loaded');
 }
 
 function makeCircleSvg(pct,color){
@@ -1032,47 +1122,41 @@ const DEFAULT_SETTINGS = {
   sound_login_tone: 'chime', sound_exit_tone: 'chime', sound_hover_tone: 'click',
 };
 
+const ACCENT_MAP = {
+  violet:  'oklch(0.65 0.22 290)',
+  blue:    'oklch(0.62 0.20 250)',
+  teal:    'oklch(0.62 0.18 190)',
+  green:   'oklch(0.65 0.20 145)',
+  orange:  'oklch(0.68 0.20 55)',
+  rose:    'oklch(0.62 0.22 15)',
+  red:     'oklch(0.62 0.22 25)',
+  pink:    'oklch(0.65 0.20 350)',
+  yellow:  'oklch(0.78 0.16 95)',
+  amber:   'oklch(0.72 0.18 70)',
+  cyan:    'oklch(0.65 0.16 210)',
+  indigo:  'oklch(0.58 0.20 270)',
+  lime:    'oklch(0.72 0.20 130)',
+};
+function applyAccent(name) {
+  const c = ACCENT_MAP[name] || ACCENT_MAP.violet;
+  document.documentElement.style.setProperty('--accent', c);
+  document.documentElement.style.setProperty('--accent-dim', c.replace(')', ' / 0.1)').replace('oklch(', 'oklch('));
+  document.documentElement.style.setProperty('--accent-glow', c.replace(')', ' / 0.15)').replace('oklch(', 'oklch('));
+  document.documentElement.style.setProperty('--accent-strong', c.replace(/0\.\d+/, m => String(Math.min(1, parseFloat(m) + 0.08))));
+  document.documentElement.style.setProperty('--accent-glass', c.replace(')', ' / 0.18)').replace('oklch(', 'oklch('));
+  document.querySelectorAll('.accent-swatch').forEach(s => s.classList.toggle('active', s.dataset.accent === name));
+}
+
 function applySetting(key, value) {
   S.settings[key] = value;
-  // Instant side-effects
   if (key === 'lock_timeout' || key === 'lock_action' || key === 'lock_countdown') {
     applyLockSettings();
     armLock();
   }
-  if (key === 'compact') {
-    document.body.classList.toggle('compact', !!value);
-  }
-  if (key === 'animations') {
-    document.body.style.setProperty('--transition', value ? '' : '0s');
-  }
-  if (key === 'accent') {
-    const map = {
-      violet:  'oklch(0.65 0.22 290)',
-      blue:    'oklch(0.62 0.20 250)',
-      teal:    'oklch(0.62 0.18 190)',
-      green:   'oklch(0.65 0.20 145)',
-      orange:  'oklch(0.68 0.20 55)',
-      rose:    'oklch(0.62 0.22 15)',
-      red:     'oklch(0.62 0.22 25)',
-      pink:    'oklch(0.65 0.20 350)',
-      yellow:  'oklch(0.78 0.16 95)',
-      amber:   'oklch(0.72 0.18 70)',
-      cyan:    'oklch(0.65 0.16 210)',
-      indigo:  'oklch(0.58 0.20 270)',
-      lime:    'oklch(0.72 0.20 130)',
-    };
-    const c = map[value] || map.violet;
-    document.documentElement.style.setProperty('--accent', c);
-    document.documentElement.style.setProperty('--accent-dim', c.replace(')', ' / 0.1)').replace('oklch(', 'oklch('));
-    document.documentElement.style.setProperty('--accent-glow', c.replace(')', ' / 0.15)').replace('oklch(', 'oklch('));
-    document.documentElement.style.setProperty('--accent-strong', c.replace(/0\.\d+/, m => String(Math.min(1, parseFloat(m) + 0.08))));
-    document.documentElement.style.setProperty('--accent-glass', c.replace(')', ' / 0.18)').replace('oklch(', 'oklch('));
-    document.querySelectorAll('.accent-swatch').forEach(s => s.classList.toggle('active', s.dataset.accent === value));
-  }
-  if (key === 'sounds') {
-    window.__soundsEnabled = !!value;
-  }
-  // Persist to DB (debounced)
+  if (key === 'compact') document.body.classList.toggle('compact', !!value);
+  if (key === 'animations') document.body.style.setProperty('--transition', value ? '' : '0s');
+  if (key === 'accent') applyAccent(value);
+  if (key === 'sounds') window.__soundsEnabled = !!value;
   __saveSettings();
 }
 let __saveTimer = null;
@@ -1136,10 +1220,10 @@ async function loadSettingsTab(){
     s.addEventListener('click', () => applySetting('accent', s.dataset.accent));
   });
 
-  // Apply current visual settings immediately
-  applySetting('compact', S.settings.compact);
-  applySetting('animations', S.settings.animations);
-  applySetting('accent', S.settings.accent);
+  // Apply current visual settings immediately (without re-saving to DB)
+  document.body.classList.toggle('compact', !!S.settings.compact);
+  document.body.style.setProperty('--transition', S.settings.animations ? '' : '0s');
+  applyAccent(S.settings.accent);
   window.__soundsEnabled = !!S.settings.sounds;
 
   // 2FA status

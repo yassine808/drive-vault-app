@@ -175,6 +175,17 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  admin: {
+    users: () => {
+      bridgeLog('call', 'admin:users', true);
+      return ipcRenderer.invoke('admin:users', sessionToken);
+    },
+    stats: () => {
+      bridgeLog('call', 'admin:stats', true);
+      return ipcRenderer.invoke('admin:stats', sessionToken);
+    },
+  },
+
   onPlaySound: (cb) => ipcRenderer.on('play-sound', (_e, type) => cb(type)),
   onMinimize: (cb) => ipcRenderer.on('win:minimized', () => cb()),
   onMaximizedState: (cb) => ipcRenderer.on('win:maximized-state', (_e, maximized) => cb(maximized)),

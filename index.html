@@ -56,7 +56,7 @@
 <!-- 2FA LOGIN SCREEN -->
 <div class="screen center" id="s-2fa" hidden>
   <div class="login-card">
-    <div class="login-shield" style="background:var(--amber-dim);border-color:oklch(0.82 0.1 85 / 0.12)">
+    <div class="login-shield" style="background:var(--amber-dim);border-color:oklch(0.82 0.1 85 / 0.15)">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1" fill="var(--amber)"/>
       </svg>
@@ -120,7 +120,7 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg>
         Generator
       </button>
-      <button class="nav-btn" data-tab="monitor">
+      <button class="nav-btn admin-only-nav" data-tab="monitor" hidden>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><polyline points="7 10 10 13 13 10 17 14"/></svg>
         Monitor
       </button>
@@ -267,15 +267,36 @@
       </div>
     </section>
 
-    <!-- Monitor -->
+    <!-- Monitor (admin-only) -->
     <section class="tab" id="tab-monitor" hidden>
       <div class="tab-head">
-        <div><h2>Monitor</h2><p class="sub">Database and app stats</p></div>
+        <div><h2>Monitor</h2><p class="sub">Database, logs &amp; admin dashboard</p></div>
         <button class="btn-primary" id="btn-refresh-monitor">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
           Refresh
         </button>
       </div>
+
+      <!-- Admin Dashboard -->
+      <div id="admin-dashboard" class="admin-dashboard" hidden>
+        <div class="admin-card">
+          <div class="admin-card-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            User Management
+          </div>
+          <div class="admin-stats-grid" id="admin-stats-grid">
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-users">—</div><div class="admin-stat-lbl">Total Users</div></div>
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-items">—</div><div class="admin-stat-lbl">Vault Items</div></div>
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-jobs">—</div><div class="admin-stat-lbl">Job Apps</div></div>
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-totp">—</div><div class="admin-stat-lbl">TOTP Accounts</div></div>
+          </div>
+        </div>
+        <div class="admin-card">
+          <div class="admin-card-title">All Users</div>
+          <div id="admin-users-list" style="display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+      </div>
+
       <div class="monitor-circles" id="monitor-circles"></div>
       <div class="monitor-grid" id="monitor-grid"></div>
       <div class="log-section">
@@ -369,19 +390,19 @@
               <div class="settings-desc">Highlight color for buttons, links, and active elements.</div>
             </div>
             <div class="settings-control accent-swatches">
-              <button class="accent-swatch" data-accent="violet"  style="background:oklch(0.65 0.22 290)"  title="Violet"></button>
-              <button class="accent-swatch" data-accent="blue"    style="background:oklch(0.62 0.20 250)"  title="Blue"></button>
-              <button class="accent-swatch" data-accent="teal"    style="background:oklch(0.62 0.18 190)"  title="Teal"></button>
-              <button class="accent-swatch" data-accent="cyan"    style="background:oklch(0.65 0.16 210)"  title="Cyan"></button>
-              <button class="accent-swatch" data-accent="green"   style="background:oklch(0.65 0.20 145)"  title="Green"></button>
-              <button class="accent-swatch" data-accent="lime"    style="background:oklch(0.72 0.20 130)"  title="Lime"></button>
-              <button class="accent-swatch" data-accent="yellow"  style="background:oklch(0.78 0.16 95)"   title="Yellow"></button>
-              <button class="accent-swatch" data-accent="amber"   style="background:oklch(0.72 0.18 70)"   title="Amber"></button>
-              <button class="accent-swatch" data-accent="orange"  style="background:oklch(0.68 0.20 55)"   title="Orange"></button>
-              <button class="accent-swatch" data-accent="red"     style="background:oklch(0.62 0.22 25)"   title="Red"></button>
-              <button class="accent-swatch" data-accent="rose"    style="background:oklch(0.62 0.22 15)"   title="Rose"></button>
-              <button class="accent-swatch" data-accent="pink"    style="background:oklch(0.65 0.20 350)"  title="Pink"></button>
-              <button class="accent-swatch" data-accent="indigo"  style="background:oklch(0.58 0.20 270)"  title="Indigo"></button>
+              <button class="accent-swatch" data-accent="violet" title="Violet"></button>
+              <button class="accent-swatch" data-accent="blue" title="Blue"></button>
+              <button class="accent-swatch" data-accent="teal" title="Teal"></button>
+              <button class="accent-swatch" data-accent="cyan" title="Cyan"></button>
+              <button class="accent-swatch" data-accent="green" title="Green"></button>
+              <button class="accent-swatch" data-accent="lime" title="Lime"></button>
+              <button class="accent-swatch" data-accent="yellow" title="Yellow"></button>
+              <button class="accent-swatch" data-accent="amber" title="Amber"></button>
+              <button class="accent-swatch" data-accent="orange" title="Orange"></button>
+              <button class="accent-swatch" data-accent="red" title="Red"></button>
+              <button class="accent-swatch" data-accent="rose" title="Rose"></button>
+              <button class="accent-swatch" data-accent="pink" title="Pink"></button>
+              <button class="accent-swatch" data-accent="indigo" title="Indigo"></button>
             </div>
           </div>
         </div>
@@ -468,6 +489,7 @@
                 <option value="bright">Bright</option>
               </select>
               <label class="toggle toggle-sm"><input type="checkbox" id="s-sound-login" checked /><span class="toggle-track"></span></label>
+              <button class="sound-test-btn" id="btn-test-login-sound" title="Test login sound">▶</button>
             </div>
           </div>
           <div class="settings-row">
@@ -483,6 +505,7 @@
                 <option value="bright">Bright</option>
               </select>
               <label class="toggle toggle-sm"><input type="checkbox" id="s-sound-exit" checked /><span class="toggle-track"></span></label>
+              <button class="sound-test-btn" id="btn-test-exit-sound" title="Test exit/lock sound">▶</button>
             </div>
           </div>
           <div class="settings-row">
@@ -498,6 +521,7 @@
                 <option value="none">None</option>
               </select>
               <label class="toggle toggle-sm"><input type="checkbox" id="s-sound-hover" /><span class="toggle-track"></span></label>
+              <button class="sound-test-btn" id="btn-test-hover-sound" title="Test hover sound">▶</button>
             </div>
           </div>
           <div class="settings-divider"></div>
