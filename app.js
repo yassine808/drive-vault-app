@@ -1077,7 +1077,7 @@ async function loadAdminDashboard(){
       const nm=document.createElement('div');nm.className='admin-user-name';nm.textContent=u.name||'—';
       const em=document.createElement('div');em.className='admin-user-email';em.textContent=u.email||'—';
       const joined=u.created_at?new Date(u.created_at).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}):'—';
-      const lastLogin=u.last_login?new Date(u.last_login).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}):'never';
+      const lastLogin=u.last_seen?new Date(u.last_seen).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}):'never';
       const meta=document.createElement('div');meta.className='admin-user-meta';meta.textContent='Joined '+joined+' · Last login '+lastLogin;
       info.appendChild(nm);info.appendChild(em);info.appendChild(meta);
       row.appendChild(info);
