@@ -3,7 +3,7 @@
 // Load .env before anything else
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } = require('electron');
 const path   = require('path');
 const http   = require('http');
 const url    = require('url');
@@ -55,7 +55,7 @@ process.on('unhandledRejection', e => { logger.error('unhandledRejection', e?.me
 logger.info('main', 'Global error handlers registered');
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let win, supabase, CryptoJS, speakeasy;
+let win, supabase, CryptoJS, speakeasy, tray;
 let session = null;
 let sessionToken = null;
 let oauthInProgress = false;
@@ -464,35 +464,80 @@ async function googleOAuth() {
       res.end(`<!DOCTYPE html><html><head><title>Vault — Authenticated</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  body{height:100vh;overflow:hidden;background:#060612;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',sans-serif}
-  canvas{position:fixed;inset:0;z-index:0}
-  .card{position:relative;z-index:1;text-align:center;padding:44px 52px;
-    background:rgba(20,17,14,.88);border:1px solid rgba(212,165,116,.2);
-    border-radius:20px;backdrop-filter:blur(20px);animation:up .6s cubic-bezier(.22,1,.36,1)}
-  @keyframes up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-  .shield{width:72px;height:72px;background:rgba(212,165,116,.1);border:1px solid rgba(212,165,116,.25);
-    border-radius:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:32px}
-  h2{color:#d4a574;font-size:22px;font-weight:600;margin-bottom:10px}
-  p{color:#64748b;font-size:13px;line-height:1.6}
-  .bar{width:220px;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin:20px auto 0;overflow:hidden}
-  .fill{height:100%;background:linear-gradient(90deg,#d4a574,#b8864a);border-radius:2px;animation:fill 5s linear forwards}
+  :root{
+    --bg:oklch(0.14 0.012 280);--bg-surface:oklch(0.17 0.014 280);
+    --accent:oklch(0.65 0.22 290);--accent-dim:oklch(0.65 0.22 290 / 0.12);
+    --accent-glow:oklch(0.65 0.22 290 / 0.15);--accent-border:oklch(0.55 0.08 290 / 0.2);
+    --green:oklch(0.78 0.12 145);--green-dim:oklch(0.78 0.12 145 / 0.12);
+    --txt:oklch(0.92 0.006 280);--txt-sec:oklch(0.68 0.008 280);--txt-muted:oklch(0.52 0.006 280);
+    --font:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    --mono:'JetBrains Mono','Fira Code',ui-monospace,monospace;
+  }
+  body{height:100vh;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:var(--font);color:var(--txt);-webkit-font-smoothing:antialiased}
+  canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
+  .card{
+    position:relative;z-index:1;text-align:center;padding:52px 60px;min-width:380px;
+    background:oklch(0.17 0.014 280 / 0.75);
+    border:1px solid var(--accent-border);
+    border-radius:20px;
+    backdrop-filter:blur(24px) saturate(1.2);
+    -webkit-backdrop-filter:blur(24px) saturate(1.2);
+    box-shadow:0 8px 40px oklch(0 0 0 / 0.5),0 0 80px var(--accent-glow),inset 0 1px 0 oklch(0.65 0.22 290 / 0.06);
+    animation:up .6s cubic-bezier(.22,1,.36,1)
+  }
+  @keyframes up{from{opacity:0;transform:translateY(24px) scale(0.97)}to{opacity:1;transform:none}}
+  .logo{
+    width:64px;height:64px;border-radius:18px;margin:0 auto 20px;
+    background:var(--accent-dim);border:1px solid var(--accent-border);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 30px var(--accent-glow);
+  }
+  .logo svg{width:28px;height:28px}
+  .icon-ring{
+    width:44px;height:44px;border-radius:50%;margin:0 auto 16px;
+    background:var(--green-dim);border:1px solid oklch(0.78 0.12 145 / 0.2);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 20px oklch(0.78 0.12 145 / 0.1);
+    animation:pop .4s .2s cubic-bezier(.22,1,.36,1) both
+  }
+  @keyframes pop{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}
+  .icon-ring svg{width:20px;height:20px;stroke:var(--green);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  h2{font-size:20px;font-weight:600;margin-bottom:8px;color:var(--txt)}
+  p{color:var(--txt-sec);font-size:13px;line-height:1.6}
+  .sub{color:var(--txt-muted);font-size:11px;margin-top:2px;font-family:var(--mono)}
+  .divider{height:1px;background:var(--accent-border);margin:24px 0}
+  .progress{width:100%;height:3px;background:oklch(0.21 0.016 280);border-radius:2px;overflow:hidden}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),oklch(0.72 0.24 290));border-radius:2px;box-shadow:0 0 8px var(--accent-glow);animation:fill 4.5s linear forwards}
   @keyframes fill{from{width:0}to{width:100%}}
-  .tick{color:#34d399;font-size:36px;margin-bottom:4px}
+  .glow-orbs{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+  .orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.12}
+  .orb-a{width:400px;height:400px;background:var(--accent);top:-120px;right:-100px}
+  .orb-b{width:300px;height:300px;background:oklch(0.65 0.18 260);bottom:-80px;left:-80px}
 </style>
 </head><body>
+<div class="glow-orbs"><div class="orb orb-a"></div><div class="orb orb-b"></div></div>
 <canvas id="c"></canvas>
 <div class="card">
-  <div class="shield">🔐</div>
-  <div class="tick">✓</div>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="var(--accent)"/>
+      <path d="M9 12l2 2 4-4" stroke="var(--bg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <div class="icon-ring">
+    <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
   <h2>Authenticated!</h2>
-  <p>You're all set. Return to Vault.<br>This tab closes automatically in 5 seconds.</p>
-  <div class="bar"><div class="fill"></div></div>
+  <p>You&rsquo;re all set &mdash; return to Vault.</p>
+  <p class="sub">closing tab&hellip;</p>
+  <div class="divider"></div>
+  <div class="progress"><div class="progress-fill"></div></div>
 </div>
 <script nonce="${nonce}">
 const c=document.getElementById('c'),ctx=c.getContext('2d');
 let W=c.width=innerWidth,H=c.height=innerHeight;
 window.onresize=()=>{W=c.width=innerWidth;H=c.height=innerHeight};
-const pts=[...Array(50)].map(()=>({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,hue:Math.random()*40+240}));
+const pts=[...Array(60)].map(()=>({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,h:Math.random()*30+270,s:70+Math.random()*20}));
 function draw(){
   ctx.clearRect(0,0,W,H);
   pts.forEach(p=>{
@@ -893,7 +938,13 @@ ipcMain.handle('win:maximize', requireAuthNoArgs(() => {
 	  }, 50);
 	  return { ok: true };
 	}));
-ipcMain.handle('win:close', requireAuthNoArgs(() => { logger.ipc('win:close', 'Window close requested'); win?.close(); return { ok: true }; }));
+ipcMain.handle('win:close', requireAuthNoArgs(() => {
+  logger.ipc('win:close', 'Window close requested — minimizing to tray');
+  if(win){
+    if(process.platform==='darwin'){ win.hide(); }else{ win.minimize(); win.setSkipTaskbar(true); }
+  }
+  return { ok: true };
+}));
 
 // ─── PRELOAD BRIDGE LOGGING ───────────────────────────────────────────────────
 ipcMain.on('preload:log', (_e, { action, channel, ok, detail }) => {
@@ -905,8 +956,30 @@ ipcMain.on('preload:token', (_e, state) => {
 
 // ─── WINDOW ───────────────────────────────────────────────────────────────────
 
+function setupTray(){
+  logger.info('tray', 'Creating system tray icon');
+  const iconPath = path.join(__dirname, '..', 'icon.png');
+  let trayIcon;
+  try {
+    const img = nativeImage.createFromPath(iconPath);
+    trayIcon = img.resize({ width:16, height:16 });
+  } catch(e){
+    trayIcon = nativeImage.createEmpty();
+  }
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Vault');
+  const trayMenu = Menu.buildFromTemplate([
+    { label: 'Show Vault', click: () => { if(win){ win.show(); win.focus(); win.setSkipTaskbar(false); } } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { logger.info('tray', 'Quit from tray menu'); app.isQuitting = true; app.quit(); } },
+  ]);
+  tray.setContextMenu(trayMenu);
+  tray.on('double-click', () => { if(win){ win.show(); win.focus(); win.setSkipTaskbar(false); } });
+}
+
 function createWindow() {
   logger.info('window', 'Creating main window');
+  if(!tray) setupTray();
   win = new BrowserWindow({
     width:1100, height:720, minWidth:900, minHeight:580,
     frame:false, transparent:false,
@@ -918,6 +991,12 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, '..', 'index.html'));
   win.on('minimize', () => { win.webContents.send('win:minimized'); });
+  win.on('close', (e) => {
+    if(!app.isQuitting){
+      e.preventDefault();
+      if(process.platform==='darwin'){ win.hide(); }else{ win.minimize(); win.setSkipTaskbar(true); }
+    }
+  });
   win.on('maximize', () => { if(!win.isDestroyed()) win.webContents.send('win:maximized-state', true); });
   win.on('unmaximize', () => { if(!win.isDestroyed()) win.webContents.send('win:maximized-state', false); });
 
@@ -954,6 +1033,7 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
 
 app.on('before-quit', () => {
   logger.info('app', 'App quitting — session end');
