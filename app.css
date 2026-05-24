@@ -75,7 +75,7 @@ html, body {
 /* ═══════════════════════════════════════════════════════════════
 	   CANVAS BACKGROUND
 	   ═══════════════════════════════════════════════════════════════ */
-	#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.65}
+	#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.85}
 
 	/* ═══════════════════════════════════════════════════════════════
 	   AURORA BACKGROUND — adapted from Magic UI / 21st.dev
@@ -99,8 +99,8 @@ html, body {
 	      oklch(0.58 0.2 285) 30%);
 	  background-size:300% 200%;
 	  background-position:50% 50%;
-	  filter:blur(10px);
-	  opacity:0.3;
+	  filter:blur(8px);
+	  opacity:0.55;
 	  animation:aurora-shift 60s linear infinite;
 	  will-change:background-position,transform;
 	}
@@ -123,8 +123,8 @@ html, body {
 	  animation:aurora-shift 45s linear infinite reverse;
 	}
 	#aurora-bg{
-	  -webkit-mask-image:radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
-	  mask-image:radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+	  -webkit-mask-image:radial-gradient(ellipse at 100% 0%, black 20%, transparent 60%);
+	  mask-image:radial-gradient(ellipse at 100% 0%, black 20%, transparent 60%);
 	}
 	@keyframes aurora-shift{
 	  from{background-position:50% 50%}

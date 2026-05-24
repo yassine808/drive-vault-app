@@ -129,13 +129,24 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
   const ctx=canvas.getContext('2d');
   let W,H;
 
-  // Slow-drifting purple nebulae — large, soft, barely-there
+  // Slow-drifting purple nebulae — visible glowing clouds
   const nebulae=[
-    {x:.25,y:.35,r:.38,sx:.015,sy:.01,h:290},   // purple (upper-left)
-    {x:.75,y:.65,r:.42,sx:-.01,sy:.012,h:290},  // purple (lower-right)
-    {x:.5,y:.2,r:.32,sx:.008,sy:-.006,h:290},   // purple (top-center, subtle)
-    {x:.6,y:.8,r:.28,sx:-.005,sy:.008,h:270},   // deep indigo (bottom area)
+    {x:.2,y:.3,r:.42,sx:.015,sy:.01,h:290,b:.14},    // bright purple (upper-left)
+    {x:.75,y:.6,r:.48,sx:-.01,sy:.012,h:290,b:.12},  // bright purple (lower-right)
+    {x:.5,y:.15,r:.35,sx:.008,sy:-.006,h:290,b:.10}, // purple (top-center)
+    {x:.65,y:.8,r:.32,sx:-.005,sy:.008,h:270,b:.10}, // deep indigo (bottom)
+    {x:.15,y:.7,r:.28,sx:.006,sy:.007,h:280,b:.08},  // mid purple (left)
+    {x:.85,y:.25,r:.25,sx:-.007,sy:.005,h:300,b:.08}, // lavender (right)
   ];
+
+  // Tiny bright stars / sparkles
+  const stars=Array.from({length:30},()=>({
+    x:Math.random(), y:Math.random(),
+    r:Math.random()*1.5+0.5,
+    speed:Math.random()*.003+.001,
+    phase:Math.random()*Math.PI*2,
+    brightness:Math.random()*.4+.3,
+  }));
 
   function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
   window.addEventListener('resize',resize);resize();
@@ -152,19 +163,41 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
       const rad=Math.min(W,H)*n.r;
 
       const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,rad);
+      const b=n.b||.06;
       if(n.h===290){
-        // Purple — very low opacity, shows depth not color
-        grad.addColorStop(0,'oklch(0.65 0.22 290 / 0.04)');
-        grad.addColorStop(.4,'oklch(0.6 0.18 290 / 0.018)');
+        grad.addColorStop(0,`oklch(0.7 0.24 290 / ${b})`);
+        grad.addColorStop(.3,`oklch(0.65 0.22 290 / ${b*.5})`);
+        grad.addColorStop(.6,`oklch(0.6 0.18 290 / ${b*.15})`);
         grad.addColorStop(1,'oklch(0.6 0.18 290 / 0)');
+      }else if(n.h===300){
+        grad.addColorStop(0,`oklch(0.7 0.22 300 / ${b})`);
+        grad.addColorStop(.3,`oklch(0.62 0.2 300 / ${b*.45})`);
+        grad.addColorStop(.6,`oklch(0.55 0.17 300 / ${b*.12})`);
+        grad.addColorStop(1,'oklch(0.55 0.17 300 / 0)');
       }else{
-        // Deep indigo — cooler but distinct from purple
-        grad.addColorStop(0,'oklch(0.55 0.18 270 / 0.025)');
-        grad.addColorStop(.4,'oklch(0.52 0.16 270 / 0.01)');
-        grad.addColorStop(1,'oklch(0.52 0.16 270 / 0)');
+        grad.addColorStop(0,`oklch(0.62 0.2 270 / ${b})`);
+        grad.addColorStop(.3,`oklch(0.55 0.18 270 / ${b*.45})`);
+        grad.addColorStop(.6,`oklch(0.5 0.15 270 / ${b*.12})`);
+        grad.addColorStop(1,'oklch(0.5 0.15 270 / 0)');
       }
       ctx.fillStyle=grad;
       ctx.fillRect(0,0,W,H);
+    }
+
+    // Stars / sparkles
+    for(const s of stars){
+      const sx=W*s.x, sy=H*s.y;
+      const twinkle=Math.sin(t*60*s.speed+s.phase)*.5+.5;
+      const alpha=s.brightness*twinkle;
+      const sr=s.r*(1+twinkle*.5);
+      const sg=ctx.createRadialGradient(sx,sy,0,sx,sy,sr*3);
+      sg.addColorStop(0,`oklch(0.9 0.05 290 / ${alpha})`);
+      sg.addColorStop(.5,`oklch(0.8 0.12 290 / ${alpha*.3})`);
+      sg.addColorStop(1,'oklch(0.8 0.12 290 / 0)');
+      ctx.fillStyle=sg;
+      ctx.beginPath();
+      ctx.arc(sx,sy,sr*3,0,Math.PI*2);
+      ctx.fill();
     }
 
     // Subtle vignette — edges fall off, center stays open
