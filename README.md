@@ -30,8 +30,8 @@ A desktop app for secure storage of passwords, notes, job applications, and TOTP
 | **Authenticator** | TOTP code generator — secrets encrypted and synced across devices |
 | **Trash** | Soft-delete with 30-day auto-purge and one-click restore |
 | **Generator** | CSPRNG password generator with configurable length, symbols, and auto-copy |
-| **Monitor** | View database stats, app logs, and error logs |
-| **Settings** | Auto-lock, accent colors, sound effects, 2FA, password generator defaults |
+| **Monitor** | View database stats, app logs, error logs — plus admin dashboard for the admin user (user management, global stats) |
+| **Settings** | Auto-lock, accent colors, sound effects with test buttons, 2FA, password generator defaults — all persisted to Supabase |
 
 ### UI Features
 
@@ -103,7 +103,7 @@ The codebase is intentionally minimal — no frontend framework, no build step f
 
 | File | Role |
 |---|---|
-| `src/main.js` | **Electron main process** — all backend logic (~900 lines). IPC handlers, OAuth, crypto, Supabase queries |
+| `src/main.js` | **Electron main process** — all backend logic (~1000 lines). IPC handlers, OAuth, crypto, Supabase queries, admin functions |
 | `src/logger.js` | **Structured logging** — per-level log files in `Logs/` directory |
 | `preload.js` | **Context bridge** — exposes `window.api` and session token management |
 | `index.html` | **Renderer UI** — all screens and tab views |
@@ -145,7 +145,7 @@ The codebase is intentionally minimal — no frontend framework, no build step f
 - Secrets loaded from `.env` via `dotenv` at startup
 - App exits with a dialog if any required env var is missing
 - Uses Supabase **service role key** — full DB access scoped by `user_id`
-- 28 sensitive IPC handlers wrapped with `requireAuth()` guard
+- 30+ sensitive IPC handlers wrapped with `requireAuth()` guard
 - All input validated at the boundary (type, length, regex)
 
 ### Preload Bridge
@@ -282,8 +282,9 @@ All async handlers use `ipcMain.handle`. Window controls use `ipcMain.on`. Chann
 | `2fa:` | Yes | 2FA setup & management |
 | `settings:` | Yes | Settings read/write |
 | `monitor:` | Yes | Database stats & log viewing |
+| `admin:` | Yes | Admin-only: list all users, global cross-user stats |
 | `logo:` | Yes | Favicon fetching & caching |
-| `log:` | Yes | Error log access |
+| `log:` | Yes | Error log access (reads from `Logs/error.log`) |
 | `win:` | No | Window minimize/maximize/close |
 
 ### Auth Guard
@@ -310,6 +311,7 @@ Renderer call ──▶ Prepend session token ──▶ requireAuth() validates 
 | **XSS** | User-controlled data rendered via `createElement`, not `innerHTML` |
 | **Input** | All IPC handlers validate type, length, and format at the boundary |
 | **Soft deletes** | `deleted_at` timestamps with 30-day auto-purge |
+| **Admin gating** | Monitor tab and admin dashboard only visible to the admin email (`ysmagri@gmail.com`) |
 
 ---
 
@@ -380,4 +382,5 @@ npm run build:linux  # Linux AppImage
 - **Plain JavaScript** — no TypeScript, no frontend framework
 - **Secrets in `.env`** — gitignored, see `.env.example` for template
 - **Error logging** — writes to `Logs/error.log` and viewable in the Monitor tab
+- **Admin dashboard** — admin user can view all registered users, global vault items/jobs/TOTP counts, and per-user join/login dates
 - **Password generator** — uses CSPRNG with Fisher-Yates shuffle, guarantees at least one character from each enabled class
