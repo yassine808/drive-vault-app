@@ -68,10 +68,21 @@ function genSessionToken() {
   return t;
 }
 function validateToken(token) {
-  const valid = token && token === sessionToken;
-  if (!valid) logger.auth('session', 'Token validation failed');
-  else logger.debug('session', 'Token validated successfully');
-  return valid;
+  if (!token || !sessionToken || token.length !== sessionToken.length) {
+    logger.auth('session', 'Token validation failed');
+    return false;
+  }
+  try {
+    const a = Buffer.from(token, 'hex');
+    const b = Buffer.from(sessionToken, 'hex');
+    const valid = crypto.timingSafeEqual(a, b);
+    if (!valid) logger.auth('session', 'Token validation failed');
+    else logger.debug('session', 'Token validated successfully');
+    return valid;
+  } catch {
+    logger.auth('session', 'Token validation failed');
+    return false;
+  }
 }
 
 // ─── IPC AUTH WRAPPERS ───────────────────────────────────────────────────────
@@ -140,6 +151,10 @@ function deriveKey(googleId) {
   // encrypted data was encrypted with. Changing this will make all data unreadable.
   return crypto.createHash('sha256').update('vault:' + googleId).digest('hex').slice(0, 32);
 }
+// NOTE: CryptoJS.AES.encrypt with a string key uses EVP_BytesToKey KDF internally.
+// The 32-char hex string from deriveKey() is used as a passphrase, not raw bytes.
+// This is a known weakness but changing it would break all existing encrypted data.
+// TODO: Migrate to native crypto.createCipheriv with raw key bytes for new installs.
 function enc(obj, key) { return CryptoJS.AES.encrypt(JSON.stringify(obj), key).toString(); }
 function dec(str, key) { try { return JSON.parse(CryptoJS.AES.decrypt(str,key).toString(CryptoJS.enc.Utf8)); } catch { return null; } }
 
@@ -570,6 +585,10 @@ ipcMain.handle('auth:login', async () => {
 ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
   logger.ipc('auth:verify2fa', '2FA verification attempt');
   try {
+    if (typeof token !== 'string' || !/^\d{6}$/.test(token)) {
+      logger.warn('auth:verify2fa', '2FA rejected — invalid token format');
+      return { ok:false, error:'Invalid code format. Enter a 6-digit number.' };
+    }
     if (isRateLimited()) {
       logger.warn('auth:verify2fa', '2FA rejected — rate limited');
       return { ok:false, error:'Too many attempts. Try again in 15 minutes.' };
@@ -598,15 +617,15 @@ ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
   }
 });
 
-ipcMain.handle('auth:logout', () => {
+ipcMain.handle('auth:logout', requireAuthNoArgs(() => {
   logger.ipc('auth:logout', 'Logout', { user: session?.email });
   playSound('logout');
   session = null; sessionToken = null;
   logger.auth('auth:logout', 'Session cleared');
   return { ok:true };
-});
+}));
 
-ipcMain.handle('auth:lock', () => {
+ipcMain.handle('auth:lock', requireAuthNoArgs(() => {
   logger.ipc('auth:lock', 'Lock', { user: session?.email });
   if (session) {
     session.encKey = null;
@@ -615,7 +634,7 @@ ipcMain.handle('auth:lock', () => {
   sessionToken = null;
   logger.auth('auth:lock', 'Session locked — encKey cleared');
   return { ok:true };
-});
+}));
 
 ipcMain.handle('auth:reauth', async () => {
   logger.ipc('auth:reauth', 'Re-authentication attempt');
@@ -803,7 +822,10 @@ ipcMain.handle('2fa:setup', requireAuthNoArgs(async () => {
 
 ipcMain.handle('2fa:enable', requireAuth(async (_e,{token}) => {
   logger.ipc('2fa:enable', 'Enabling 2FA');
-  try { const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token)){ logger.warn('2fa:enable', 'Invalid 2FA code'); return{ok:false,error:'Invalid code'}; } await db2faSave(session.userId,d.secret,true); logger.success('2fa:enable', '2FA enabled'); return{ok:true}; } catch(e){ logError('2fa:enable',e);return{ok:false,error:e.message};}
+  try {
+    if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { logger.warn('2fa:enable', 'Invalid token format'); return{ok:false,error:'Invalid code format. Enter a 6-digit number.'}; }
+    const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token)){ logger.warn('2fa:enable', 'Invalid 2FA code'); return{ok:false,error:'Invalid code'}; } await db2faSave(session.userId,d.secret,true); logger.success('2fa:enable', '2FA enabled'); return{ok:true};
+  } catch(e){ logError('2fa:enable',e);return{ok:false,error:e.message};}
 }));
 
 ipcMain.handle('2fa:disable', requireAuthNoArgs(async () => {
@@ -826,17 +848,17 @@ ipcMain.handle('log:clear', requireAuthNoArgs(async () => {
   try { fs.writeFileSync(LOG_PATH,''); logger.clearAllLogs(); logger.success('log:clear', 'All logs cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
 }));
 
-ipcMain.on('win:minimize', () => { logger.ipc('win:minimize', 'Window minimized'); win?.minimize(); });
-ipcMain.on('win:maximize', () => {
+ipcMain.handle('win:minimize', requireAuthNoArgs(() => { logger.ipc('win:minimize', 'Window minimized'); win?.minimize(); return { ok: true }; }));
+ipcMain.handle('win:maximize', requireAuthNoArgs(() => {
 	  logger.ipc('win:maximize', 'Window maximize toggled');
 	  if(win?.isMaximized()){ win.unmaximize(); }
 	  else { win?.maximize(); }
-	  // Notify renderer of new state after a tick
 	  setTimeout(() => {
 	    if(!win.isDestroyed()) win.webContents.send('win:maximized-state', win.isMaximized());
 	  }, 50);
-	});
-ipcMain.on('win:close', () => { logger.ipc('win:close', 'Window close requested'); win?.close(); });
+	  return { ok: true };
+	}));
+ipcMain.handle('win:close', requireAuthNoArgs(() => { logger.ipc('win:close', 'Window close requested'); win?.close(); return { ok: true }; }));
 
 // ─── PRELOAD BRIDGE LOGGING ───────────────────────────────────────────────────
 ipcMain.on('preload:log', (_e, { action, channel, ok, detail }) => {

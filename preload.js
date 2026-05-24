@@ -8,7 +8,7 @@ let sessionToken = null;
 function setToken(t) {
   sessionToken = t;
   // Notify main process about token changes for logging
-  ipcRenderer.send('preload:token', t ? 'set' : 'present');
+  ipcRenderer.send('preload:token', t ? 'set' : 'cleared');
 }
 function clearToken() {
   sessionToken = null;
@@ -179,9 +179,9 @@ contextBridge.exposeInMainWorld('api', {
   onMinimize: (cb) => ipcRenderer.on('win:minimized', () => cb()),
   onMaximizedState: (cb) => ipcRenderer.on('win:maximized-state', (_e, maximized) => cb(maximized)),
 
-  minimize: () => { bridgeLog('call', 'win:minimize', true); ipcRenderer.send('win:minimize'); },
-  maximize: () => { bridgeLog('call', 'win:maximize', true); ipcRenderer.send('win:maximize'); },
-  close: () => { bridgeLog('call', 'win:close', true); ipcRenderer.send('win:close'); },
+  minimize: () => { bridgeLog('call', 'win:minimize', true); return ipcRenderer.invoke('win:minimize', sessionToken); },
+  maximize: () => { bridgeLog('call', 'win:maximize', true); return ipcRenderer.invoke('win:maximize', sessionToken); },
+  close: () => { bridgeLog('call', 'win:close', true); return ipcRenderer.invoke('win:close', sessionToken); },
 });
 
 // Expose token management so the renderer can store the token from login responses

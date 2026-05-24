@@ -338,36 +338,37 @@ function renderPasswords(){
   list.forEach(pw=>{
     const row=document.createElement('div');row.className='pw-row';
     const initial=(pw.site||'?')[0].toUpperCase();
-    row.innerHTML=`
-      <div class="pw-icon" id="icon-${pw.id||'x'}">${initial}</div>
-      <div class="pw-info">
-        <div class="pw-site">${esc(pw.site||'')}</div>
-        <div class="pw-user">${esc(pw.username||'')}</div>
-        ${pw.notes?`<div class="pw-note">${esc(pw.notes)}</div>`:''}
-      </div>
-      <div class="pw-pw-wrap">
-        <span class="pw-hidden">••••••••</span>
-        <span class="pw-real" hidden>${esc(pw.password||'')}</span>
-        <div class="pw-inline-sm" id="psm-${pw.id}" hidden>
-          <div class="sm-bars sm-inline"><div class="sm-bar"></div><div class="sm-bar"></div><div class="sm-bar"></div><div class="sm-bar"></div></div>
-          <span class="sm-lbl psm-lbl">—</span>
-          <span class="breach-badge" id="breach-${pw.id}" hidden>⚠️ breached</span>
-        </div>
-        <button class="eye-inline" title="Hold to show">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </button>
-      </div>
-      <div class="pw-acts">
-        <button class="icon-btn copy" title="Copy password">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        </button>
-        <button class="icon-btn" title="Edit">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        </button>
-        <button class="icon-btn del" title="Move to trash">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-        </button>
-      </div>`;
+
+    const iconDiv=document.createElement('div');iconDiv.className='pw-icon';iconDiv.id='icon-'+(pw.id||'x');iconDiv.textContent=initial;row.appendChild(iconDiv);
+    const infoDiv=document.createElement('div');infoDiv.className='pw-info';
+    const siteDiv=document.createElement('div');siteDiv.className='pw-site';siteDiv.textContent=pw.site||'';infoDiv.appendChild(siteDiv);
+    const userDiv=document.createElement('div');userDiv.className='pw-user';userDiv.textContent=pw.username||'';infoDiv.appendChild(userDiv);
+    if(pw.notes){const noteDiv=document.createElement('div');noteDiv.className='pw-note';noteDiv.textContent=pw.notes;infoDiv.appendChild(noteDiv);}
+    row.appendChild(infoDiv);
+    const pwWrap=document.createElement('div');pwWrap.className='pw-pw-wrap';
+    const hidSpan=document.createElement('span');hidSpan.className='pw-hidden';hidSpan.textContent='••••••••';pwWrap.appendChild(hidSpan);
+    const revSpan=document.createElement('span');revSpan.className='pw-real';revSpan.hidden=true;revSpan.textContent=pw.password||'';pwWrap.appendChild(revSpan);
+    const smWrap=document.createElement('div');smWrap.className='pw-inline-sm';smWrap.id='psm-'+pw.id;smWrap.hidden=true;
+    const smBars=document.createElement('div');smBars.className='sm-bars sm-inline';for(let i=0;i<4;i++){const b=document.createElement('div');b.className='sm-bar';smBars.appendChild(b);}
+    smWrap.appendChild(smBars);
+    const smLbl=document.createElement('span');smLbl.className='sm-lbl psm-lbl';smLbl.textContent='—';smWrap.appendChild(smLbl);
+    const breachBadge=document.createElement('span');breachBadge.className='breach-badge';breachBadge.id='breach-'+pw.id;breachBadge.hidden=true;breachBadge.textContent='⚠️ breached';smWrap.appendChild(breachBadge);
+    pwWrap.appendChild(smWrap);
+    const eyeBtn=document.createElement('button');eyeBtn.className='eye-inline';eyeBtn.title='Hold to show';
+    eyeBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    pwWrap.appendChild(eyeBtn);
+    row.appendChild(pwWrap);
+    const actsDiv=document.createElement('div');actsDiv.className='pw-acts';
+    const copyBtn=document.createElement('button');copyBtn.className='icon-btn copy';copyBtn.title='Copy password';
+    copyBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    actsDiv.appendChild(copyBtn);
+    const editBtn=document.createElement('button');editBtn.className='icon-btn';editBtn.title='Edit';
+    editBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+    actsDiv.appendChild(editBtn);
+    const delBtn=document.createElement('button');delBtn.className='icon-btn del';delBtn.title='Move to trash';
+    delBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+    actsDiv.appendChild(delBtn);
+    row.appendChild(actsDiv);
     getLogo(pw.site).then(url=>{
       const el=document.getElementById('icon-'+pw.id);
       if(el&&url){
@@ -379,10 +380,6 @@ function renderPasswords(){
         el.appendChild(img);
       }
     });
-    const eyeBtn=row.querySelector('.eye-inline');
-    const hidSpan=row.querySelector('.pw-hidden');
-    const revSpan=row.querySelector('.pw-real');
-    const smWrap=document.getElementById('psm-'+pw.id);
     eyeBtn.addEventListener('mousedown',()=>{
       hidSpan.hidden=true;revSpan.hidden=false;
       smWrap.hidden=false;
@@ -398,7 +395,6 @@ function renderPasswords(){
     eyeBtn.addEventListener('touchstart',e=>{e.preventDefault();hidSpan.hidden=true;revSpan.hidden=false;smWrap.hidden=false;updateInlineSm(smWrap,pw.password||'');},{passive:false});
     eyeBtn.addEventListener('touchend',hideEye);
 
-    const [copyBtn,editBtn,delBtn]=row.querySelectorAll('.pw-acts .icon-btn');
     copyBtn.onclick=()=>{navigator.clipboard.writeText(pw.password||'');toast('Password copied!');logInfo('password', 'Password copied to clipboard', { site: pw.site });};
     editBtn.onclick=()=>{ logInfo('password', 'Edit password', { site: pw.site }); openPwModal(pw); };
     delBtn.onclick=()=>confirm({
@@ -484,9 +480,12 @@ function renderNotesList(){
     const el=document.createElement('div');
     el.className='note-chip draggable'+(n.id===S.activeNote?' active':'');
     el.draggable=true;el.dataset.id=n.id;
-    el.innerHTML=`<span class="drag-handle">⠿</span>
-      <div class="note-chip-body"><div class="nc-title">${esc(n.title||'Untitled')}</div><div class="nc-prev">${esc(n.body?.slice(0,55)||'Empty')}</div></div>`;
-    el.querySelector('.note-chip-body').onclick=()=>openNote(n.id);
+    const dragHandle=document.createElement('span');dragHandle.className='drag-handle';dragHandle.textContent='⠿';el.appendChild(dragHandle);
+    const chipBody=document.createElement('div');chipBody.className='note-chip-body';
+    const ncTitle=document.createElement('div');ncTitle.className='nc-title';ncTitle.textContent=n.title||'Untitled';chipBody.appendChild(ncTitle);
+    const ncPrev=document.createElement('div');ncPrev.className='nc-prev';ncPrev.textContent=n.body?.slice(0,55)||'Empty';chipBody.appendChild(ncPrev);
+    chipBody.onclick=()=>openNote(n.id);
+    el.appendChild(chipBody);
     addVerticalDrag(el,'notes-list',()=>api.reorder('note',S.notes));
     wrap.appendChild(el);
   });
@@ -497,15 +496,18 @@ function openNote(id){
   logInfo('note', 'Note opened', { noteId: id, title: note.title });
   renderNotesList();
   const editor=document.getElementById('note-editor');
-  editor.innerHTML=`
-    <div class="note-toolbar">
-      <input class="note-title-inp" id="n-title" value="${esc(note.title||'')}" placeholder="Title" />
-      <button class="icon-btn del" id="n-del">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-      </button>
-    </div>
-    <textarea class="note-body" id="n-body" placeholder="Start writing…">${esc(note.body||'')}</textarea>
-    <div class="note-foot"><span id="n-wc">${wc(note.body)} words</span><span id="n-status">Saved</span></div>`;
+  editor.innerHTML='';
+  const toolbar=document.createElement('div');toolbar.className='note-toolbar';
+  const titleInp=document.createElement('input');titleInp.className='note-title-inp';titleInp.id='n-title';titleInp.value=note.title||'';titleInp.placeholder='Title';toolbar.appendChild(titleInp);
+  const nDel=document.createElement('button');nDel.className='icon-btn del';nDel.id='n-del';
+  nDel.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+  toolbar.appendChild(nDel);
+  editor.appendChild(toolbar);
+  const bodyArea=document.createElement('textarea');bodyArea.className='note-body';bodyArea.id='n-body';bodyArea.placeholder='Start writing…';bodyArea.value=note.body||'';editor.appendChild(bodyArea);
+  const noteFoot=document.createElement('div');noteFoot.className='note-foot';
+  const wcSpan=document.createElement('span');wcSpan.id='n-wc';wcSpan.textContent=wc(note.body)+' words';noteFoot.appendChild(wcSpan);
+  const statusSpan=document.createElement('span');statusSpan.id='n-status';statusSpan.textContent='Saved';noteFoot.appendChild(statusSpan);
+  editor.appendChild(noteFoot);
   let st;
   const autoSave=async()=>{
     note.title=document.getElementById('n-title').value;
@@ -588,18 +590,20 @@ async function loadAndRenderTrash(){
     const d=days(item._deletedAt);
     const icon=isNote?'📝':isJob?'💼':'🔑';
     const row=document.createElement('div');row.className='trash-row';
-    row.innerHTML=`<div class="trash-icon">${icon}</div>
-      <div class="pw-info"><div class="pw-site">${esc(label)}</div><div class="pw-user">${esc(sub)}</div></div>
-      <div class="trash-days">${d}d left</div>
-      <div class="pw-acts">
-        <button class="icon-btn restore" title="Restore">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
-        </button>
-        <button class="icon-btn del" title="Delete forever">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>`;
-    const [restBtn,delBtn]=row.querySelectorAll('.icon-btn');
+    const trashIcon=document.createElement('div');trashIcon.className='trash-icon';trashIcon.textContent=icon;row.appendChild(trashIcon);
+    const pwInfo=document.createElement('div');pwInfo.className='pw-info';
+    const pwSite=document.createElement('div');pwSite.className='pw-site';pwSite.textContent=label;pwInfo.appendChild(pwSite);
+    const pwUser=document.createElement('div');pwUser.className='pw-user';pwUser.textContent=sub;pwInfo.appendChild(pwUser);
+    row.appendChild(pwInfo);
+    const trashDays=document.createElement('div');trashDays.className='trash-days';trashDays.textContent=d+'d left';row.appendChild(trashDays);
+    const pwActs=document.createElement('div');pwActs.className='pw-acts';
+    const restBtn=document.createElement('button');restBtn.className='icon-btn restore';restBtn.title='Restore';
+    restBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>';
+    pwActs.appendChild(restBtn);
+    const delBtn=document.createElement('button');delBtn.className='icon-btn del';delBtn.title='Delete forever';
+    delBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    pwActs.appendChild(delBtn);
+    row.appendChild(pwActs);
     restBtn.onclick=()=>confirm({
       title:'Restore?',msg:`"${label}" will be restored.`,icon:'↩️',okLabel:'Restore',okClass:'btn-primary',
       onOk:async()=>{
@@ -724,11 +728,12 @@ function renderJobsTable(){
   const acc=S.jobs.filter(j=>j.status==='accepted').length;
   const wait=S.jobs.filter(j=>j.status==='wait').length;
   const rej=S.jobs.filter(j=>j.status==='rejected').length;
-  document.getElementById('jobs-stats').innerHTML=`
-    <div class="job-stat accepted"><span>${acc}</span><small>Accepted</small></div>
-    <div class="job-stat wait"><span>${wait}</span><small>Waiting</small></div>
-    <div class="job-stat rejected"><span>${rej}</span><small>Rejected</small></div>
-    <div class="job-stat total"><span>${S.jobs.length}</span><small>Total</small></div>`;
+  const jobsStats=document.getElementById('jobs-stats');jobsStats.innerHTML='';
+  const mkStat=function(cls,num,lbl){const d=document.createElement('div');d.className='job-stat '+cls;const s=document.createElement('span');s.textContent=num;d.appendChild(s);const l=document.createElement('small');l.textContent=lbl;d.appendChild(l);return d;};
+  jobsStats.appendChild(mkStat('accepted',acc,'Accepted'));
+  jobsStats.appendChild(mkStat('wait',wait,'Waiting'));
+  jobsStats.appendChild(mkStat('rejected',rej,'Rejected'));
+  jobsStats.appendChild(mkStat('total',S.jobs.length,'Total'));
 
   const stMap={accepted:{cls:'status-accepted',label:'✅ Accepted'},wait:{cls:'status-wait',label:'⏳ Waiting'},rejected:{cls:'status-rejected',label:'❌ Rejected'}};
 
@@ -736,25 +741,22 @@ function renderJobsTable(){
     const tr=document.createElement('tr');
     tr.className='draggable';tr.draggable=true;tr.dataset.id=job.id;
     const st=stMap[job.status]||stMap.wait;
-    tr.innerHTML=`
-      <td class="drag-handle-cell">⠿</td>
-      <td class="editable-cell" data-field="company"><strong>${esc(job.company)}</strong></td>
-      <td class="editable-cell" data-field="role">${esc(job.role)}</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:5px">
-          <a class="job-email" href="mailto:${esc(job.email)}">${esc(job.email)}</a>
-          <button class="icon-btn copy copy-email-btn" title="Copy email" style="width:22px;height:22px;flex-shrink:0">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          </button>
-        </div>
-      </td>
-      <td class="editable-cell" data-field="applied_at">${job.applied_at||'—'}</td>
-      <td class="job-status-cell"><span class="job-status ${st.cls}">${st.label}</span></td>
-      <td>
-        <button class="icon-btn del del-job-btn" title="Delete">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-        </button>
-      </td>`;
+
+    const dragTd=document.createElement('td');dragTd.className='drag-handle-cell';dragTd.textContent='⠿';tr.appendChild(dragTd);
+    const companyTd=document.createElement('td');companyTd.className='editable-cell';companyTd.dataset.field='company';const companyStrong=document.createElement('strong');companyStrong.textContent=job.company||'';companyTd.appendChild(companyStrong);tr.appendChild(companyTd);
+    const roleTd=document.createElement('td');roleTd.className='editable-cell';roleTd.dataset.field='role';roleTd.textContent=job.role||'';tr.appendChild(roleTd);
+    const emailTd=document.createElement('td');
+    const emailWrap=document.createElement('div');emailWrap.style.cssText='display:flex;align-items:center;gap:5px';
+    const emailLink=document.createElement('a');emailLink.className='job-email';emailLink.href='mailto:'+(job.email||'');emailLink.textContent=job.email||'';emailWrap.appendChild(emailLink);
+    const copyEmailBtn=document.createElement('button');copyEmailBtn.className='icon-btn copy copy-email-btn';copyEmailBtn.title='Copy email';copyEmailBtn.style.cssText='width:22px;height:22px;flex-shrink:0';
+    copyEmailBtn.innerHTML='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    emailWrap.appendChild(copyEmailBtn);emailTd.appendChild(emailWrap);tr.appendChild(emailTd);
+    const dateTd=document.createElement('td');dateTd.className='editable-cell';dateTd.dataset.field='applied_at';dateTd.textContent=job.applied_at||'—';tr.appendChild(dateTd);
+    const statusTd=document.createElement('td');statusTd.className='job-status-cell';const statusSpan=document.createElement('span');statusSpan.className='job-status '+st.cls;statusSpan.textContent=st.label;statusTd.appendChild(statusSpan);tr.appendChild(statusTd);
+    const delTd=document.createElement('td');
+    const delJobBtn=document.createElement('button');delJobBtn.className='icon-btn del del-job-btn';delJobBtn.title='Delete';
+    delJobBtn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+    delTd.appendChild(delJobBtn);tr.appendChild(delTd);
 
     tr.querySelector('.copy-email-btn').onclick=e=>{e.stopPropagation();navigator.clipboard.writeText(job.email||'');toast('Email copied!');logInfo('jobs', 'Email copied', { company: job.company });};
 
@@ -776,7 +778,7 @@ function renderJobsTable(){
           renderJobsTable();
         };
         inp.addEventListener('blur',save);
-        inp.addEventListener('keydown',e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){td.innerHTML=field==='company'?`<strong>${esc(job.company)}</strong>`:esc(job[field]||'');};});
+        inp.addEventListener('keydown',e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){td.innerHTML='';if(field==='company'){const s=document.createElement('strong');s.textContent=job.company||'';td.appendChild(s);}else{td.textContent=job[field]||'';}}});
       });
     });
 
@@ -877,18 +879,26 @@ function renderTotpGrid(){
   if(!S.totp.length)return;
   S.totp.forEach(item=>{
     const card=document.createElement('div');card.className='totp-card';
-    const codeId=`totp-code-${item.id}`,progId=`totp-prog-${item.id}`;
-    card.innerHTML=`
-      <div class="totp-header">
-        <span class="totp-icon">${item.icon||'🔐'}</span>
-        <div class="totp-info"><div class="totp-name">${esc(item.name)}</div><div class="totp-issuer">${esc(item.issuer||'')}</div></div>
-        <button class="icon-btn del totp-del" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-      <div class="totp-code" id="${codeId}">——</div>
-      <div class="totp-foot">
-        <div class="totp-bar-wrap"><div class="totp-bar" id="${progId}"></div></div>
-        <button class="icon-btn copy totp-copy" title="Copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
-      </div>`;
+    const codeId='totp-code-'+item.id,progId='totp-prog-'+item.id;
+    const header=document.createElement('div');header.className='totp-header';
+    const totpIcon=document.createElement('span');totpIcon.className='totp-icon';totpIcon.textContent=item.icon||'🔐';header.appendChild(totpIcon);
+    const totpInfo=document.createElement('div');totpInfo.className='totp-info';
+    const totpName=document.createElement('div');totpName.className='totp-name';totpName.textContent=item.name||'';totpInfo.appendChild(totpName);
+    const totpIssuer=document.createElement('div');totpIssuer.className='totp-issuer';totpIssuer.textContent=item.issuer||'';totpInfo.appendChild(totpIssuer);
+    header.appendChild(totpInfo);
+    const totpDel=document.createElement('button');totpDel.className='icon-btn del totp-del';totpDel.title='Remove';
+    totpDel.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    header.appendChild(totpDel);
+    card.appendChild(header);
+    const totpCode=document.createElement('div');totpCode.className='totp-code';totpCode.id=codeId;totpCode.textContent='——';card.appendChild(totpCode);
+    const totpFoot=document.createElement('div');totpFoot.className='totp-foot';
+    const barWrap=document.createElement('div');barWrap.className='totp-bar-wrap';
+    const bar=document.createElement('div');bar.className='totp-bar';bar.id=progId;barWrap.appendChild(bar);
+    totpFoot.appendChild(barWrap);
+    const totpCopy=document.createElement('button');totpCopy.className='icon-btn copy totp-copy';totpCopy.title='Copy';
+    totpCopy.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    totpFoot.appendChild(totpCopy);
+    card.appendChild(totpFoot);
     card.querySelector('.totp-del').onclick=()=>confirm({
       title:'Remove account?',msg:`"${item.name}" will be removed.`,icon:'🗑️',okLabel:'Remove',
       onOk:async()=>{logInfo('totp', 'TOTP account removed', { name: item.name });await api.totpDelete(item.id);S.totp=S.totp.filter(t=>t.id!==item.id);renderTotpGrid();updateCounts();toast('Removed');}
@@ -963,24 +973,28 @@ async function loadMonitor(){
     const dbPct=st.dbSizeBytes?Math.min(100,Math.round(st.dbSizeBytes/DB_LIMIT*100)):0;
     const logPct=Math.min(100,Math.round(st.logSize/(5*1024*1024)*100));
 
-    document.getElementById('monitor-circles').innerHTML=`
-      <div class="mon-circle-wrap">
-        ${makeCircleSvg(dbPct,'var(--accent)')}
-        <div class="mon-circle-label">${fmt(st.dbSizeBytes||0)}</div>
-        <div class="mon-circle-sub">Database used</div>
-        <div class="mon-circle-sub" style="font-size:10px;margin-top:2px">${dbPct}% of 500 MB</div>
-      </div>
-      <div class="mon-circle-wrap">
-        ${makeCircleSvg(logPct,'#f87171')}
-        <div class="mon-circle-label">${fmt(st.logSize)}</div>
-        <div class="mon-circle-sub">Log file</div>
-      </div>`;
+    const circlesWrap=document.getElementById('monitor-circles');circlesWrap.innerHTML='';
+    const cw1=document.createElement('div');cw1.className='mon-circle-wrap';
+    cw1.innerHTML=makeCircleSvg(dbPct,'var(--accent)');
+    const lbl1=document.createElement('div');lbl1.className='mon-circle-label';lbl1.textContent=fmt(st.dbSizeBytes||0);cw1.appendChild(lbl1);
+    const sub1a=document.createElement('div');sub1a.className='mon-circle-sub';sub1a.textContent='Database used';cw1.appendChild(sub1a);
+    const sub1b=document.createElement('div');sub1b.className='mon-circle-sub';sub1b.style.cssText='font-size:10px;margin-top:2px';sub1b.textContent=dbPct+'% of 500 MB';cw1.appendChild(sub1b);
+    circlesWrap.appendChild(cw1);
+    const cw2=document.createElement('div');cw2.className='mon-circle-wrap';
+    cw2.innerHTML=makeCircleSvg(logPct,'#f87171');
+    const lbl2=document.createElement('div');lbl2.className='mon-circle-label';lbl2.textContent=fmt(st.logSize);cw2.appendChild(lbl2);
+    const sub2=document.createElement('div');sub2.className='mon-circle-sub';sub2.textContent='Log file';cw2.appendChild(sub2);
+    circlesWrap.appendChild(cw2);
 
-    document.getElementById('monitor-grid').innerHTML=`
-      <div class="mon-card"><div class="mon-num">${st.items}</div><div class="mon-lbl">Vault items</div></div>
-      <div class="mon-card"><div class="mon-num">${st.trash}</div><div class="mon-lbl">In trash</div></div>
-      <div class="mon-card"><div class="mon-num">${st.jobs}</div><div class="mon-lbl">Job apps</div></div>
-      <div class="mon-card mon-wide"><div class="mon-num" style="font-size:12px;font-family:var(--mono)">Supabase</div><div class="mon-lbl">EU West (Ireland) · Log: ${esc(sr.logPath||'')}</div></div>`;
+    const gridWrap=document.getElementById('monitor-grid');gridWrap.innerHTML='';
+    const mkCard=function(num,lbl,wide){const c=document.createElement('div');c.className='mon-card'+(wide?' mon-wide':'');const n=document.createElement('div');n.className='mon-num';n.textContent=num;c.appendChild(n);const l=document.createElement('div');l.className='mon-lbl';l.textContent=lbl;c.appendChild(l);return c;};
+    gridWrap.appendChild(mkCard(st.items,'Vault items'));
+    gridWrap.appendChild(mkCard(st.trash,'In trash'));
+    gridWrap.appendChild(mkCard(st.jobs,'Job apps'));
+    const supCard=document.createElement('div');supCard.className='mon-card mon-wide';
+    const supNum=document.createElement('div');supNum.className='mon-num';supNum.style.cssText='font-size:12px;font-family:var(--mono)';supNum.textContent='Supabase';supCard.appendChild(supNum);
+    const supLbl=document.createElement('div');supLbl.className='mon-lbl';supLbl.textContent='EU West (Ireland) · Log: '+(sr.logPath||'');supCard.appendChild(supLbl);
+    gridWrap.appendChild(supCard);
     logOk('monitor', 'Monitor data loaded', { items: st.items, jobs: st.jobs, trash: st.trash });
   } else {
     logErr('monitor', 'Failed to load stats', sr.error);
@@ -1234,16 +1248,18 @@ document.getElementById('btn-2fa').addEventListener('click',async()=>{
   const okBtn=document.getElementById('twofa-ok');const disBtn=document.getElementById('twofa-disable');
   if(r.enabled){
     document.getElementById('twofa-modal-title').textContent='2FA is enabled';
-    body.innerHTML=`<p class="sub" style="margin:12px 0">Two-factor authentication is active.<br>Disable it below.</p>`;
+   body.innerHTML='';const disMsg=document.createElement('p');disMsg.className='sub';disMsg.style.cssText='margin:12px 0';disMsg.textContent='Two-factor authentication is active.';body.appendChild(disMsg);body.appendChild(document.createElement('br'));const disMsg2=document.createElement('span');disMsg2.textContent='Disable it below.';body.appendChild(disMsg2);
     okBtn.hidden=true;disBtn.hidden=false;
     logInfo('2fa', '2FA is currently enabled');
   }else{
     document.getElementById('twofa-modal-title').textContent='Enable 2FA';
-    body.innerHTML=`<p class="sub" style="margin-bottom:14px">Scan this QR code with your authenticator app,<br>then enter the 6-digit code to confirm.</p>
-      <div id="qr-wrap" style="display:flex;justify-content:center;margin:12px 0"><p style="color:var(--muted)">Loading…</p></div>
-      <p class="sub" style="margin-bottom:10px;font-size:11px;font-family:var(--mono)" id="2fa-secret-text">Loading…</p>
-      <input class="fi twofa-input" id="twofa-setup-code" placeholder="000000" maxlength="6" inputmode="numeric" style="text-align:center;font-size:20px;letter-spacing:.3em;font-family:var(--mono);margin-top:6px" />
-      <p class="err" id="twofa-setup-err" hidden></p>`;
+    body.innerHTML='';
+    const scanMsg=document.createElement('p');scanMsg.className='sub';scanMsg.style.cssText='margin-bottom:14px';scanMsg.textContent='Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.';body.appendChild(scanMsg);body.appendChild(document.createElement('br'));
+    body.appendChild(document.createElement('br'));
+    const qrWrap=document.createElement('div');qrWrap.id='qr-wrap';qrWrap.style.cssText='display:flex;justify-content:center;margin:12px 0';const qrLoading=document.createElement('p');qrLoading.style.color='var(--muted)';qrLoading.textContent='Loading…';qrWrap.appendChild(qrLoading);body.appendChild(qrWrap);
+    const secretText=document.createElement('p');secretText.className='sub';secretText.style.cssText='margin-bottom:10px;font-size:11px;font-family:var(--mono)';secretText.id='2fa-secret-text';secretText.textContent='Loading…';body.appendChild(secretText);
+    const setupCode=document.createElement('input');setupCode.className='fi twofa-input';setupCode.id='twofa-setup-code';setupCode.placeholder='000000';setupCode.maxLength=6;setupCode.inputMode='numeric';setupCode.style.cssText='text-align:center;font-size:20px;letter-spacing:.3em;font-family:var(--mono);margin-top:6px';body.appendChild(setupCode);
+    const setupErr=document.createElement('p');setupErr.className='err';setupErr.id='twofa-setup-err';setupErr.hidden=true;body.appendChild(setupErr);
     okBtn.hidden=false;disBtn.hidden=true;
     const sr=await api.twofa.setup();
     if(sr.ok){
