@@ -58,181 +58,28 @@ logger.info('main', 'Global error handlers registered');
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let win, supabase, CryptoJS, speakeasy, tray;
 let session = null;
-let sessionToken = null;
-let sessionTokenCreated = 0;
 let oauthInProgress = false;
 let oauthServer = null;
 
-// ─── SESSION TOKEN ────────────────────────────────────────────────────────────
-const SESSION_TOKEN_MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
-function genSessionToken() {
-  const t = crypto.randomBytes(32).toString('hex');
-  sessionTokenCreated = Date.now();
-  logger.auth('session', 'Generated new session token');
-  return t;
-}
-function validateToken(token) {
-  // Always perform a constant-time comparison regardless of input validity
-  // to prevent timing side-channels that could leak token/session state.
-  const expected = sessionToken || crypto.randomBytes(32).toString('hex');
-  const safeToken = (typeof token === 'string' && token.length === 64) ? token : crypto.randomBytes(32).toString('hex');
-  try {
-    const a = Buffer.from(safeToken, 'hex');
-    const b = Buffer.from(expected, 'hex');
-    const valid = crypto.timingSafeEqual(a, b);
-    if (!token || !sessionToken || !valid) {
-      // Check expiry on the real session even after a failed attempt
-      if (sessionToken && Date.now() - sessionTokenCreated > SESSION_TOKEN_MAX_AGE) {
-        logger.auth('session', 'Token expired');
-        sessionToken = null;
-      }
-      logger.auth('session', 'Token validation failed');
-      return false;
-    }
-    // Check token expiry only after valid token confirmed
-    if (Date.now() - sessionTokenCreated > SESSION_TOKEN_MAX_AGE) {
-      logger.auth('session', 'Token expired');
-      sessionToken = null;
-      return false;
-    }
-    logger.debug('session', 'Token validated successfully');
-    return true;
-  } catch {
-    logger.auth('session', 'Token validation failed');
-    return false;
-  }
-}
+// ─── MODULES ──────────────────────────────────────────────────────────────────
+const authModule   = require('./modules/auth');
+const cryptoModule = require('./modules/crypto');
+const validation   = require('./modules/validation');
 
-// ─── IPC AUTH WRAPPERS ───────────────────────────────────────────────────────
-function requireAuth(fn) {
-  return async (event, token, ...args) => {
-    if (!validateToken(token)) {
-      logger.warn('auth', 'requireAuth: rejected unauthenticated call');
-      return { ok: false, error: 'Not authenticated' };
-    }
-    return fn(event, ...args);
-  };
-}
-function requireAuthNoArgs(fn) {
-  return async (event, token) => {
-    if (!validateToken(token)) {
-      logger.warn('auth', 'requireAuthNoArgs: rejected unauthenticated call');
-      return { ok: false, error: 'Not authenticated' };
-    }
-    return fn(event);
-  };
-}
+const {
+  genSessionToken, validateToken, clearSession, setSession, getSession,
+  requireAuth, requireAuthNoArgs, requireAdminNoArgs,
+  isRateLimited, recordFailedAttempt, resetRateLimit,
+} = authModule;
 
-// ─── INPUT VALIDATION ─────────────────────────────────────────────────────────
-const MAX_FIELD_LEN = 500;
-const MAX_NOTES_LEN = 5000;
-const VALID_ITEM_TYPES = ['password', 'note'];
-function sanitizeStr(s, max=MAX_FIELD_LEN) { return String(s||'').trim().slice(0,max); }
-function validType(t) { return VALID_ITEM_TYPES.includes(t); }
-function validEmail(e) { return /^[^\s@]{1,128}@[^\s@]{1,256}\.[^\s@]{2,}$/.test(String(e||'')); }
-function validTotpSecret(s) { return /^[A-Z2-7]{16,64}$/.test(String(s||'').replace(/\s/g,'')); }
+const { deriveKey, enc, dec, setCryptoJS } = cryptoModule;
 
-// ─── 2FA RATE LIMITER ─────────────────────────────────────────────────────────
-const rateLimit = {
-  attempts: [],
-  lockoutUntil: 0,
-  MAX_ATTEMPTS: 5,
-  WINDOW_MS: 15 * 60 * 1000,
-  LOCKOUT_MS: 15 * 60 * 1000,
-};
-function isRateLimited() {
-  const now = Date.now();
-  if (now < rateLimit.lockoutUntil) {
-    logger.warn('2fa', 'Rate limited — lockout active', { lockoutUntil: rateLimit.lockoutUntil });
-    return true;
-  }
-  rateLimit.attempts = rateLimit.attempts.filter(t => now - t < rateLimit.WINDOW_MS);
-  if (rateLimit.attempts.length >= rateLimit.MAX_ATTEMPTS) {
-    logger.warn('2fa', 'Rate limited — too many attempts', { count: rateLimit.attempts.length });
-    return true;
-  }
-  return false;
-}
-function recordFailedAttempt() {
-  const now = Date.now();
-  rateLimit.attempts.push(now);
-  if (rateLimit.attempts.length >= rateLimit.MAX_ATTEMPTS) {
-    rateLimit.lockoutUntil = now + rateLimit.LOCKOUT_MS;
-    logger.warn('2fa', 'Lockout triggered', { attempts: rateLimit.attempts.length, lockoutMs: rateLimit.LOCKOUT_MS });
-  }
-}
-function resetRateLimit() { rateLimit.attempts = []; rateLimit.lockoutUntil = 0; }
+const {
+  MAX_FIELD_LEN, MAX_NOTES_LEN, VALID_ITEM_TYPES,
+  sanitizeStr, validType, validEmail, validTotpSecret,
+} = validation;
 
-// ─── CRYPTO ───────────────────────────────────────────────────────────────────
-function deriveKey(googleId) {
-  // Must stay as SHA-256 truncated to 32 hex chars — this is what all existing
-  // encrypted data was encrypted with. Changing this will make all data unreadable.
-  return crypto.createHash('sha256').update('vault:' + googleId).digest('hex').slice(0, 32);
-}
-// ─── Authenticated Encryption (AES-256-CBC + HMAC-SHA256) ───────────────────────────────────────────────────
-// New format: base64( HMAC(32 bytes) || IV(16 bytes) || Ciphertext )
-// HMAC covers: IV || Ciphertext (Encrypt-then-MAC).
-// Key derivation from the 32-char hex key string:
-//   encKeyRaw = SHA-256(key)  → 32 bytes raw AES key
-//   macKeyRaw = SHA-256(key + "mac") → 32 bytes raw HMAC key
-// Old CryptoJS format is detected and decrypted for backward compatibility.
-// New data is always encrypted with the new authenticated format.
-
-function _keysFromHexKey(hexKey) {
-  const encKey = crypto.createHash('sha256').update(hexKey).digest();
-  const macKey = crypto.createHash('sha256').update(hexKey + 'mac').digest();
-  return { encKey, macKey };
-}
-
-function _isNewFormat(ciphertext) {
-  if (!ciphertext || typeof ciphertext !== 'string') return false;
-  // Old CryptoJS format starts with "U2FsdGVk" (base64 of "Salted__")
-  if (ciphertext.startsWith('U2FsdGVk')) return false;
-  // New format: compact base64, minimum 64 raw bytes → >= 70 base64 chars
-  if (ciphertext.length >= 70 && /^[A-Za-z0-9+/=]+$/.test(ciphertext)) return true;
-  return false;
-}
-
-function enc(obj, key) {
-  const { encKey, macKey } = _keysFromHexKey(key);
-  const plaintext = JSON.stringify(obj);
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', encKey, iv);
-  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const mac = crypto.createHmac('sha256', macKey).update(iv).update(ct).digest();
-  const packed = Buffer.concat([mac, iv, ct]);
-  return packed.toString('base64');
-}
-
-function dec(str, key) {
-  if (_isNewFormat(str)) {
-    try {
-      const { encKey, macKey } = _keysFromHexKey(key);
-      const packed = Buffer.from(str, 'base64');
-      if (packed.length < 64) return null;
-      const mac = packed.subarray(0, 32);
-      const iv = packed.subarray(32, 48);
-      const ct = packed.subarray(48);
-      const expectedMac = crypto.createHmac('sha256', macKey).update(iv).update(ct).digest();
-      if (!crypto.timingSafeEqual(mac, expectedMac)) {
-        logger.warn('crypto', 'HMAC verification failed - data tampered or wrong key');
-        return null;
-      }
-      const decipher = crypto.createDecipheriv('aes-256-cbc', encKey, iv);
-      const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
-      return JSON.parse(pt.toString('utf8'));
-    } catch (e) {
-      logger.warn('crypto', 'New-format decrypt failed', { error: e.message });
-      return null;
-    }
-  }
-  // Fall back to legacy CryptoJS format for backward compatibility
-  try {
-    return JSON.parse(CryptoJS.AES.decrypt(str, key).toString(CryptoJS.enc.Utf8));
-  } catch { return null; }
-}
-
-// ─── DB HELPERS ───────────────────────────────────────────────────────────────
+// ─── DB HELPERS (vault items / trash) ─────────────────────────────────────────
 async function dbUpsertUser({ googleId, email, name, avatar }) {
   logger.db('dbUpsertUser', 'Upserting user', { googleId, email });
   const { data, error } = await supabase.from('vault_users')
@@ -320,183 +167,7 @@ async function dbUpdateSortOrder(items, userId) {
   logger.db('dbUpdateSortOrder', 'Success');
 }
 
-// ── Logo ──────────────────────────────────────────────────────────────────────
-// Validates that a string is a reasonable domain name (prevents cache poisoning)
-function validDomain(d) {
-  if (typeof d !== 'string') return false;
-  if (d.length > 253) return false;
-  // Each label: 1-63 chars of [a-z0-9-], no leading/trailing hyphens
-  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(d);
-}
-async function fetchLogo(site) {
-  logger.db('fetchLogo', 'Fetching logo', { site });
-  try {
-    let domain = site.replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase().trim();
-    if (!domain.includes('.')) domain += '.com';
-    if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
-
-    // Check cache first — stored as data URL to avoid CSP redirect issues
-    const { data, error } = await supabase.from('vault_logos').select('url').eq('domain',domain).maybeSingle();
-    if (error) throw error;
-    if (data?.url && data.url.startsWith('data:')) {
-      // Valid cached data URL — return directly
-      logger.db('fetchLogo', 'Logo from cache', { domain });
-      return data.url;
-    }
-    // Old cached Google redirect URLs are broken (CSP + redirect to gstatic.com) — re-fetch below
-
-    // Fetch the favicon in the main process (no CSP restrictions here)
-    const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
-    const imgData = await new Promise((resolve, reject) => {
-      const req = https.get(faviconUrl, { timeout: 5000 }, (res) => {
-        // Follow redirects manually
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          const redirectUrl = new URL(res.headers.location, faviconUrl);
-          https.get(redirectUrl.toString(), { timeout: 5000 }, (res2) => {
-            const chunks = [];
-            res2.on('data', (c) => chunks.push(c));
-            res2.on('end', () => resolve(Buffer.concat(chunks)));
-          }).on('error', reject).on('timeout', () => reject(new Error('timeout')));
-          return;
-        }
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
-      });
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-    });
-
-    if (!imgData || imgData.length === 0) {
-      logger.warn('fetchLogo', 'Empty favicon response', { domain });
-      return null;
-    }
-
-    // Detect mime type from magic bytes
-    let mime = 'image/png';
-    if (imgData[0] === 0x89 && imgData[1] === 0x50) mime = 'image/png';
-    else if (imgData[0] === 0xFF && imgData[1] === 0xD8) mime = 'image/jpeg';
-    else if (imgData[0] === 0x47 && imgData[1] === 0x49) mime = 'image/gif';
-    else if (imgData[0] === 0x3C && imgData[1] === 0x3F) mime = 'image/svg+xml';
-    else if (imgData.toString('utf8', 0, 4).includes('<svg')) mime = 'image/svg+xml';
-    else if (imgData[0] === 0x00 && imgData[1] === 0x00 && imgData[2] === 0x01 && imgData[3] === 0x00) mime = 'image/x-icon';
-
-    const dataUrl = `data:${mime};base64,${imgData.toString('base64')}`;
-
-    // Cache the data URL in Supabase so we never fetch again
-    await supabase.from('vault_logos').upsert({ domain, url: dataUrl, cached_at: new Date().toISOString() });
-    logger.db('fetchLogo', 'Logo fetched and cached as data URL', { domain, mime, size: imgData.length });
-    return dataUrl;
-  } catch (e) { logger.warn('fetchLogo', 'Failed to fetch logo', { site, error: e?.message }); return null; }
-}
-
-// ── Jobs ──────────────────────────────────────────────────────────────────────
-async function dbLoadJobs(userId) {
-  logger.db('dbLoadJobs', 'Loading jobs', { userId });
-  const { data, error } = await supabase.from('vault_jobs')
-    .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at')
-    .eq('user_id',userId).is('deleted_at',null)
-    .order('sort_order',{ascending:true}).order('created_at',{ascending:false});
-  if (error) { logger.error('dbLoadJobs', 'Failed', error.message); throw new Error('Failed to load jobs'); }
-  logger.db('dbLoadJobs', 'Jobs loaded', { count: data.length });
-  return data;
-}
-async function dbSaveJob(userId, job) {
-  logger.db('dbSaveJob', 'Saving job', { userId, jobId: job?.id, company: job?.company });
-  const { id, ...payload } = job;
-  if (id) {
-    const { error } = await supabase.from('vault_jobs')
-      .update({ ...payload, updated_at:new Date().toISOString() }).eq('id',id).eq('user_id',userId);
-    if (error) { logger.error('dbSaveJob', 'Update failed', error.message); throw new Error('Failed to save job'); }
-    logger.db('dbSaveJob', 'Job updated', { jobId: id });
-    return id;
-  }
-  const { data, error } = await supabase.from('vault_jobs')
-    .insert({ user_id:userId, ...payload }).select('id').single();
-  if (error) { logger.error('dbSaveJob', 'Insert failed', error.message); throw new Error('Failed to save job'); }
-  logger.db('dbSaveJob', 'Job inserted', { jobId: data.id });
-  return data.id;
-}
-async function dbDeleteJob(id, userId) {
-  logger.db('dbDeleteJob', 'Soft-deleting job', { jobId: id, userId });
-  const { error } = await supabase.from('vault_jobs')
-    .update({ deleted_at: new Date().toISOString() }).eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
-  logger.db('dbDeleteJob', 'Success', { jobId: id });
-}
-async function dbRestoreJob(id, userId) {
-  logger.db('dbRestoreJob', 'Restoring job', { jobId: id, userId });
-  const { error } = await supabase.from('vault_jobs')
-    .update({ deleted_at: null }).eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbRestoreJob', 'Failed', error.message); throw new Error('Failed to restore job'); }
-  logger.db('dbRestoreJob', 'Success', { jobId: id });
-}
-async function dbPermDeleteJob(id, userId) {
-  logger.db('dbPermDeleteJob', 'Permanently deleting job', { jobId: id, userId });
-  const { error } = await supabase.from('vault_jobs').delete().eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbPermDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
-  logger.db('dbPermDeleteJob', 'Success', { jobId: id });
-}
-async function dbLoadJobTrash(userId) {
-  logger.db('dbLoadJobTrash', 'Loading job trash', { userId });
-  await supabase.from('vault_jobs').delete().eq('user_id',userId)
-    .not('deleted_at','is',null).lt('deleted_at', new Date(Date.now()-30*86400000).toISOString());
-  const { data, error } = await supabase.from('vault_jobs')
-    .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at,deleted_at')
-    .eq('user_id',userId).not('deleted_at','is',null).order('deleted_at',{ascending:false});
-  if (error) { logger.error('dbLoadJobTrash', 'Failed', error.message); throw new Error('Failed to load job trash'); }
-  logger.db('dbLoadJobTrash', 'Job trash loaded', { count: data.length });
-  return data;
-}
-async function dbUpdateJobOrder(jobs, userId) {
-  logger.db('dbUpdateJobOrder', 'Updating job order', { userId, count: jobs?.length });
-  await Promise.all(jobs.map((j, i) =>
-    j.id ? supabase.from('vault_jobs').update({ sort_order: i }).eq('id', j.id).eq('user_id', userId) : Promise.resolve()
-  ));
-  logger.db('dbUpdateJobOrder', 'Success');
-}
-
-// ── TOTP Vault ────────────────────────────────────────────────────────────────
-async function dbLoadTotp(userId, encKey) {
-  logger.db('dbLoadTotp', 'Loading TOTP items', { userId });
-  const { data, error } = await supabase.from('vault_totp')
-    .select('id,user_id,name,issuer,secret,icon,sort_order')
-    .eq('user_id',userId).order('sort_order',{ascending:true});
-  if (error) { logger.error('dbLoadTotp', 'Failed', error.message); throw new Error('Failed to load TOTP items'); }
-  logger.db('dbLoadTotp', 'TOTP items loaded', { count: data.length });
-  return data.map(row => ({
-    id: row.id, name: row.name, issuer: row.issuer,
-    secret: dec(row.secret, encKey) || '',
-    icon: row.icon, sort_order: row.sort_order,
-  }));
-}
-async function dbSaveTotp(userId, item, encKey) {
-  logger.db('dbSaveTotp', 'Saving TOTP item', { userId, itemId: item?.id, name: item?.name });
-  const { id, ...payload } = item;
-  const encSecret = enc(item.secret, encKey);
-  if (id) {
-    const { error } = await supabase.from('vault_totp')
-      .update({ name:payload.name, issuer:payload.issuer, secret:encSecret, icon:payload.icon })
-      .eq('id',id).eq('user_id',userId);
-    if (error) { logger.error('dbSaveTotp', 'Update failed', error.message); throw new Error('Failed to save TOTP item'); }
-    logger.db('dbSaveTotp', 'TOTP item updated', { itemId: id });
-    return id;
-  }
-  const { data, error } = await supabase.from('vault_totp')
-    .insert({ user_id:userId, name:payload.name, issuer:payload.issuer, secret:encSecret, icon:payload.icon||'🔐' })
-    .select('id').single();
-  if (error) { logger.error('dbSaveTotp', 'Insert failed', error.message); throw new Error('Failed to save TOTP item'); }
-  logger.db('dbSaveTotp', 'TOTP item inserted', { itemId: data.id });
-  return data.id;
-}
-async function dbDeleteTotp(id, userId) {
-  logger.db('dbDeleteTotp', 'Deleting TOTP item', { itemId: id, userId });
-  const { error } = await supabase.from('vault_totp').delete().eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbDeleteTotp', 'Failed', error.message); throw new Error('Failed to delete TOTP item'); }
-  logger.db('dbDeleteTotp', 'Success', { itemId: id });
-}
-
-// ── 2FA ───────────────────────────────────────────────────────────────────────
+// ─── 2FA DB HELPERS ───────────────────────────────────────────────────────────
 async function db2faGet(userId) {
   logger.db('db2faGet', 'Getting 2FA record', { userId });
   const { data } = await supabase.from('vault_2fa').select('user_id,secret,enabled').eq('user_id',userId).single();
@@ -510,47 +181,7 @@ function verify2fa(secret, token) {
   try { return speakeasy.totp.verify({ secret, encoding:'base32', token, window:1 }); } catch { return false; }
 }
 
-// ── Settings ──────────────────────────────────────────────────────────────────
-async function dbLoadSettings(userId) {
-  logger.db('dbLoadSettings', 'Loading settings', { userId });
-  const { data } = await supabase.from('vault_settings')
-    .select('user_id,lock_timeout,lock_action,lock_countdown,lock_on_minimize,compact,animations,accent,gen_length,gen_symbols,gen_numbers,gen_ambiguous,gen_copy,sounds,sound_login,sound_exit,sound_hover,sound_login_tone,sound_exit_tone,sound_hover_tone,toast_duration')
-    .eq('user_id',userId).single();
-  const result = data || {};
-  logger.db('dbLoadSettings', 'Settings loaded', result);
-  return result;
-}
-async function dbSaveSettings(userId, settings) {
-  logger.db('dbSaveSettings', 'Saving settings', { userId, settings });
-  await supabase.from('vault_settings').upsert({ user_id:userId, ...settings });
-  logger.db('dbSaveSettings', 'Success');
-}
-
-// ── Monitor ───────────────────────────────────────────────────────────────────
-async function dbGetStats(userId) {
-  logger.db('dbGetStats', 'Getting stats', { userId });
-  const [items, jobs, jobTrash, itemTrash] = await Promise.all([
-    supabase.from('vault_items').select('id',{count:'exact'}).eq('user_id',userId).is('deleted_at',null),
-    supabase.from('vault_jobs').select('id',{count:'exact'}).eq('user_id',userId).is('deleted_at',null),
-    supabase.from('vault_jobs').select('id',{count:'exact'}).eq('user_id',userId).not('deleted_at','is',null),
-    supabase.from('vault_items').select('id',{count:'exact'}).eq('user_id',userId).not('deleted_at','is',null),
-  ]);
-  let logSize = 0; try { logSize = fs.statSync(LOG_PATH).size; } catch {}
-  let dbSizeBytes = 0;
-  try {
-    const { data } = await supabase.rpc('get_db_size').single();
-    if (data) dbSizeBytes = data;
-  } catch {}
-  const stats = {
-    items: items.count||0, jobs: jobs.count||0,
-    trash: (itemTrash.count||0) + (jobTrash.count||0),
-    logSize, dbSizeBytes,
-  };
-  logger.db('dbGetStats', 'Stats retrieved', stats);
-  return stats;
-}
-
-// ── OAuth ─────────────────────────────────────────────────────────────────────
+// ─── OAUTH ─────────────────────────────────────────────────────────────────────
 async function googleOAuth() {
   logger.auth('oauth', 'Starting OAuth flow');
   if (oauthServer) { try { oauthServer.close(); } catch {} oauthServer = null; }
@@ -570,8 +201,6 @@ async function googleOAuth() {
       if (parsed.pathname !== '/oauth2callback') return;
 
       const origin = req.headers['origin'] || req.headers['referer'];
-      // Use URL parsing for strict origin validation — prevents subdomain bypass
-      // (e.g. http://localhost:42813.evil.com would pass a startsWith check)
       const isValidOrigin = (o) => { try { const u = new URL(o); return u.protocol === 'http:' && (u.host === 'localhost:42813' || u.host === '127.0.0.1:42813'); } catch { return false; } };
       if (origin && !isValidOrigin(origin)) {
         logger.warn('oauth', 'Rejected OAuth callback — bad origin', { origin });
@@ -734,11 +363,25 @@ setTimeout(()=>window.close(),5000);
 // ─── SOUNDS ───────────────────────────────────────────────────────────────────
 function playSound(type) { logger.debug('sound', `Playing sound: ${type}`); if (win) win.webContents.send('play-sound', type); }
 
-// ─── IPC ──────────────────────────────────────────────────────────────────────
+// ─── REGISTER MODULE IPC HANDLERS ─────────────────────────────────────────────
+const jobsModule    = require('./modules/jobs');
+const totpModule    = require('./modules/totp');
+const settingsModule = require('./modules/settings');
+const logoModule    = require('./modules/logo');
+const monitorModule = require('./modules/monitor');
+
+const getSessionFn = getSession;
+
+jobsModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation, getSessionFn, logger, logError);
+totpModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger, enc, dec, logError);
+settingsModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger, logError);
+logoModule.register(ipcMain, requireAuth, supabase, logger, getSessionFn, logError);
+monitorModule.register(ipcMain, requireAdminNoArgs, supabase, logger, getSessionFn, LOG_PATH);
+
+// ─── AUTH IPC HANDLERS ────────────────────────────────────────────────────────
 ipcMain.handle('auth:login', async () => {
   logger.ipc('auth:login', 'Login attempt started');
-  // Invalidate any existing session — prevents session fixation and token reuse
-  sessionToken = null; sessionTokenCreated = 0;
+  clearSession();
   if (oauthInProgress) {
     logger.warn('auth:login', 'Login rejected — auth already in progress');
     return { ok: false, error: 'Auth already in progress. Please complete it in your browser.' };
@@ -749,19 +392,18 @@ ipcMain.handle('auth:login', async () => {
     const encKey  = deriveKey(profile.googleId);
     const twofa   = await db2faGet(userId);
     if (twofa?.enabled) {
-      // Do NOT issue a session token until 2FA is verified — the token grants
-      // access to all authenticated IPC handlers, so issuing it here would
-      // allow a caller to bypass 2FA by using the token directly.
       session = { ...profile, userId, encKey, pending2fa:true };
+      setSession(session);
       logger.auth('auth:login', 'Login success — 2FA required', { email: profile.email, userId });
       return { ok:true, needs2fa:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar } };
     }
-    sessionToken = genSessionToken();
+    const token = genSessionToken();
     const vault = await dbLoadItems(userId, encKey);
     session = { ...profile, userId, encKey, pending2fa:false };
+    setSession(session);
     playSound('login');
     logger.auth('auth:login', 'Login success', { email: profile.email, userId, passwords: vault.passwords.length, notes: vault.notes.length });
-    return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken, vault };
+    return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token, vault };
   } catch (e) {
     logger.error('auth:login', 'Login failed', { message: e.message, code: e.code });
     logError('auth:login', e);
@@ -772,7 +414,6 @@ ipcMain.handle('auth:login', async () => {
 ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
   logger.ipc('auth:verify2fa', '2FA verification attempt');
   try {
-    // Rate limit FIRST — before any other check — to prevent probing
     if (isRateLimited()) {
       logger.warn('auth:verify2fa', '2FA rejected — rate limited');
       return { ok:false, error:'Too many attempts. Try again in 15 minutes.' };
@@ -795,11 +436,11 @@ ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
     }
     resetRateLimit();
     session.pending2fa = false;
-    sessionToken = genSessionToken();
+    const newToken = genSessionToken();
     const vault = await dbLoadItems(session.userId, session.encKey);
     playSound('login');
     logger.auth('auth:verify2fa', '2FA verified successfully', { userId: session.userId });
-    return { ok:true, token:sessionToken, vault };
+    return { ok:true, token:newToken, vault };
   } catch (e) {
     logger.error('auth:verify2fa', '2FA verification error', e.message);
     logError('auth:verify2fa', e);
@@ -810,7 +451,8 @@ ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
 ipcMain.handle('auth:logout', requireAuthNoArgs(() => {
   logger.ipc('auth:logout', 'Logout', { user: session?.email });
   playSound('logout');
-  session = null; sessionToken = null; sessionTokenCreated = 0;
+  session = null;
+  clearSession();
   logger.auth('auth:logout', 'Session cleared');
   return { ok:true };
 }));
@@ -818,15 +460,14 @@ ipcMain.handle('auth:logout', requireAuthNoArgs(() => {
 ipcMain.handle('auth:lock', requireAuthNoArgs(() => {
   logger.ipc('auth:lock', 'Lock', { user: session?.email });
   session = null;
-  sessionToken = null; sessionTokenCreated = 0;
+  clearSession();
   logger.auth('auth:lock', 'Session locked — full session cleared');
   return { ok:true };
 }));
 
 ipcMain.handle('auth:reauth', async () => {
   logger.ipc('auth:reauth', 'Re-authentication attempt');
-  // Invalidate existing session before starting new auth flow
-  sessionToken = null; sessionTokenCreated = 0;
+  clearSession();
   if (oauthInProgress) {
     logger.warn('auth:reauth', 'Reauth rejected — auth already in progress');
     return { ok:false, error:'Auth already in progress.' };
@@ -841,10 +482,11 @@ ipcMain.handle('auth:reauth', async () => {
     const encKey = deriveKey(profile.googleId);
     const vault  = await dbLoadItems(userId, encKey);
     session = { ...profile, userId, encKey, pending2fa:false };
-    sessionToken = genSessionToken();
+    setSession(session);
+    const token = genSessionToken();
     playSound('login');
     logger.auth('auth:reauth', 'Re-authentication success', { email: profile.email, userId });
-    return { ok:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken, vault };
+    return { ok:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token, vault };
   } catch (e) {
     logger.error('auth:reauth', 'Re-authentication failed', { message: e.message, code: e.code });
     logError('auth:reauth', e);
@@ -852,7 +494,7 @@ ipcMain.handle('auth:reauth', async () => {
   }
 });
 
-// ─── SENSITIVE HANDLERS (token-validated) ─────────────────────────────────────
+// ─── VAULT / TRASH IPC HANDLERS ───────────────────────────────────────────────
 ipcMain.handle('vault:save', requireAuth(async (_e,{type,item}) => {
   logger.ipc('vault:save', 'Save vault item', { type, dbId: item?._dbId });
   try {
@@ -895,113 +537,7 @@ ipcMain.handle('trash:purge', requireAuth(async (_e,{dbId}) => {
   try { await dbPermDelete(dbId,session.userId); logger.success('trash:purge', 'Item purged', { dbId }); return{ok:true}; } catch(e){ logError('trash:purge',e);return{ok:false,error:e.message};}
 }));
 
-ipcMain.handle('logo:fetch', requireAuth(async (_e,{site}) => {
-  logger.ipc('logo:fetch', 'Fetching logo', { site });
-  if (typeof site !== 'string' || !site.trim()) { logger.warn('logo:fetch', 'Invalid site'); return { ok: false, error: 'Invalid site' }; }
-  try { const url = await fetchLogo(site); logger.success('logo:fetch', 'Logo fetched', { site, url }); return {ok:true,url}; } catch(e){ logError('logo:fetch',e);return{ok:false};}
-}));
-
-ipcMain.handle('jobs:load', requireAuthNoArgs(async () => {
-  logger.ipc('jobs:load', 'Loading jobs');
-  try { const jobs = await dbLoadJobs(session.userId); logger.success('jobs:load', 'Jobs loaded', { count: jobs.length }); return {ok:true,jobs}; } catch(e){ logError('jobs:load',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('jobs:save', requireAuth(async (_e,{job}) => {
-  logger.ipc('jobs:save', 'Saving job', { jobId: job?.id, company: job?.company });
-  try {
-    if(!job||typeof job!=='object'){ logger.warn('jobs:save', 'Invalid job data'); return{ok:false,error:'Invalid job data'}; }
-    job.company=sanitizeStr(job.company);job.role=sanitizeStr(job.role);
-    if(job.email&&!validEmail(job.email)){ logger.warn('jobs:save', 'Invalid email', { email: job.email }); return{ok:false,error:'Invalid email'}; }
-    job.notes=sanitizeStr(job.notes,MAX_NOTES_LEN);
-    if(job.status&&!['wait','accepted','rejected'].includes(job.status)){ logger.warn('jobs:save', 'Invalid status', { status: job.status }); return{ok:false,error:'Invalid status'}; }
-    if(job.applied_at&&!/^\d{4}-\d{2}-\d{2}$/.test(job.applied_at)){ logger.warn('jobs:save', 'Invalid date', { applied_at: job.applied_at }); return{ok:false,error:'Invalid date format (YYYY-MM-DD)'}; }
-    const id = await dbSaveJob(session.userId,job);
-    logger.success('jobs:save', 'Job saved', { jobId: id, company: job.company });
-    return {ok:true,id};
-  } catch(e){ logError('jobs:save',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('jobs:delete', requireAuth(async (_e,{id}) => {
-  logger.ipc('jobs:delete', 'Deleting job', { jobId: id });
-  try { await dbDeleteJob(id,session.userId); logger.success('jobs:delete', 'Job deleted', { jobId: id }); return{ok:true}; } catch(e){ logError('jobs:delete',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('jobs:reorder', requireAuth(async (_e,{jobs}) => {
-  logger.ipc('jobs:reorder', 'Reordering jobs', { count: jobs?.length });
-  try { await dbUpdateJobOrder(jobs,session.userId); logger.success('jobs:reorder', 'Jobs reordered'); return{ok:true}; } catch(e){ logError('jobs:reorder',e);return{ok:false};}
-}));
-
-ipcMain.handle('jobs:trash:load', requireAuthNoArgs(async () => {
-  logger.ipc('jobs:trash:load', 'Loading job trash');
-  try { const items = await dbLoadJobTrash(session.userId); logger.success('jobs:trash:load', 'Job trash loaded', { count: items.length }); return {ok:true,items}; } catch(e){ logError('jobs:trash:load',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('jobs:trash:restore', requireAuth(async (_e,{id}) => {
-  logger.ipc('jobs:trash:restore', 'Restoring job', { jobId: id });
-  try { await dbRestoreJob(id,session.userId); logger.success('jobs:trash:restore', 'Job restored', { jobId: id }); return{ok:true}; } catch(e){ logError('jobs:trash:restore',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('jobs:trash:purge', requireAuth(async (_e,{id}) => {
-  logger.ipc('jobs:trash:purge', 'Purging job', { jobId: id });
-  try { await dbPermDeleteJob(id,session.userId); logger.success('jobs:trash:purge', 'Job purged', { jobId: id }); return{ok:true}; } catch(e){ logError('jobs:trash:purge',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('settings:load', requireAuthNoArgs(async () => {
-  logger.ipc('settings:load', 'Loading settings');
-  try { const settings = await dbLoadSettings(session.userId); logger.success('settings:load', 'Settings loaded', settings); return {ok:true,settings}; } catch(e){ logger.warn('settings:load', 'Using defaults'); return{ok:true,settings:{lock_timeout:5,lock_action:'lock'}};}
-}));
-
-ipcMain.handle('settings:save', requireAuth(async (_e,{settings}) => {
-  logger.ipc('settings:save', 'Saving settings', settings);
-  try {
-    if(!settings||typeof settings!=='object'){ logger.warn('settings:save', 'Invalid settings'); return{ok:false,error:'Invalid settings'}; }
-    const t=parseInt(settings.lock_timeout);if(isNaN(t)||t<0||t>120){ logger.warn('settings:save', 'Invalid timeout', { timeout: t }); return{ok:false,error:'Lock timeout must be 0-120 minutes'}; }
-    if(!['lock','exit'].includes(settings.lock_action)){ logger.warn('settings:save', 'Invalid lock action', { action: settings.lock_action }); return{ok:false,error:'Invalid lock action'}; }
-    const validAccents = ['violet','blue','teal','green','orange','rose','red','pink','yellow','amber','cyan','indigo','lime'];
-    const accent = validAccents.includes(settings.accent) ? settings.accent : 'violet';
-    const gl = parseInt(settings.gen_length); const gen_length = (isNaN(gl)||gl<8||gl>128) ? 20 : gl;
-    const td = parseInt(settings.toast_duration); const toast_duration = [1500,2400,3500,5000].includes(td) ? td : 2400;
-    const out = {
-      lock_timeout:t, lock_action:settings.lock_action,
-      lock_countdown:!!settings.lock_countdown, lock_on_minimize:!!settings.lock_on_minimize,
-      compact:!!settings.compact, animations:!!settings.animations, accent,
-      gen_length, gen_symbols:!!settings.gen_symbols, gen_numbers:!!settings.gen_numbers,
-      gen_ambiguous:!!settings.gen_ambiguous, gen_copy:!!settings.gen_copy,
-      sounds:!!settings.sounds,
-      sound_login:!!settings.sound_login, sound_exit:!!settings.sound_exit, sound_hover:!!settings.sound_hover,
-      sound_login_tone: typeof settings.sound_login_tone==='string' ? settings.sound_login_tone : 'chime',
-      sound_exit_tone: typeof settings.sound_exit_tone==='string' ? settings.sound_exit_tone : 'chime',
-      sound_hover_tone: typeof settings.sound_hover_tone==='string' ? settings.sound_hover_tone : 'click',
-      toast_duration,
-    };
-    await dbSaveSettings(session.userId, out);
-    logger.success('settings:save', 'Settings saved');
-    return{ok:true};
-  } catch(e){ logError('settings:save',e);return{ok:false};}
-}));
-
-ipcMain.handle('totp:load', requireAuthNoArgs(async () => {
-  logger.ipc('totp:load', 'Loading TOTP items');
-  try { const items = await dbLoadTotp(session.userId,session.encKey); logger.success('totp:load', 'TOTP items loaded', { count: items.length }); return {ok:true,items}; } catch(e){ logError('totp:load',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('totp:save', requireAuth(async (_e,{item}) => {
-  logger.ipc('totp:save', 'Saving TOTP item', { itemId: item?.id, name: item?.name });
-  try {
-    if(!item||typeof item!=='object'){ logger.warn('totp:save', 'Invalid TOTP data'); return{ok:false,error:'Invalid TOTP data'}; }
-    item.name=sanitizeStr(item.name);item.issuer=sanitizeStr(item.issuer);
-    if(!validTotpSecret(item.secret)){ logger.warn('totp:save', 'Invalid TOTP secret'); return{ok:false,error:'Invalid TOTP secret (base32: A-Z, 2-7, 16+ chars)'}; }
-    const id = await dbSaveTotp(session.userId,item,session.encKey);
-    logger.success('totp:save', 'TOTP item saved', { itemId: id, name: item.name });
-    return {ok:true,id};
-  } catch(e){ logError('totp:save',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('totp:delete', requireAuth(async (_e,{id}) => {
-  logger.ipc('totp:delete', 'Deleting TOTP item', { itemId: id });
-  try { await dbDeleteTotp(id,session.userId); logger.success('totp:delete', 'TOTP item deleted', { itemId: id }); return{ok:true}; } catch(e){ logError('totp:delete',e);return{ok:false,error:e.message};}
-}));
-
+// ─── 2FA IPC HANDLERS ─────────────────────────────────────────────────────────
 ipcMain.handle('2fa:status', requireAuthNoArgs(async () => {
   logger.ipc('2fa:status', 'Checking 2FA status');
   try { const d=await db2faGet(session.userId);const enabled=d?.enabled||false; logger.success('2fa:status', '2FA status', { enabled }); return{ok:true,enabled}; } catch(e){ logger.warn('2fa:status', 'No 2FA record, defaulting to disabled'); return{ok:true,enabled:false};}
@@ -1015,7 +551,6 @@ ipcMain.handle('2fa:setup', requireAuthNoArgs(async () => {
 ipcMain.handle('2fa:enable', requireAuth(async (_e,{token}) => {
   logger.ipc('2fa:enable', 'Enabling 2FA');
   try {
-    // Rate limit FIRST to prevent brute-force
     if (isRateLimited()) { logger.warn('2fa:enable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
     if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid token format'); return{ok:false,error:'Invalid code format. Enter a 6-digit number.'}; }
     const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token)){ recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid 2FA code'); return{ok:false,error:'Invalid code'}; }
@@ -1027,9 +562,7 @@ ipcMain.handle('2fa:enable', requireAuth(async (_e,{token}) => {
 ipcMain.handle('2fa:disable', requireAuth(async (_e, { token }) => {
   logger.ipc('2fa:disable', 'Disabling 2FA');
   try {
-    // Rate limit FIRST to prevent brute-force
     if (isRateLimited()) { logger.warn('2fa:disable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
-    // Require a valid TOTP code to prevent session-only attackers from disabling 2FA
     if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid token format'); return { ok: false, error: 'Enter your current 6-digit 2FA code to disable.' }; }
     const d = await db2faGet(session.userId);
     if (!d || !verify2fa(d.secret, token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid 2FA code'); return { ok: false, error: 'Invalid code' }; }
@@ -1040,84 +573,17 @@ ipcMain.handle('2fa:disable', requireAuth(async (_e, { token }) => {
   } catch (e) { logError('2fa:disable', e); return { ok: false, error: e.message }; }
 }));
 
-ipcMain.handle('monitor:stats', requireAdminNoArgs(async () => {
-  logger.ipc('monitor:stats', 'Loading monitor stats');
-  try { const stats=await dbGetStats(session.userId); logger.success('monitor:stats', 'Stats loaded', stats); return {ok:true,stats}; } catch(e){ logError('monitor:stats',e);return{ok:false,error:e.message};}
-}));
-
-ipcMain.handle('log:read', requireAdminNoArgs(async () => {
-  logger.ipc('log:read', 'Reading log');
-  try {
-    const t = logger.readLog('ERROR', 10000);
-    return { ok: true, log: t };
-  } catch(e){ return { ok: true, log: '(could not read log)' }; }
-}));
-
-ipcMain.handle('log:clear', requireAdminNoArgs(async () => {
-  logger.ipc('log:clear', 'Clearing log');
-  try { logger.clearAllLogs(); logger.success('log:clear', 'All logs cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
-}));
-
-
-
-// ─── ADMIN HELPER ──────────────────────────────────────────────────────────────
-// Server-side admin check — must match the admin email. This cannot be bypassed
-// by manipulating the renderer since it runs in the main process.
-const ADMIN_EMAIL = 'ysmagri@gmail.com';
-function requireAdminNoArgs(fn) {
-  return async (event, token) => {
-    if (!validateToken(token)) {
-      logger.warn('auth', 'requireAdminNoArgs: rejected unauthenticated call');
-      return { ok: false, error: 'Not authenticated' };
-    }
-    if (!session || session.email !== ADMIN_EMAIL) {
-      logger.warn('auth', 'requireAdminNoArgs: rejected non-admin user', { email: session?.email });
-      return { ok: false, error: 'Admin access required' };
-    }
-    return fn(event);
-  };
-}
-
-// --- ADMIN (service key - full DB access, gated by email on server) ---
-ipcMain.handle('admin:users', requireAdminNoArgs(async () => {
-  logger.ipc('admin:users', 'Admin listing all users');
-  try {
-    const { data: users, error } = await supabase.from('vault_users').select('*').order('created_at', { ascending: false });
-    if (error) { logger.error('admin:users', 'Failed', error.message); throw new Error('Failed to list users'); }
-    logger.success('admin:users', 'Found ' + (users ? users.length : 0) + ' users');
-    return { ok: true, users: users || [] };
-  } catch (e) { logError('admin:users', e); return { ok: false, error: 'Failed to list users' }; }
-}));
-
-ipcMain.handle('admin:stats', requireAdminNoArgs(async () => {
-  logger.ipc('admin:stats', 'Admin fetching global stats');
-  try {
-    const [users, items, jobs, totp] = await Promise.all([
-      supabase.from('vault_users').select('id', { count: 'exact', head: true }),
-      supabase.from('vault_items').select('id', { count: 'exact', head: true }).is('deleted_at', null),
-      supabase.from('vault_jobs').select('id', { count: 'exact', head: true }).is('deleted_at', null),
-      supabase.from('vault_totp').select('id', { count: 'exact', head: true }),
-    ]);
-    const stats = {
-      totalUsers: users.count || 0,
-      totalItems: items.count || 0,
-      totalJobs: jobs.count || 0,
-      totalTotp: totp.count || 0,
-    };
-    logger.success('admin:stats', 'Global stats loaded', stats);
-    return { ok: true, stats };
-  } catch (e) { logError('admin:stats', e); return { ok: false, error: 'Failed to load stats' }; }
-}));
+// ─── WINDOW CONTROL IPC ───────────────────────────────────────────────────────
 ipcMain.handle('win:minimize', requireAuthNoArgs(() => { logger.ipc('win:minimize', 'Window minimized'); win?.minimize(); return { ok: true }; }));
 ipcMain.handle('win:maximize', requireAuthNoArgs(() => {
-	  logger.ipc('win:maximize', 'Window maximize toggled');
-	  if(win?.isMaximized()){ win.unmaximize(); }
-	  else { win?.maximize(); }
-	  setTimeout(() => {
-	    if(!win.isDestroyed()) win.webContents.send('win:maximized-state', win.isMaximized());
-	  }, 50);
-	  return { ok: true };
-	}));
+  logger.ipc('win:maximize', 'Window maximize toggled');
+  if(win?.isMaximized()){ win.unmaximize(); }
+  else { win?.maximize(); }
+  setTimeout(() => {
+    if(!win.isDestroyed()) win.webContents.send('win:maximized-state', win.isMaximized());
+  }, 50);
+  return { ok: true };
+}));
 ipcMain.handle('win:close', requireAuthNoArgs(() => {
   logger.ipc('win:close', 'Window close requested — minimizing to tray');
   if(win){
@@ -1151,12 +617,12 @@ function setupTray(){
   const buildTrayMenu = () => Menu.buildFromTemplate([
     { label: 'Show Vault', click: () => { if(win){ win.show(); win.focus(); win.setSkipTaskbar(false); } } },
     { type: 'separator' },
-    { label: 'Lock Vault', enabled: !!sessionToken, click: () => {
+    { label: 'Lock Vault', enabled: !!getSession(), click: () => {
       logger.info('tray', 'Lock vault from tray');
       if(win){ win.webContents.send('tray:lock'); }
     }},
     { type: 'separator' },
-    { label: 'Logout', enabled: !!sessionToken, click: () => {
+    { label: 'Logout', enabled: !!getSession(), click: () => {
       logger.info('tray', 'Logout from tray');
       if(win){ win.webContents.send('tray:logout'); }
     }},
@@ -1182,7 +648,6 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, '..', 'index.html'));
 
-  // Prevent navigation away from local files — critical for a password manager
   win.webContents.on('will-navigate', (event, url) => {
     const parsedUrl = new URL(url);
     if (parsedUrl.protocol !== 'file:') {
@@ -1191,7 +656,6 @@ function createWindow() {
     }
   });
 
-  // Prevent new windows / window.open / target="_blank" from creating insecure child windows
   win.webContents.setWindowOpenHandler(({ url }) => {
     const parsedUrl = new URL(url);
     if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
@@ -1220,6 +684,7 @@ function createWindow() {
 app.whenReady().then(() => {
   logger.info('app', 'Electron app ready');
   CryptoJS  = require('crypto-js');
+  setCryptoJS(CryptoJS);
   speakeasy = require('speakeasy');
   const ws = require('ws');
   const { createClient } = require('@supabase/supabase-js');
@@ -1246,7 +711,6 @@ app.on('activate', () => {
     createWindow();
   }
 });
-
 
 app.on('before-quit', () => {
   logger.info('app', 'App quitting — session end');
