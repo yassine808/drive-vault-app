@@ -32,14 +32,16 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke('auth:login');
   },
   logout: () => {
-    clearToken();
     bridgeLog('call', 'auth:logout', true);
-    return ipcRenderer.invoke('auth:logout');
+    const r = ipcRenderer.invoke('auth:logout', sessionToken);
+    clearToken();
+    return r;
   },
   lock: () => {
-    clearToken();
     bridgeLog('call', 'auth:lock', true);
-    return ipcRenderer.invoke('auth:lock');
+    const r = ipcRenderer.invoke('auth:lock', sessionToken);
+    clearToken();
+    return r;
   },
   reauth: () => {
     bridgeLog('call', 'auth:reauth', true);
@@ -143,9 +145,9 @@ contextBridge.exposeInMainWorld('api', {
       bridgeLog('call', '2fa:enable', true);
       return ipcRenderer.invoke('2fa:enable', sessionToken, { token });
     },
-    disable: () => {
+    disable: (token) => {
       bridgeLog('call', '2fa:disable', true);
-      return ipcRenderer.invoke('2fa:disable', sessionToken);
+      return ipcRenderer.invoke('2fa:disable', sessionToken, { token });
     },
   },
 

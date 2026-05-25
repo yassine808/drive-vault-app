@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://www.google.com/s2/favicons https://*.gstatic.com https://api.qrserver.com https://lh3.googleusercontent.com; connect-src 'self' https://*.supabase.co https://api.pwnedpasswords.com; object-src 'none'; base-uri 'self'; form-action 'self';" />
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://www.google.com/s2/favicons https://*.googleusercontent.com https://api.qrserver.com; connect-src 'self' https://*.supabase.co https://api.pwnedpasswords.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; worker-src 'none'; frame-ancestors 'none';" />
   <title>Vault</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" />
+  
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
@@ -45,7 +45,7 @@
       </svg>
       Sign in with Google
     </button>
-    <p class="note">AES-encrypted · Supabase cloud · only you can read it</p>
+    <p class="note">AES-encrypted Â· Supabase cloud Â· only you can read it</p>
     <p class="err" id="login-err" hidden></p>
   </div>
 </div>
@@ -158,7 +158,7 @@
       </div>
       <div class="search-row"><div class="search">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" id="pw-search" placeholder="Search passwords…" />
+        <input type="text" id="pw-search" placeholder="Search passwordsâ€¦" />
       </div></div>
       <div class="list" id="pw-list">
         <div class="empty" id="pw-empty">
@@ -191,7 +191,7 @@
     <!-- Jobs -->
     <section class="tab" id="tab-jobs" hidden>
       <div class="tab-head">
-        <div><h2>Job Tracker</h2><p class="sub">Double-click a cell to edit · drag ⠿ to reorder</p></div>
+        <div><h2>Job Tracker</h2><p class="sub">Double-click a cell to edit Â· drag â ¿ to reorder</p></div>
         <button class="btn-primary" id="btn-add-job">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Add application
@@ -201,13 +201,13 @@
       <div class="jobs-toolbar">
         <div class="search search-jobs">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-          <input type="text" id="jobs-search" placeholder="Search all fields…" />
+          <input type="text" id="jobs-search" placeholder="Search all fieldsâ€¦" />
         </div>
         <div class="jobs-filter-pills">
           <button class="filter-pill active" data-filter="all">All</button>
-          <button class="filter-pill" data-filter="accepted">✅ Accepted</button>
-          <button class="filter-pill" data-filter="wait">⏳ Waiting</button>
-          <button class="filter-pill" data-filter="rejected">❌ Rejected</button>
+          <button class="filter-pill" data-filter="accepted">âœ… Accepted</button>
+          <button class="filter-pill" data-filter="wait">â³ Waiting</button>
+          <button class="filter-pill" data-filter="rejected">âŒ Rejected</button>
         </div>
       </div>
       <div class="jobs-table-wrap">
@@ -215,11 +215,11 @@
           <thead>
             <tr>
               <th style="width:28px"></th>
-              <th class="sortable" data-col="company">Company <span class="sort-icon">⇅</span></th>
-              <th class="sortable" data-col="role">Role <span class="sort-icon">⇅</span></th>
+              <th class="sortable" data-col="company">Company <span class="sort-icon">â‡…</span></th>
+              <th class="sortable" data-col="role">Role <span class="sort-icon">â‡…</span></th>
               <th>Email</th>
-              <th class="sortable" data-col="applied_at">Applied <span class="sort-icon">⇅</span></th>
-              <th class="sortable" data-col="status">Status <span class="sort-icon">⇅</span></th>
+              <th class="sortable" data-col="applied_at">Applied <span class="sort-icon">â‡…</span></th>
+              <th class="sortable" data-col="status">Status <span class="sort-icon">â‡…</span></th>
               <th></th>
             </tr>
           </thead>
@@ -282,10 +282,10 @@
             User Management
           </div>
           <div class="admin-stats-grid" id="admin-stats-grid">
-            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-users">—</div><div class="admin-stat-lbl">Total Users</div></div>
-            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-items">—</div><div class="admin-stat-lbl">Vault Items</div></div>
-            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-jobs">—</div><div class="admin-stat-lbl">Job Apps</div></div>
-            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-totp">—</div><div class="admin-stat-lbl">TOTP Accounts</div></div>
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-users">â€”</div><div class="admin-stat-lbl">Total Users</div></div>
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-items">â€”</div><div class="admin-stat-lbl">Vault Items</div></div>
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-jobs">â€”</div><div class="admin-stat-lbl">Job Apps</div></div>
+            <div class="admin-stat"><div class="admin-stat-num" id="admin-total-totp">â€”</div><div class="admin-stat-lbl">TOTP Accounts</div></div>
           </div>
         </div>
         <div class="admin-card">
@@ -298,7 +298,7 @@
       <div class="monitor-grid" id="monitor-grid"></div>
       <div class="log-section">
         <div class="log-head"><span>Error log</span><button class="tb-btn" id="btn-clear-log">Clear log</button></div>
-        <pre class="log-view" id="log-view">Loading…</pre>
+        <pre class="log-view" id="log-view">Loadingâ€¦</pre>
       </div>
     </section>
 
@@ -309,7 +309,7 @@
       </div>
       <div class="settings-body">
 
-        <!-- ── Security ─────────────────────────────────────────── -->
+        <!-- â”€â”€ Security â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
         <div class="settings-card">
           <h3 class="settings-section-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:6px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -357,7 +357,7 @@
           </div>
         </div>
 
-        <!-- ── Appearance ───────────────────────────────────────── -->
+        <!-- â”€â”€ Appearance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
         <div class="settings-card">
           <h3 class="settings-section-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:6px"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg>
@@ -404,7 +404,7 @@
           </div>
         </div>
 
-        <!-- ── Passwords ────────────────────────────────────────── -->
+        <!-- â”€â”€ Passwords â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
         <div class="settings-card">
           <h3 class="settings-section-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:6px"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
@@ -457,7 +457,7 @@
           </div>
         </div>
 
-        <!-- ── Notifications ────────────────────────────────────── -->
+        <!-- â”€â”€ Notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
         <div class="settings-card">
           <h3 class="settings-section-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:6px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -486,7 +486,7 @@
                 <option value="bright">Bright</option>
               </select>
               <label class="toggle toggle-sm"><input type="checkbox" id="s-sound-login" checked /><span class="toggle-track"></span></label>
-              <button class="sound-test-btn" id="btn-test-login-sound" title="Test login sound">▶</button>
+              <button class="sound-test-btn" id="btn-test-login-sound" title="Test login sound">â–¶</button>
             </div>
           </div>
           <div class="settings-row">
@@ -502,7 +502,7 @@
                 <option value="bright">Bright</option>
               </select>
               <label class="toggle toggle-sm"><input type="checkbox" id="s-sound-exit" checked /><span class="toggle-track"></span></label>
-              <button class="sound-test-btn" id="btn-test-exit-sound" title="Test exit/lock sound">▶</button>
+              <button class="sound-test-btn" id="btn-test-exit-sound" title="Test exit/lock sound">â–¶</button>
             </div>
           </div>
           <div class="settings-row">
@@ -518,7 +518,7 @@
                 <option value="none">None</option>
               </select>
               <label class="toggle toggle-sm"><input type="checkbox" id="s-sound-hover" /><span class="toggle-track"></span></label>
-              <button class="sound-test-btn" id="btn-test-hover-sound" title="Test hover sound">▶</button>
+              <button class="sound-test-btn" id="btn-test-hover-sound" title="Test hover sound">â–¶</button>
             </div>
           </div>
           <div class="settings-divider"></div>
@@ -538,7 +538,7 @@
           </div>
         </div>
 
-        <!-- ── Two-factor authentication ────────────────────────── -->
+        <!-- â”€â”€ Two-factor authentication â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
         <div class="settings-card">
           <h3 class="settings-section-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:6px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -550,7 +550,7 @@
               <div class="settings-desc">Require a TOTP code after signing in with Google.</div>
             </div>
             <div class="settings-control">
-              <div id="s-2fa-status" style="font-size:12px;color:var(--txt-muted)">Loading…</div>
+              <div id="s-2fa-status" style="font-size:12px;color:var(--txt-muted)">Loadingâ€¦</div>
               <button class="btn-primary" id="s-btn-2fa" style="margin-left:10px">Manage</button>
             </div>
           </div>
@@ -569,18 +569,18 @@
     <div class="fg"><label>Email / Username</label><input class="fi" id="f-user" placeholder="you@example.com" /></div>
     <div class="fg"><label>Password</label>
       <div class="pw-wrap">
-        <input class="fi" id="f-pw" type="password" placeholder="••••••••" />
+        <input class="fi" id="f-pw" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
         <button class="eye-btn" type="button" id="eye-btn" aria-label="Toggle password visibility">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
       </div>
       <div class="sm-wrap" id="sm">
         <div class="sm-bars"><div class="sm-bar"></div><div class="sm-bar"></div><div class="sm-bar"></div><div class="sm-bar"></div></div>
-        <span class="sm-lbl">—</span>
+        <span class="sm-lbl">â€”</span>
       </div>
       <button class="use-gen" type="button" id="use-gen-btn">Generate strong password</button>
     </div>
-    <div class="fg"><label>Notes (optional)</label><textarea class="fta" id="f-notes" placeholder="Any extra info…"></textarea></div>
+    <div class="fg"><label>Notes (optional)</label><textarea class="fta" id="f-notes" placeholder="Any extra infoâ€¦"></textarea></div>
     <div class="modal-foot">
       <button class="btn-ghost" id="modal-cancel">Cancel</button>
       <button class="btn-primary" id="modal-ok">Save</button>
@@ -593,20 +593,20 @@
   <div class="modal" style="width:460px">
     <h3>Password generator</h3>
     <div class="gen-out-row">
-      <div class="gen-out" id="gen-out">—</div>
+      <div class="gen-out" id="gen-out">â€”</div>
       <button class="icon-btn" id="gen-copy" title="Copy" aria-label="Copy password">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       </button>
     </div>
     <div class="strength-row" id="gen-strength-row">
       <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
-      <span class="slabel" id="gen-slabel">—</span>
+      <span class="slabel" id="gen-slabel">â€”</span>
     </div>
     <div class="gen-opts">
       <div class="gen-opt"><span>Length</span><input type="range" min="8" max="64" value="20" id="gen-len"/><span class="gen-num" id="gen-len-val">20</span></div>
-      <div class="gen-opt"><span>Uppercase A–Z</span><label class="tog"><input type="checkbox" id="go-upper" checked/><span></span></label></div>
-      <div class="gen-opt"><span>Numbers 0–9</span><label class="tog"><input type="checkbox" id="go-nums" checked/><span></span></label></div>
-      <div class="gen-opt"><span>Symbols !@#$…</span><label class="tog"><input type="checkbox" id="go-syms" checked/><span></span></label></div>
+      <div class="gen-opt"><span>Uppercase Aâ€“Z</span><label class="tog"><input type="checkbox" id="go-upper" checked/><span></span></label></div>
+      <div class="gen-opt"><span>Numbers 0â€“9</span><label class="tog"><input type="checkbox" id="go-nums" checked/><span></span></label></div>
+      <div class="gen-opt"><span>Symbols !@#$â€¦</span><label class="tog"><input type="checkbox" id="go-syms" checked/><span></span></label></div>
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" id="gen-close">Close</button>
@@ -626,12 +626,12 @@
     <div class="fg"><label>Applied date</label><input class="fi" id="j-date" type="date" /></div>
     <div class="fg"><label>Status</label>
       <div class="status-picker" id="j-status-picker">
-        <button class="status-pick wait active" data-val="wait">⏳ Waiting</button>
-        <button class="status-pick accepted" data-val="accepted">✅ Accepted</button>
-        <button class="status-pick rejected" data-val="rejected">❌ Rejected</button>
+        <button class="status-pick wait active" data-val="wait">â³ Waiting</button>
+        <button class="status-pick accepted" data-val="accepted">âœ… Accepted</button>
+        <button class="status-pick rejected" data-val="rejected">âŒ Rejected</button>
       </div>
     </div>
-    <div class="fg"><label>Notes</label><textarea class="fta" id="j-notes" placeholder="Interview notes…"></textarea></div>
+    <div class="fg"><label>Notes</label><textarea class="fta" id="j-notes" placeholder="Interview notesâ€¦"></textarea></div>
     <div class="modal-foot">
       <button class="btn-ghost" id="job-cancel">Cancel</button>
       <button class="btn-primary" id="job-ok">Save</button>
@@ -649,7 +649,7 @@
       <input class="fi" id="t-secret" placeholder="JBSWY3DPEHPK3PXP" style="font-family:var(--mono);letter-spacing:.05em" />
       <p style="font-size:11px;color:var(--txt-muted);margin-top:6px">Paste the secret key shown during 2FA setup (not the 6-digit code).</p>
     </div>
-    <div class="fg"><label>Icon (emoji)</label><input class="fi" id="t-icon" placeholder="🔐" style="font-size:18px;width:60px" maxlength="4" /></div>
+    <div class="fg"><label>Icon (emoji)</label><input class="fi" id="t-icon" placeholder="ðŸ”" style="font-size:18px;width:60px" maxlength="4" /></div>
     <div class="modal-foot">
       <button class="btn-ghost" id="totp-cancel">Cancel</button>
       <button class="btn-primary" id="totp-ok">Save</button>
@@ -673,7 +673,7 @@
 <!-- CONFIRM -->
 <div class="overlay" id="confirm-overlay" hidden>
   <div class="confirm-modal">
-    <div class="confirm-icon" id="confirm-icon">🗑️</div>
+    <div class="confirm-icon" id="confirm-icon">ðŸ—‘ï¸</div>
     <h3 id="confirm-title">Delete this item?</h3>
     <p class="confirm-msg" id="confirm-msg">It will be moved to Trash and auto-deleted after 30 days.</p>
     <div class="modal-foot">
@@ -685,9 +685,9 @@
 
 <!-- STATUS POPUP (inline job status change) -->
 <div class="status-popup" id="status-popup" hidden>
-  <button class="status-pop-opt" data-val="accepted">✅ Accepted</button>
-  <button class="status-pop-opt" data-val="wait">⏳ Waiting</button>
-  <button class="status-pop-opt" data-val="rejected">❌ Rejected</button>
+  <button class="status-pop-opt" data-val="accepted">âœ… Accepted</button>
+  <button class="status-pop-opt" data-val="wait">â³ Waiting</button>
+  <button class="status-pop-opt" data-val="rejected">âŒ Rejected</button>
 </div>
 
 <div class="toast" id="toast"></div>

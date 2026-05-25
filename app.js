@@ -31,7 +31,6 @@ logInfo('app', 'Renderer initialized');
 
 // ═══ UTILS ════════════════════════════════════════════════════════════════════
 const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
-const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const wc   = t => { t=(t||'').trim(); return t?t.split(/\s+/).length:0; };
 const days = d => Math.max(0,Math.ceil((30*86400000-(Date.now()-new Date(d)))/86400000));
 
@@ -233,7 +232,16 @@ function armLock(){
   },LOCK_MS);
 }
 function disarmLock(){clearTimeout(lockTimer);clearInterval(lockTick);const row=document.getElementById('lock-row');if(row)row.hidden=true;}
-function doLock(){logInfo('auth', 'Locking vault'); disarmLock();api.lock();screen('s-lock');}
+function doLock(){
+  logInfo('auth', 'Locking vault');
+  disarmLock();
+  // Clear all sensitive data from renderer memory before locking
+  S.passwords=[];S.notes=[];S.totp=[];S.jobs=[];S.trash=[];S.activeNote=null;
+  // Remove any password DOM elements that might retain plaintext in memory
+  document.querySelectorAll('.pw-real').forEach(el=>{el.textContent='';el.remove();});
+  api.lock();screen('s-lock');
+  logInfo('auth', 'Sensitive data cleared from memory on lock');
+}
 ['mousemove','keydown','mousedown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(S.user&&S.settings.lock_timeout>0)armLock();},{passive:true}));
 
 document.getElementById('btn-unlock').addEventListener('click',async()=>{
@@ -453,7 +461,13 @@ function renderPasswords(){
     eyeBtn.addEventListener('touchstart',e=>{e.preventDefault();hidSpan.hidden=true;revSpan.hidden=false;smWrap.hidden=false;updateInlineSm(smWrap,pw.password||'');},{passive:false});
     eyeBtn.addEventListener('touchend',hideEye);
 
-    copyBtn.onclick=()=>{navigator.clipboard.writeText(pw.password||'');toast('Password copied!');logInfo('password', 'Password copied to clipboard', { site: pw.site });};
+    copyBtn.onclick=()=>{
+      navigator.clipboard.writeText(pw.password||'');
+      toast('Password copied! (clipboard clears in 30s)');
+      logInfo('password', 'Password copied to clipboard', { site: pw.site });
+      // Auto-clear clipboard after 30 seconds to minimize exposure window
+      setTimeout(()=>{navigator.clipboard.writeText('')?.catch?.(()=>{});logInfo('password', 'Clipboard auto-cleared');},30000);
+    };
     editBtn.onclick=()=>{ logInfo('password', 'Edit password', { site: pw.site }); openPwModal(pw); };
     delBtn.onclick=()=>confirm({
       title:'Move to Trash?',msg:`"${pw.site}" will be moved to Trash and auto-deleted after 30 days.`,
@@ -805,7 +819,7 @@ function renderJobsTable(){
     const roleTd=document.createElement('td');roleTd.className='editable-cell';roleTd.dataset.field='role';roleTd.textContent=job.role||'';tr.appendChild(roleTd);
     const emailTd=document.createElement('td');
     const emailWrap=document.createElement('div');emailWrap.style.cssText='display:flex;align-items:center;gap:5px';
-    const emailLink=document.createElement('a');emailLink.className='job-email';emailLink.href='mailto:'+(job.email||'');emailLink.textContent=job.email||'';emailWrap.appendChild(emailLink);
+    const emailLink=document.createElement('a');emailLink.className='job-email';emailLink.href='mailto:'+encodeURIComponent(job.email||'');emailLink.textContent=job.email||'';emailWrap.appendChild(emailLink);
     const copyEmailBtn=document.createElement('button');copyEmailBtn.className='icon-btn copy copy-email-btn';copyEmailBtn.title='Copy email';copyEmailBtn.style.cssText='width:22px;height:22px;flex-shrink:0';
     copyEmailBtn.innerHTML='<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
     emailWrap.appendChild(copyEmailBtn);emailTd.appendChild(emailWrap);tr.appendChild(emailTd);
@@ -962,8 +976,13 @@ function renderTotpGrid(){
       onOk:async()=>{logInfo('totp', 'TOTP account removed', { name: item.name });await api.totpDelete(item.id);S.totp=S.totp.filter(t=>t.id!==item.id);renderTotpGrid();updateCounts();toast('Removed');}
     });
     card.querySelector('.totp-copy').onclick=()=>{
-      const code=document.getElementById(codeId).textContent.replace(/\s/g,'');
-      if(code&&code!=='——'){navigator.clipboard.writeText(code);toast('Code copied!');logInfo('totp', 'TOTP code copied', { name: item.name });}
+      const code=document.getElementById(codeId).textContent.replace(/s/g,'');
+      if(code&&code!=='——'){
+        navigator.clipboard.writeText(code);
+        toast('Code copied! (clipboard clears in 30s)');
+        logInfo('totp', 'TOTP code copied', { name: item.name });
+        setTimeout(()=>{navigator.clipboard.writeText('')?.catch?.(()=>{});},30000);
+      }
     };
     grid.appendChild(card);
     function updateCode(){
@@ -1051,7 +1070,7 @@ async function loadMonitor(){
     gridWrap.appendChild(mkCard(st.jobs,'Job apps'));
     const supCard=document.createElement('div');supCard.className='mon-card mon-wide';
     const supNum=document.createElement('div');supNum.className='mon-num';supNum.style.cssText='font-size:12px;font-family:var(--mono)';supNum.textContent='Supabase';supCard.appendChild(supNum);
-    const supLbl=document.createElement('div');supLbl.className='mon-lbl';supLbl.textContent='EU West (Ireland) · Log: '+(sr.logPath||'');supCard.appendChild(supLbl);
+    const supLbl=document.createElement('div');supLbl.className='mon-lbl';supLbl.textContent='Supabase · Encrypted storage';supCard.appendChild(supLbl);
     gridWrap.appendChild(supCard);
     logOk('monitor', 'Monitor data loaded', { items: st.items, jobs: st.jobs, trash: st.trash });
   } else {
@@ -1107,14 +1126,17 @@ async function loadAdminDashboard(){
 }
 
 function makeCircleSvg(pct,color){
+  // Sanitize inputs to prevent SVG injection
+  const safePct = Math.max(0, Math.min(100, parseInt(pct) || 0));
+  const safeColor = String(color).replace(/[<>"'&]/g, '');
   const r=44,circ=2*Math.PI*r;
-  const dash=circ*(pct/100);
+  const dash=circ*(safePct/100);
   return `<svg class="mon-circle-svg" viewBox="0 0 100 100">
     <circle cx="50" cy="50" r="${r}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="8"/>
-    <circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8"
+    <circle cx="50" cy="50" r="${r}" fill="none" stroke="${safeColor}" stroke-width="8"
       stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}"
       stroke-dashoffset="${(circ/4).toFixed(1)}" stroke-linecap="round"/>
-    <text x="50" y="54" text-anchor="middle" fill="${color}" font-size="16" font-weight="600" font-family="var(--mono)">${pct}%</text>
+    <text x="50" y="54" text-anchor="middle" fill="${safeColor}" font-size="16" font-weight="600" font-family="var(--mono)">${safePct}%</text>
   </svg>`;
 }
 
@@ -1292,7 +1314,12 @@ function doGenerate(){
   const{n,lbl,cls}=scoreP(pwStr);
   document.querySelectorAll('#gen-strength-row .bar').forEach((b,i)=>b.className='bar'+(i<n?` g${n}`:''));
   const l=document.getElementById('gen-slabel');if(l){l.textContent=lbl;l.className='slabel '+cls.replace('sl-','s');}
-  if (S.settings.gen_copy) { try { navigator.clipboard.writeText(pwStr); } catch {} }
+  if (S.settings.gen_copy) {
+    try {
+      navigator.clipboard.writeText(pwStr);
+      // Auto-clear generator clipboard after 30s
+      setTimeout(()=>{navigator.clipboard.writeText('')?.catch?.(()=>{});},30000);
+    } catch {} }
   logInfo('generator', 'Password generated', { length: len, strength: lbl });
   return pwStr;
 }
@@ -1383,7 +1410,15 @@ document.getElementById('btn-2fa').addEventListener('click',async()=>{
   }
   const newDis=disBtn.cloneNode(true);disBtn.parentNode.replaceChild(newDis,disBtn);
   newDis.hidden=!r.enabled;
-  newDis.addEventListener('click',async()=>{logInfo('2fa', '2FA disable clicked');await api.twofa.disable();hide('twofa-overlay');toast('2FA disabled');logOk('2fa', '2FA disabled');});
+  newDis.addEventListener('click',async()=>{
+    // Prompt for TOTP code before disabling
+    const code = prompt('Enter your current 6-digit 2FA code to confirm disabling:');
+    if (!code || !/^\d{6}$/.test(code)) { toast('Invalid code format'); return; }
+    logInfo('2fa', '2FA disable clicked');
+    const res = await api.twofa.disable(code);
+    if (!res.ok) { toast(res.error || 'Failed to disable 2FA'); return; }
+    hide('twofa-overlay');toast('2FA disabled');logOk('2fa', '2FA disabled');
+  });
   show('twofa-overlay');
 });
 document.getElementById('twofa-cancel').addEventListener('click',()=>hide('twofa-overlay'));

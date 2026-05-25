@@ -58,27 +58,44 @@ logger.info('main', 'Global error handlers registered');
 let win, supabase, CryptoJS, speakeasy, tray;
 let session = null;
 let sessionToken = null;
+let sessionTokenCreated = 0;
 let oauthInProgress = false;
 let oauthServer = null;
 
 // ─── SESSION TOKEN ────────────────────────────────────────────────────────────
+const SESSION_TOKEN_MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
 function genSessionToken() {
   const t = crypto.randomBytes(32).toString('hex');
+  sessionTokenCreated = Date.now();
   logger.auth('session', 'Generated new session token');
   return t;
 }
 function validateToken(token) {
-  if (!token || !sessionToken || token.length !== sessionToken.length) {
-    logger.auth('session', 'Token validation failed');
-    return false;
-  }
+  // Always perform a constant-time comparison regardless of input validity
+  // to prevent timing side-channels that could leak token/session state.
+  const expected = sessionToken || crypto.randomBytes(32).toString('hex');
+  const safeToken = (typeof token === 'string' && token.length === 64) ? token : crypto.randomBytes(32).toString('hex');
   try {
-    const a = Buffer.from(token, 'hex');
-    const b = Buffer.from(sessionToken, 'hex');
+    const a = Buffer.from(safeToken, 'hex');
+    const b = Buffer.from(expected, 'hex');
     const valid = crypto.timingSafeEqual(a, b);
-    if (!valid) logger.auth('session', 'Token validation failed');
-    else logger.debug('session', 'Token validated successfully');
-    return valid;
+    if (!token || !sessionToken || !valid) {
+      // Check expiry on the real session even after a failed attempt
+      if (sessionToken && Date.now() - sessionTokenCreated > SESSION_TOKEN_MAX_AGE) {
+        logger.auth('session', 'Token expired');
+        sessionToken = null;
+      }
+      logger.auth('session', 'Token validation failed');
+      return false;
+    }
+    // Check token expiry only after valid token confirmed
+    if (Date.now() - sessionTokenCreated > SESSION_TOKEN_MAX_AGE) {
+      logger.auth('session', 'Token expired');
+      sessionToken = null;
+      return false;
+    }
+    logger.debug('session', 'Token validated successfully');
+    return true;
   } catch {
     logger.auth('session', 'Token validation failed');
     return false;
@@ -151,12 +168,68 @@ function deriveKey(googleId) {
   // encrypted data was encrypted with. Changing this will make all data unreadable.
   return crypto.createHash('sha256').update('vault:' + googleId).digest('hex').slice(0, 32);
 }
-// NOTE: CryptoJS.AES.encrypt with a string key uses EVP_BytesToKey KDF internally.
-// The 32-char hex string from deriveKey() is used as a passphrase, not raw bytes.
-// This is a known weakness but changing it would break all existing encrypted data.
-// TODO: Migrate to native crypto.createCipheriv with raw key bytes for new installs.
-function enc(obj, key) { return CryptoJS.AES.encrypt(JSON.stringify(obj), key).toString(); }
-function dec(str, key) { try { return JSON.parse(CryptoJS.AES.decrypt(str,key).toString(CryptoJS.enc.Utf8)); } catch { return null; } }
+// ─── Authenticated Encryption (AES-256-CBC + HMAC-SHA256) ───────────────────────────────────────────────────
+// New format: base64( HMAC(32 bytes) || IV(16 bytes) || Ciphertext )
+// HMAC covers: IV || Ciphertext (Encrypt-then-MAC).
+// Key derivation from the 32-char hex key string:
+//   encKeyRaw = SHA-256(key)  → 32 bytes raw AES key
+//   macKeyRaw = SHA-256(key + "mac") → 32 bytes raw HMAC key
+// Old CryptoJS format is detected and decrypted for backward compatibility.
+// New data is always encrypted with the new authenticated format.
+
+function _keysFromHexKey(hexKey) {
+  const encKey = crypto.createHash('sha256').update(hexKey).digest();
+  const macKey = crypto.createHash('sha256').update(hexKey + 'mac').digest();
+  return { encKey, macKey };
+}
+
+function _isNewFormat(ciphertext) {
+  if (!ciphertext || typeof ciphertext !== 'string') return false;
+  // Old CryptoJS format starts with "U2FsdGVk" (base64 of "Salted__")
+  if (ciphertext.startsWith('U2FsdGVk')) return false;
+  // New format: compact base64, minimum 64 raw bytes → >= 70 base64 chars
+  if (ciphertext.length >= 70 && /^[A-Za-z0-9+/=]+$/.test(ciphertext)) return true;
+  return false;
+}
+
+function enc(obj, key) {
+  const { encKey, macKey } = _keysFromHexKey(key);
+  const plaintext = JSON.stringify(obj);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', encKey, iv);
+  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const mac = crypto.createHmac('sha256', macKey).update(iv).update(ct).digest();
+  const packed = Buffer.concat([mac, iv, ct]);
+  return packed.toString('base64');
+}
+
+function dec(str, key) {
+  if (_isNewFormat(str)) {
+    try {
+      const { encKey, macKey } = _keysFromHexKey(key);
+      const packed = Buffer.from(str, 'base64');
+      if (packed.length < 64) return null;
+      const mac = packed.subarray(0, 32);
+      const iv = packed.subarray(32, 48);
+      const ct = packed.subarray(48);
+      const expectedMac = crypto.createHmac('sha256', macKey).update(iv).update(ct).digest();
+      if (!crypto.timingSafeEqual(mac, expectedMac)) {
+        logger.warn('crypto', 'HMAC verification failed - data tampered or wrong key');
+        return null;
+      }
+      const decipher = crypto.createDecipheriv('aes-256-cbc', encKey, iv);
+      const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
+      return JSON.parse(pt.toString('utf8'));
+    } catch (e) {
+      logger.warn('crypto', 'New-format decrypt failed', { error: e.message });
+      return null;
+    }
+  }
+  // Fall back to legacy CryptoJS format for backward compatibility
+  try {
+    return JSON.parse(CryptoJS.AES.decrypt(str, key).toString(CryptoJS.enc.Utf8));
+  } catch { return null; }
+}
 
 // ─── DB HELPERS ───────────────────────────────────────────────────────────────
 async function dbUpsertUser({ googleId, email, name, avatar }) {
@@ -164,7 +237,7 @@ async function dbUpsertUser({ googleId, email, name, avatar }) {
   const { data, error } = await supabase.from('vault_users')
     .upsert({ google_id:googleId, email, name, avatar, last_seen:new Date().toISOString() },{ onConflict:'google_id' })
     .select('id').single();
-  if (error) { logger.error('dbUpsertUser', 'Supabase error', JSON.stringify(error)); throw new Error('dbUpsertUser failed: ' + error.message + ' | code: ' + error.code + ' | details: ' + error.details + ' | hint: ' + error.hint); }
+  if (error) { logger.error('dbUpsertUser', 'Supabase error', JSON.stringify(error)); throw new Error('dbUpsertUser failed'); }
   logger.db('dbUpsertUser', 'User upserted', { userId: data.id });
   return data.id;
 }
@@ -176,7 +249,7 @@ async function dbLoadItems(userId, encKey) {
     .eq('user_id', userId).is('deleted_at', null)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: false });
-  if (error) { logger.error('dbLoadItems', 'Failed to load items', error.message); throw error; }
+  if (error) { logger.error('dbLoadItems', 'Failed to load items', error.message); throw new Error('Failed to load vault items'); }
   const passwords=[], notes=[];
   for (const row of data) {
     const item = dec(row.encrypted_data, encKey);
@@ -195,7 +268,7 @@ async function dbLoadTrash(userId, encKey) {
   const { data, error } = await supabase.from('vault_items')
     .select('id,type,encrypted_data,deleted_at')
     .eq('user_id', userId).not('deleted_at','is',null).order('deleted_at',{ascending:false});
-  if (error) { logger.error('dbLoadTrash', 'Failed to load trash', error.message); throw error; }
+  if (error) { logger.error('dbLoadTrash', 'Failed to load trash', error.message); throw new Error('Failed to load trash'); }
   logger.db('dbLoadTrash', 'Trash loaded', { count: data.length });
   return data.map(row => {
     const item = dec(row.encrypted_data, encKey) || {};
@@ -209,13 +282,13 @@ async function dbSaveItem(userId, type, item, encKey) {
   const encrypted_data = enc(payload, encKey);
   if (_dbId) {
     const { error } = await supabase.from('vault_items').update({ encrypted_data }).eq('id',_dbId).eq('user_id',userId);
-    if (error) { logger.error('dbSaveItem', 'Update failed', error.message); throw error; }
+    if (error) { logger.error('dbSaveItem', 'Update failed', error.message); throw new Error('Failed to save item'); }
     logger.db('dbSaveItem', 'Item updated', { dbId: _dbId });
     return _dbId;
   }
   const { data, error } = await supabase.from('vault_items')
     .insert({ user_id:userId, type, encrypted_data }).select('id').single();
-  if (error) { logger.error('dbSaveItem', 'Insert failed', error.message); throw error; }
+  if (error) { logger.error('dbSaveItem', 'Insert failed', error.message); throw new Error('Failed to save item'); }
   logger.db('dbSaveItem', 'Item inserted', { dbId: data.id });
   return data.id;
 }
@@ -223,19 +296,19 @@ async function dbSaveItem(userId, type, item, encKey) {
 async function dbSoftDelete(dbId, userId) {
   logger.db('dbSoftDelete', 'Soft-deleting item', { dbId, userId });
   const { error } = await supabase.from('vault_items').update({ deleted_at:new Date().toISOString() }).eq('id',dbId).eq('user_id',userId);
-  if (error) { logger.error('dbSoftDelete', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbSoftDelete', 'Failed', error.message); throw new Error('Failed to delete item'); }
   logger.db('dbSoftDelete', 'Success', { dbId });
 }
 async function dbRestore(dbId, userId) {
   logger.db('dbRestore', 'Restoring item', { dbId, userId });
   const { error } = await supabase.from('vault_items').update({ deleted_at:null }).eq('id',dbId).eq('user_id',userId);
-  if (error) { logger.error('dbRestore', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbRestore', 'Failed', error.message); throw new Error('Failed to restore item'); }
   logger.db('dbRestore', 'Success', { dbId });
 }
 async function dbPermDelete(dbId, userId) {
   logger.db('dbPermDelete', 'Permanently deleting item', { dbId, userId });
   const { error } = await supabase.from('vault_items').delete().eq('id',dbId).eq('user_id',userId);
-  if (error) { logger.error('dbPermDelete', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbPermDelete', 'Failed', error.message); throw new Error('Failed to delete item'); }
   logger.db('dbPermDelete', 'Success', { dbId });
 }
 async function dbUpdateSortOrder(items, userId) {
@@ -247,14 +320,22 @@ async function dbUpdateSortOrder(items, userId) {
 }
 
 // ── Logo ──────────────────────────────────────────────────────────────────────
+// Validates that a string is a reasonable domain name (prevents cache poisoning)
+function validDomain(d) {
+  if (typeof d !== 'string') return false;
+  if (d.length > 253) return false;
+  // Each label: 1-63 chars of [a-z0-9-], no leading/trailing hyphens
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(d);
+}
 async function fetchLogo(site) {
   logger.db('fetchLogo', 'Fetching logo', { site });
   try {
-    let domain = site.replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase();
+    let domain = site.replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase().trim();
     if (!domain.includes('.')) domain += '.com';
+    if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
     const { data } = await supabase.from('vault_logos').select('url').eq('domain',domain).single();
     if (data) { logger.db('fetchLogo', 'Logo from cache', { domain, url: data.url }); return data.url; }
-    const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${domain}`;
+    const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
     await supabase.from('vault_logos').upsert({ domain, url:faviconUrl, cached_at:new Date().toISOString() });
     logger.db('fetchLogo', 'Logo fetched and cached', { domain, url: faviconUrl });
     return faviconUrl;
@@ -264,10 +345,11 @@ async function fetchLogo(site) {
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 async function dbLoadJobs(userId) {
   logger.db('dbLoadJobs', 'Loading jobs', { userId });
-  const { data, error } = await supabase.from('vault_jobs').select('*')
+  const { data, error } = await supabase.from('vault_jobs')
+    .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at')
     .eq('user_id',userId).is('deleted_at',null)
     .order('sort_order',{ascending:true}).order('created_at',{ascending:false});
-  if (error) { logger.error('dbLoadJobs', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbLoadJobs', 'Failed', error.message); throw new Error('Failed to load jobs'); }
   logger.db('dbLoadJobs', 'Jobs loaded', { count: data.length });
   return data;
 }
@@ -277,13 +359,13 @@ async function dbSaveJob(userId, job) {
   if (id) {
     const { error } = await supabase.from('vault_jobs')
       .update({ ...payload, updated_at:new Date().toISOString() }).eq('id',id).eq('user_id',userId);
-    if (error) { logger.error('dbSaveJob', 'Update failed', error.message); throw error; }
+    if (error) { logger.error('dbSaveJob', 'Update failed', error.message); throw new Error('Failed to save job'); }
     logger.db('dbSaveJob', 'Job updated', { jobId: id });
     return id;
   }
   const { data, error } = await supabase.from('vault_jobs')
     .insert({ user_id:userId, ...payload }).select('id').single();
-  if (error) { logger.error('dbSaveJob', 'Insert failed', error.message); throw error; }
+  if (error) { logger.error('dbSaveJob', 'Insert failed', error.message); throw new Error('Failed to save job'); }
   logger.db('dbSaveJob', 'Job inserted', { jobId: data.id });
   return data.id;
 }
@@ -291,20 +373,20 @@ async function dbDeleteJob(id, userId) {
   logger.db('dbDeleteJob', 'Soft-deleting job', { jobId: id, userId });
   const { error } = await supabase.from('vault_jobs')
     .update({ deleted_at: new Date().toISOString() }).eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbDeleteJob', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
   logger.db('dbDeleteJob', 'Success', { jobId: id });
 }
 async function dbRestoreJob(id, userId) {
   logger.db('dbRestoreJob', 'Restoring job', { jobId: id, userId });
   const { error } = await supabase.from('vault_jobs')
     .update({ deleted_at: null }).eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbRestoreJob', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbRestoreJob', 'Failed', error.message); throw new Error('Failed to restore job'); }
   logger.db('dbRestoreJob', 'Success', { jobId: id });
 }
 async function dbPermDeleteJob(id, userId) {
   logger.db('dbPermDeleteJob', 'Permanently deleting job', { jobId: id, userId });
   const { error } = await supabase.from('vault_jobs').delete().eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbPermDeleteJob', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbPermDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
   logger.db('dbPermDeleteJob', 'Success', { jobId: id });
 }
 async function dbLoadJobTrash(userId) {
@@ -312,8 +394,9 @@ async function dbLoadJobTrash(userId) {
   await supabase.from('vault_jobs').delete().eq('user_id',userId)
     .not('deleted_at','is',null).lt('deleted_at', new Date(Date.now()-30*86400000).toISOString());
   const { data, error } = await supabase.from('vault_jobs')
-    .select('*').eq('user_id',userId).not('deleted_at','is',null).order('deleted_at',{ascending:false});
-  if (error) { logger.error('dbLoadJobTrash', 'Failed', error.message); throw error; }
+    .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at,deleted_at')
+    .eq('user_id',userId).not('deleted_at','is',null).order('deleted_at',{ascending:false});
+  if (error) { logger.error('dbLoadJobTrash', 'Failed', error.message); throw new Error('Failed to load job trash'); }
   logger.db('dbLoadJobTrash', 'Job trash loaded', { count: data.length });
   return data;
 }
@@ -328,9 +411,10 @@ async function dbUpdateJobOrder(jobs, userId) {
 // ── TOTP Vault ────────────────────────────────────────────────────────────────
 async function dbLoadTotp(userId, encKey) {
   logger.db('dbLoadTotp', 'Loading TOTP items', { userId });
-  const { data, error } = await supabase.from('vault_totp').select('*')
+  const { data, error } = await supabase.from('vault_totp')
+    .select('id,user_id,name,issuer,secret,icon,sort_order')
     .eq('user_id',userId).order('sort_order',{ascending:true});
-  if (error) { logger.error('dbLoadTotp', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbLoadTotp', 'Failed', error.message); throw new Error('Failed to load TOTP items'); }
   logger.db('dbLoadTotp', 'TOTP items loaded', { count: data.length });
   return data.map(row => ({
     id: row.id, name: row.name, issuer: row.issuer,
@@ -346,28 +430,28 @@ async function dbSaveTotp(userId, item, encKey) {
     const { error } = await supabase.from('vault_totp')
       .update({ name:payload.name, issuer:payload.issuer, secret:encSecret, icon:payload.icon })
       .eq('id',id).eq('user_id',userId);
-    if (error) { logger.error('dbSaveTotp', 'Update failed', error.message); throw error; }
+    if (error) { logger.error('dbSaveTotp', 'Update failed', error.message); throw new Error('Failed to save TOTP item'); }
     logger.db('dbSaveTotp', 'TOTP item updated', { itemId: id });
     return id;
   }
   const { data, error } = await supabase.from('vault_totp')
     .insert({ user_id:userId, name:payload.name, issuer:payload.issuer, secret:encSecret, icon:payload.icon||'🔐' })
     .select('id').single();
-  if (error) { logger.error('dbSaveTotp', 'Insert failed', error.message); throw error; }
+  if (error) { logger.error('dbSaveTotp', 'Insert failed', error.message); throw new Error('Failed to save TOTP item'); }
   logger.db('dbSaveTotp', 'TOTP item inserted', { itemId: data.id });
   return data.id;
 }
 async function dbDeleteTotp(id, userId) {
   logger.db('dbDeleteTotp', 'Deleting TOTP item', { itemId: id, userId });
   const { error } = await supabase.from('vault_totp').delete().eq('id',id).eq('user_id',userId);
-  if (error) { logger.error('dbDeleteTotp', 'Failed', error.message); throw error; }
+  if (error) { logger.error('dbDeleteTotp', 'Failed', error.message); throw new Error('Failed to delete TOTP item'); }
   logger.db('dbDeleteTotp', 'Success', { itemId: id });
 }
 
 // ── 2FA ───────────────────────────────────────────────────────────────────────
 async function db2faGet(userId) {
   logger.db('db2faGet', 'Getting 2FA record', { userId });
-  const { data } = await supabase.from('vault_2fa').select('*').eq('user_id',userId).single();
+  const { data } = await supabase.from('vault_2fa').select('user_id,secret,enabled').eq('user_id',userId).single();
   return data;
 }
 async function db2faSave(userId, secret, enabled) {
@@ -381,7 +465,9 @@ function verify2fa(secret, token) {
 // ── Settings ──────────────────────────────────────────────────────────────────
 async function dbLoadSettings(userId) {
   logger.db('dbLoadSettings', 'Loading settings', { userId });
-  const { data } = await supabase.from('vault_settings').select('*').eq('user_id',userId).single();
+  const { data } = await supabase.from('vault_settings')
+    .select('user_id,lock_timeout,lock_action,lock_countdown,lock_on_minimize,compact,animations,accent,gen_length,gen_symbols,gen_numbers,gen_ambiguous,gen_copy,sounds,sound_login,sound_exit,sound_hover,sound_login_tone,sound_exit_tone,sound_hover_tone,toast_duration')
+    .eq('user_id',userId).single();
   const result = data || {};
   logger.db('dbLoadSettings', 'Settings loaded', result);
   return result;
@@ -433,10 +519,13 @@ async function googleOAuth() {
     oauthInProgress = true;
     oauthServer = http.createServer(async (req, res) => {
       const parsed = url.parse(req.url, true);
-      if (!parsed.pathname.startsWith('/oauth2callback')) return;
+      if (parsed.pathname !== '/oauth2callback') return;
 
       const origin = req.headers['origin'] || req.headers['referer'];
-      if (origin && !origin.startsWith('http://localhost:42813') && !origin.startsWith('http://127.0.0.1:42813')) {
+      // Use URL parsing for strict origin validation — prevents subdomain bypass
+      // (e.g. http://localhost:42813.evil.com would pass a startsWith check)
+      const isValidOrigin = (o) => { try { const u = new URL(o); return u.protocol === 'http:' && (u.host === 'localhost:42813' || u.host === '127.0.0.1:42813'); } catch { return false; } };
+      if (origin && !isValidOrigin(origin)) {
         logger.warn('oauth', 'Rejected OAuth callback — bad origin', { origin });
         res.writeHead(403, { 'Content-Type': 'text/plain' });
         res.end('Forbidden');
@@ -459,7 +548,7 @@ async function googleOAuth() {
       const nonce = crypto.randomBytes(16).toString('base64');
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
-        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "';"
+        'Content-Security-Policy': "default-src 'none'; style-src 'nonce-" + nonce + "'; script-src 'nonce-" + nonce + "';"
       });
       res.end(`<!DOCTYPE html><html><head><title>Vault — Authenticated</title>
 <style>
@@ -600,6 +689,8 @@ function playSound(type) { logger.debug('sound', `Playing sound: ${type}`); if (
 // ─── IPC ──────────────────────────────────────────────────────────────────────
 ipcMain.handle('auth:login', async () => {
   logger.ipc('auth:login', 'Login attempt started');
+  // Invalidate any existing session — prevents session fixation and token reuse
+  sessionToken = null; sessionTokenCreated = 0;
   if (oauthInProgress) {
     logger.warn('auth:login', 'Login rejected — auth already in progress');
     return { ok: false, error: 'Auth already in progress. Please complete it in your browser.' };
@@ -608,13 +699,16 @@ ipcMain.handle('auth:login', async () => {
     const profile = await googleOAuth();
     const userId  = await dbUpsertUser(profile);
     const encKey  = deriveKey(profile.googleId);
-    sessionToken = genSessionToken();
     const twofa   = await db2faGet(userId);
     if (twofa?.enabled) {
+      // Do NOT issue a session token until 2FA is verified — the token grants
+      // access to all authenticated IPC handlers, so issuing it here would
+      // allow a caller to bypass 2FA by using the token directly.
       session = { ...profile, userId, encKey, pending2fa:true };
       logger.auth('auth:login', 'Login success — 2FA required', { email: profile.email, userId });
-      return { ok:true, needs2fa:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token:sessionToken };
+      return { ok:true, needs2fa:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar } };
     }
+    sessionToken = genSessionToken();
     const vault = await dbLoadItems(userId, encKey);
     session = { ...profile, userId, encKey, pending2fa:false };
     playSound('login');
@@ -630,15 +724,18 @@ ipcMain.handle('auth:login', async () => {
 ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
   logger.ipc('auth:verify2fa', '2FA verification attempt');
   try {
-    if (typeof token !== 'string' || !/^\d{6}$/.test(token)) {
-      logger.warn('auth:verify2fa', '2FA rejected — invalid token format');
-      return { ok:false, error:'Invalid code format. Enter a 6-digit number.' };
-    }
+    // Rate limit FIRST — before any other check — to prevent probing
     if (isRateLimited()) {
       logger.warn('auth:verify2fa', '2FA rejected — rate limited');
       return { ok:false, error:'Too many attempts. Try again in 15 minutes.' };
     }
+    if (typeof token !== 'string' || !/^\d{6}$/.test(token)) {
+      recordFailedAttempt();
+      logger.warn('auth:verify2fa', '2FA rejected — invalid token format');
+      return { ok:false, error:'Invalid code format. Enter a 6-digit number.' };
+    }
     if (!session?.pending2fa) {
+      recordFailedAttempt();
       logger.warn('auth:verify2fa', '2FA rejected — no pending 2FA session');
       return { ok:false, error:'No pending 2FA' };
     }
@@ -665,24 +762,23 @@ ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
 ipcMain.handle('auth:logout', requireAuthNoArgs(() => {
   logger.ipc('auth:logout', 'Logout', { user: session?.email });
   playSound('logout');
-  session = null; sessionToken = null;
+  session = null; sessionToken = null; sessionTokenCreated = 0;
   logger.auth('auth:logout', 'Session cleared');
   return { ok:true };
 }));
 
 ipcMain.handle('auth:lock', requireAuthNoArgs(() => {
   logger.ipc('auth:lock', 'Lock', { user: session?.email });
-  if (session) {
-    session.encKey = null;
-    session.googleId = session.googleId;
-  }
-  sessionToken = null;
-  logger.auth('auth:lock', 'Session locked — encKey cleared');
+  session = null;
+  sessionToken = null; sessionTokenCreated = 0;
+  logger.auth('auth:lock', 'Session locked — full session cleared');
   return { ok:true };
 }));
 
 ipcMain.handle('auth:reauth', async () => {
   logger.ipc('auth:reauth', 'Re-authentication attempt');
+  // Invalidate existing session before starting new auth flow
+  sessionToken = null; sessionTokenCreated = 0;
   if (oauthInProgress) {
     logger.warn('auth:reauth', 'Reauth rejected — auth already in progress');
     return { ok:false, error:'Auth already in progress.' };
@@ -753,6 +849,7 @@ ipcMain.handle('trash:purge', requireAuth(async (_e,{dbId}) => {
 
 ipcMain.handle('logo:fetch', requireAuth(async (_e,{site}) => {
   logger.ipc('logo:fetch', 'Fetching logo', { site });
+  if (typeof site !== 'string' || !site.trim()) { logger.warn('logo:fetch', 'Invalid site'); return { ok: false, error: 'Invalid site' }; }
   try { const url = await fetchLogo(site); logger.success('logo:fetch', 'Logo fetched', { site, url }); return {ok:true,url}; } catch(e){ logError('logo:fetch',e);return{ok:false};}
 }));
 
@@ -768,6 +865,8 @@ ipcMain.handle('jobs:save', requireAuth(async (_e,{job}) => {
     job.company=sanitizeStr(job.company);job.role=sanitizeStr(job.role);
     if(job.email&&!validEmail(job.email)){ logger.warn('jobs:save', 'Invalid email', { email: job.email }); return{ok:false,error:'Invalid email'}; }
     job.notes=sanitizeStr(job.notes,MAX_NOTES_LEN);
+    if(job.status&&!['wait','accepted','rejected'].includes(job.status)){ logger.warn('jobs:save', 'Invalid status', { status: job.status }); return{ok:false,error:'Invalid status'}; }
+    if(job.applied_at&&!/^\d{4}-\d{2}-\d{2}$/.test(job.applied_at)){ logger.warn('jobs:save', 'Invalid date', { applied_at: job.applied_at }); return{ok:false,error:'Invalid date format (YYYY-MM-DD)'}; }
     const id = await dbSaveJob(session.userId,job);
     logger.success('jobs:save', 'Job saved', { jobId: id, company: job.company });
     return {ok:true,id};
@@ -868,48 +967,81 @@ ipcMain.handle('2fa:setup', requireAuthNoArgs(async () => {
 ipcMain.handle('2fa:enable', requireAuth(async (_e,{token}) => {
   logger.ipc('2fa:enable', 'Enabling 2FA');
   try {
-    if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { logger.warn('2fa:enable', 'Invalid token format'); return{ok:false,error:'Invalid code format. Enter a 6-digit number.'}; }
-    const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token)){ logger.warn('2fa:enable', 'Invalid 2FA code'); return{ok:false,error:'Invalid code'}; } await db2faSave(session.userId,d.secret,true); logger.success('2fa:enable', '2FA enabled'); return{ok:true};
+    // Rate limit FIRST to prevent brute-force
+    if (isRateLimited()) { logger.warn('2fa:enable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
+    if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid token format'); return{ok:false,error:'Invalid code format. Enter a 6-digit number.'}; }
+    const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token)){ recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid 2FA code'); return{ok:false,error:'Invalid code'}; }
+    resetRateLimit();
+    await db2faSave(session.userId,d.secret,true); logger.success('2fa:enable', '2FA enabled'); return{ok:true};
   } catch(e){ logError('2fa:enable',e);return{ok:false,error:e.message};}
 }));
 
-ipcMain.handle('2fa:disable', requireAuthNoArgs(async () => {
+ipcMain.handle('2fa:disable', requireAuth(async (_e, { token }) => {
   logger.ipc('2fa:disable', 'Disabling 2FA');
-  try { const d=await db2faGet(session.userId);if(d)await db2faSave(session.userId,d.secret,false); logger.success('2fa:disable', '2FA disabled'); return{ok:true}; } catch(e){ logError('2fa:disable',e);return{ok:false,error:e.message};}
+  try {
+    // Rate limit FIRST to prevent brute-force
+    if (isRateLimited()) { logger.warn('2fa:disable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
+    // Require a valid TOTP code to prevent session-only attackers from disabling 2FA
+    if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid token format'); return { ok: false, error: 'Enter your current 6-digit 2FA code to disable.' }; }
+    const d = await db2faGet(session.userId);
+    if (!d || !verify2fa(d.secret, token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid 2FA code'); return { ok: false, error: 'Invalid code' }; }
+    resetRateLimit();
+    await db2faSave(session.userId, d.secret, false);
+    logger.success('2fa:disable', '2FA disabled');
+    return { ok: true };
+  } catch (e) { logError('2fa:disable', e); return { ok: false, error: e.message }; }
 }));
 
-ipcMain.handle('monitor:stats', requireAuthNoArgs(async () => {
+ipcMain.handle('monitor:stats', requireAdminNoArgs(async () => {
   logger.ipc('monitor:stats', 'Loading monitor stats');
-  try { const stats=await dbGetStats(session.userId); logger.success('monitor:stats', 'Stats loaded', stats); return {ok:true,stats,logPath:LOG_PATH,logDir:logger.getLogDir()}; } catch(e){ logError('monitor:stats',e);return{ok:false,error:e.message};}
+  try { const stats=await dbGetStats(session.userId); logger.success('monitor:stats', 'Stats loaded', stats); return {ok:true,stats}; } catch(e){ logError('monitor:stats',e);return{ok:false,error:e.message};}
 }));
 
-ipcMain.handle('log:read', requireAuthNoArgs(async () => {
+ipcMain.handle('log:read', requireAdminNoArgs(async () => {
   logger.ipc('log:read', 'Reading log');
   try {
     const t = logger.readLog('ERROR', 10000);
-    return { ok: true, log: t, logDir: logger.getLogDir() };
+    return { ok: true, log: t };
   } catch(e){ return { ok: true, log: '(could not read log)' }; }
 }));
 
-ipcMain.handle('log:clear', requireAuthNoArgs(async () => {
+ipcMain.handle('log:clear', requireAdminNoArgs(async () => {
   logger.ipc('log:clear', 'Clearing log');
   try { logger.clearAllLogs(); logger.success('log:clear', 'All logs cleared'); return{ok:true}; } catch(e){ logError('log:clear',e); return{ok:false};}
 }));
 
 
 
-// --- ADMIN (service key - full DB access, gated by email in renderer) ---
-ipcMain.handle('admin:users', requireAuthNoArgs(async () => {
+// ─── ADMIN HELPER ──────────────────────────────────────────────────────────────
+// Server-side admin check — must match the admin email. This cannot be bypassed
+// by manipulating the renderer since it runs in the main process.
+const ADMIN_EMAIL = 'ysmagri@gmail.com';
+function requireAdminNoArgs(fn) {
+  return async (event, token) => {
+    if (!validateToken(token)) {
+      logger.warn('auth', 'requireAdminNoArgs: rejected unauthenticated call');
+      return { ok: false, error: 'Not authenticated' };
+    }
+    if (!session || session.email !== ADMIN_EMAIL) {
+      logger.warn('auth', 'requireAdminNoArgs: rejected non-admin user', { email: session?.email });
+      return { ok: false, error: 'Admin access required' };
+    }
+    return fn(event);
+  };
+}
+
+// --- ADMIN (service key - full DB access, gated by email on server) ---
+ipcMain.handle('admin:users', requireAdminNoArgs(async () => {
   logger.ipc('admin:users', 'Admin listing all users');
   try {
     const { data: users, error } = await supabase.from('vault_users').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
+    if (error) { logger.error('admin:users', 'Failed', error.message); throw new Error('Failed to list users'); }
     logger.success('admin:users', 'Found ' + (users ? users.length : 0) + ' users');
     return { ok: true, users: users || [] };
-  } catch (e) { logError('admin:users', e); return { ok: false, error: e.message }; }
+  } catch (e) { logError('admin:users', e); return { ok: false, error: 'Failed to list users' }; }
 }));
 
-ipcMain.handle('admin:stats', requireAuthNoArgs(async () => {
+ipcMain.handle('admin:stats', requireAdminNoArgs(async () => {
   logger.ipc('admin:stats', 'Admin fetching global stats');
   try {
     const [users, items, jobs, totp] = await Promise.all([
@@ -926,7 +1058,7 @@ ipcMain.handle('admin:stats', requireAuthNoArgs(async () => {
     };
     logger.success('admin:stats', 'Global stats loaded', stats);
     return { ok: true, stats };
-  } catch (e) { logError('admin:stats', e); return { ok: false, error: e.message }; }
+  } catch (e) { logError('admin:stats', e); return { ok: false, error: 'Failed to load stats' }; }
 }));
 ipcMain.handle('win:minimize', requireAuthNoArgs(() => { logger.ipc('win:minimize', 'Window minimized'); win?.minimize(); return { ok: true }; }));
 ipcMain.handle('win:maximize', requireAuthNoArgs(() => {
@@ -1001,6 +1133,28 @@ function createWindow() {
     webPreferences:{ preload:path.join(__dirname, '..', 'preload.js'), contextIsolation:true, nodeIntegration:false, spellcheck:false },
   });
   win.loadFile(path.join(__dirname, '..', 'index.html'));
+
+  // Prevent navigation away from local files — critical for a password manager
+  win.webContents.on('will-navigate', (event, url) => {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol !== 'file:') {
+      logger.warn('security', 'Blocked navigation to external URL', { url });
+      event.preventDefault();
+    }
+  });
+
+  // Prevent new windows / window.open / target="_blank" from creating insecure child windows
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+      logger.info('security', 'Opening external URL in system browser', { url });
+      shell.openExternal(url);
+    } else {
+      logger.warn('security', 'Blocked new-window creation', { url });
+    }
+    return { action: 'deny' };
+  });
+
   win.on('minimize', () => { win.webContents.send('win:minimized'); });
   win.on('close', (e) => {
     if(!app.isQuitting){
