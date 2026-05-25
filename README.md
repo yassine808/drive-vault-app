@@ -302,16 +302,18 @@ Renderer call ──▶ Prepend session token ──▶ requireAuth() validates 
 
 | Layer | Measure |
 |---|---|
-| **Encryption** | AES-256 client-side — server never sees plaintext |
-| **Key derivation** | `SHA-256("vault:" + googleId)` — unique per user |
-| **Auth** | Google OAuth 2.0 with CSRF `state` parameter, origin validation, 5-minute state expiry |
-| **Session** | 256-bit token in closure, rotated on every auth event |
+| **Encryption** | AES-256-CBC + HMAC-SHA256 encrypt-then-MAC — authenticated, with backward compat for legacy CryptoJS data |
+| **Key derivation** | `SHA-256("vault:" + googleId)` — unique per user; separate encKeys and macKeys via `SHA-256(key)` / `SHA-256(key + "mac")` |
+| **Auth** | Google OAuth 2.0 with CSRF `state`, origin validation, 5-minute state expiry, exact pathname matching |
+| **Session** | 256-bit token in closure, timing-safe validation, rotated on every auth event, cleared on lock/logout |
 | **2FA** | TOTP-based with 5 attempts / 15-min sliding window, 15-min lockout |
-| **CSP** | `script-src 'self'` only — blocks inline scripts and unauthorized connections |
-| **XSS** | User-controlled data rendered via `createElement`, not `innerHTML` |
-| **Input** | All IPC handlers validate type, length, and format at the boundary |
+| **CSP** | Restrictive: `script-src 'self'`, `frame-src 'none'`, `worker-src 'none'`, no external fonts |
+| **XSS** | User-controlled data rendered via `createElement` / `textContent` — no `innerHTML` for dynamic content |
+| **Navigation** | `will-navigate` blocks non-file: URLs; `setWindowOpenHandler` denies child windows |
+| **Input** | All IPC handlers validate type, length, and format at the boundary; errors sanitized |
 | **Soft deletes** | `deleted_at` timestamps with 30-day auto-purge |
-| **Admin gating** | Monitor tab and admin dashboard only visible to the admin email (`ysmagri@gmail.com`) |
+| **Admin gating** | Monitor tab and admin dashboard only visible to the admin email |
+| **Memory** | Lock clears all sensitive data from renderer memory + clipboard auto-clear after 30s |
 
 ---
 
@@ -365,7 +367,7 @@ npm run build:linux  # Linux AppImage
 |---|---|
 | Desktop framework | Electron 28 |
 | Database | Supabase (PostgreSQL) |
-| Encryption | CryptoJS AES-256 |
+| Encryption | AES-256-CBC + HMAC-SHA256 encrypt-then-MAC (native `crypto`) |
 | Authentication | Google OAuth 2.0 |
 | TOTP | Speakeasy |
 | Styling | Vanilla CSS (no framework) |
@@ -373,6 +375,71 @@ npm run build:linux  # Linux AppImage
 | Color space | `oklch()` |
 | CSPRNG | `crypto.getRandomValues` (Fisher-Yates shuffle) |
 | Sound | Web Audio API |
+
+---
+
+## Changelog
+
+### 2026-05-25 — Security Hardening Audit
+
+A comprehensive security audit scanned every file across 5 attack surfaces. All findings were fixed and deployed in a single commit.
+
+#### IPC & Authentication (7 fixes)
+
+| # | Finding | Severity | Fix |
+|---|---------|----------|-----|
+| 1 | Token validation had early-return timing side-channel | HIGH | `validateToken()` always runs `crypto.timingSafeEqual` on safe buffers |
+| 2 | Session fixation on login — old token reused | HIGH | Invalidate session before OAuth flow starts |
+| 3 | Session fixation on reauth | HIGH | Invalidate session before reauth flow |
+| 4 | Lock preserved session data in memory | MEDIUM | `session = null` clears everything |
+| 5 | 2FA rate-limit checked after format validation | MEDIUM | `isRateLimited()` now runs first |
+| 6 | Monitor endpoints unprotected | MEDIUM | Changed to `requireAdminNoArgs` |
+| 7 | 2FA disable required no code | MEDIUM | Now requires valid TOTP code + rate limiting |
+
+#### Cryptography & Secrets (4 fixes)
+
+| # | Finding | Severity | Fix |
+|---|---------|----------|-----|
+| 1 | CryptoJS AES without authentication (bit-flipping) | HIGH | AES-256-CBC + HMAC-SHA256 encrypt-then-MAC with backward compat |
+| 2 | Plaintext secrets in renderer memory on lock | HIGH | `doLock()` clears sensitive arrays + DOM elements |
+| 3 | Passwords persist in clipboard indefinitely | MEDIUM | Auto-clear clipboard after 30 seconds |
+| 4 | TOTP copy regex bug (`/s/g` vs `/\s/g`) | LOW | Restored correct regex |
+
+#### Database & SQL (8 fixes)
+
+| # | Finding | Severity | Fix |
+|---|---------|----------|-----|
+| 1 | Supabase errors leaked internal details to renderer | HIGH | Generic error messages (no DB detail leakage) |
+| 2 | `SELECT *` on sensitive tables | MEDIUM | Explicit column lists on all queries |
+| 3 | No domain validation on logo fetch (SSRF risk) | MEDIUM | `validDomain()` regex check before any fetch |
+| 4 | Job status not validated | LOW | Whitelist check against allowed statuses |
+| 5 | Job date format not validated | LOW | ISO date regex validation |
+| 6 | Email href injection in job tracker | LOW | `encodeURIComponent` on mailto: links |
+| 7 | SVG injection in monitor charts | LOW | Input sanitization for pct/color values |
+| 8 | Admin errors leaked DB details | MEDIUM | Sanitized error messages |
+
+#### Config & Electron Hardening (6 fixes)
+
+| # | Finding | Severity | Fix |
+|---|---------|----------|-----|
+| 1 | No navigation prevention in renderer | HIGH | `will-navigate` blocks non-file: URLs |
+| 2 | No child window control | HIGH | `setWindowOpenHandler` denies all, opens external in browser |
+| 3 | OAuth pathname prefix match too loose | MEDIUM | Exact match `/oauth2callback` |
+| 4 | OAuth origin validation used startsWith | MEDIUM | Proper URL parsing with host check |
+| 5 | CSP allowed external fonts + frames | MEDIUM | Removed Google Fonts, added `frame-src 'none'`, `worker-src 'none'` |
+| 6 | Google Fonts external dependency | LOW | System font stack |
+
+#### XSS & DOM Hardening (7 fixes)
+
+| # | Finding | Severity | Fix |
+|---|---------|----------|-----|
+| 1 | `innerHTML` used for user-controlled data | HIGH | Replaced with `createElement` / `textContent` |
+| 2 | QR code TOTP secret sent to third-party server | HIGH | Client-side QR generation (no network leak) |
+| 3 | `esc()` XSS utility unnecessary | MEDIUM | Removed (textContent used everywhere) |
+| 4 | User avatar/image URLs not validated | MEDIUM | `https://` prefix validation |
+| 5 | Error display could inject HTML | LOW | Sanitized all error rendering |
+| 6 | SVG color injection in monitor | LOW | Input sanitization on color values |
+| 7 | Unescaped user data in toasts | LOW | Toast text now uses safe DOM insertion |
 
 ---
 
