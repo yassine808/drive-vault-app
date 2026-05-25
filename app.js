@@ -441,8 +441,8 @@ function renderPasswords(){
         el.innerHTML='';
         const img=document.createElement('img');img.width=22;img.height=22;
         img.style.borderRadius='4px';img.style.objectFit='contain';
-        if(url.startsWith('https://')){img.src=url;}
-        img.addEventListener('error',()=>{img.remove();});
+        if(url.startsWith('https://') || url.startsWith('data:')){img.src=url;}
+        img.addEventListener('error',()=>{ img.remove(); });
         el.appendChild(img);
       }
     });
