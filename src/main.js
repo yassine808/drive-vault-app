@@ -333,7 +333,7 @@ async function fetchLogo(site) {
     let domain = site.replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase().trim();
     if (!domain.includes('.')) domain += '.com';
     if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
-    const { data } = await supabase.from('vault_logos').select('url').eq('domain',domain).single();
+    const { data } = await supabase.from('vault_logos').select('url').eq('domain',domain).maybeSingle();
     if (data) { logger.db('fetchLogo', 'Logo from cache', { domain, url: data.url }); return data.url; }
     const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
     await supabase.from('vault_logos').upsert({ domain, url:faviconUrl, cached_at:new Date().toISOString() });
