@@ -1,115 +1,147 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-**Vault** is an Electron-based desktop application for secure storage of passwords, notes, job applications, and TOTP authenticator secrets. All sensitive data is AES-encrypted client-side before being stored in Supabase (PostgreSQL). The user authenticates via Google OAuth 2.0, with optional TOTP-based 2FA.
+**Vault** is an Electron desktop app for secure storage of passwords, notes, job applications, and TOTP authenticator secrets. All sensitive data is AES-256 encrypted client-side before being stored in Supabase (PostgreSQL). Authentication is via Google OAuth 2.0 with optional TOTP-based 2FA.
+
+No frontend framework, no build step for renderer code, no TypeScript.
 
 ## Commands
 
 ```bash
-npm install        # Install dependencies
-npm start          # Run the app in production mode
-npm run dev        # Run the app with DevTools detached
-npm run build:win  # Build Windows installer (NSIS)
-npm run build:mac  # Build macOS package
-npm run build:linux # Build Linux AppImage
+npm install         # Install dependencies
+npm start           # Run in production mode
+npm run dev         # Run with DevTools detached
+npm run build:win   # Windows installer (NSIS)
+npm run build:mac   # macOS package
+npm run build:linux # Linux AppImage
 ```
 
-There are no tests, linting, or formatting tools configured.
+No tests, linting, or formatting tools exist.
 
 ## Architecture
 
-### Single-file structure
-
-The codebase is intentionally minimal — no frontend framework, no build step for renderer code:
+### File Structure
 
 | File | Role |
 |---|---|
-| `src/main.js` | **Electron main process** — all backend logic (~900 lines). IPC handlers, OAuth, crypto, Supabase queries. |
-| `src/logger.js` | **Structured logging** — per-level log files in `Logs/` directory. |
-| `preload.js` | **Context bridge** — exposes `window.api` and `window.__vaultToken`. Stores session token in closure, auto-injects it into all sensitive IPC calls. |
-| `index.html` | **Renderer UI** — all screens and tab views in one file. |
-| `app.css` | **Styles** — single stylesheet, Black + Purple theme with glassmorphism. |
-| `app.js` | **Renderer logic** — all frontend JS (event handlers, DOM manipulation, state, sounds). |
+| `src/main.js` | Electron main process — entry point. Loads config, creates window, registers IPC, contains OAuth flow, DB helpers, and session management. |
+| `src/modules/auth.js` | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` / `requireAdminNoArgs()` IPC guards, 2FA rate limiter. |
+| `src/modules/crypto.js` | Key derivation (`SHA-256("vault:" + googleId)`), AES-256-CBC + HMAC-SHA256 encrypt-then-MAC, backward-compatible CryptoJS legacy decryption. |
+| `src/modules/validation.js` | Shared validators: `sanitizeStr`, `validType`, `validEmail`, `validTotpSecret`, `validDomain`. |
+| `src/modules/jobs.js` | Job tracker CRUD — registered via `register()` pattern. Jobs stored as plaintext columns. |
+| `src/modules/totp.js` | TOTP secret management (encrypted) — registered via `register()` pattern. |
+| `src/modules/settings.js` | Settings load/save with validation — registered via `register()` pattern. |
+| `src/modules/monitor.js` | DB stats, log read/clear, admin user listing — registered via `register()`. All handlers use `requireAdminNoArgs`. |
+| `src/modules/logo.js` | Favicon fetching + caching as data URLs — registered via `register()`. |
+| `src/logger.js` | Structured logging to per-level files in `Logs/` directory. |
+| `preload.js` | Context bridge — session token in closure, auto-prepended to sensitive IPC calls. |
+| `index.html` | All renderer UI (single file). |
+| `app.css` | Single stylesheet, `oklch()` color space, glassmorphism. |
+| `app.js` | All renderer JS — event handlers, DOM manipulation, state, sounds. |
 
-### Main process (`src/main.js`)
+### Process Model
 
-- **Secrets**: Loaded from `.env` via `dotenv` at startup. Required vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Optional: `REDIRECT_URI` (defaults to `http://localhost:42813/oauth2callback`). App exits with a dialog if any required var is missing.
-- **Auth flow**: Google OAuth 2.0 via a local HTTP server on `127.0.0.1:42813`. Callback hardened with `Origin` header validation, single-use `state` parameter, 5-minute state expiry, and nonce-based CSP. On success, derives an AES key from `SHA-256("vault:" + googleId)`, then loads encrypted vault items from Supabase. A 256-bit session token (`crypto.randomBytes(32)`) is generated and returned to the renderer.
-- **Session tokens**: All sensitive IPC handlers (including window controls, logout, lock) are wrapped with `requireAuth()` / `requireAuthNoArgs()` which validate the session token using `crypto.timingSafeEqual()` to prevent timing attacks. Tokens are rotated on every auth event (login, 2FA verify, reauth). Token is cleared on logout.
-- **2FA token validation**: All 2FA code inputs are validated with `/^\d{6}$/` at the IPC boundary before being passed to speakeasy.
-- **XSS prevention**: Renderer uses `textContent` and `createElement` for all user-controlled data. `innerHTML` is only used for static SVG icons with no user data interpolation. The `esc()` function was removed as it's no longer needed.
-- **Encryption**: `CryptoJS.AES` with a 32-char key derived from the user's Google ID. Encryption/decryption functions: `enc(obj, key)` and `dec(str, key)`.
-- **Supabase**: Uses the **service role key** (not anon) — the app operates with full DB access scoped by `user_id`. Tables: `vault_users`, `vault_items`, `vault_jobs`, `vault_totp`, `vault_2fa`, `vault_settings`, `vault_logos`.
-- **Soft deletes**: Items and jobs use `deleted_at` timestamps. Auto-purged after 30 days.
-- **Input validation**: All IPC handlers validate input at the boundary — item type must be `password`/`note` (500-char limit), emails validated via regex, TOTP secrets validated as base32, settings ranges enforced (timeout 0–120 min), notes capped at 5000 chars.
-- **2FA rate limiting**: 5 attempts per 15-minute sliding window, 15-minute lockout on exceeded attempts, automatic reset on success.
-- **IPC channels**: All async handlers use `ipcMain.handle`; window controls use `ipcMain.on`. Channels are namespaced (`auth:`, `vault:`, `jobs:`, `totp:`, `trash:`, `2fa:`, `settings:`, `monitor:`, `logo:`, `log:`, `win:`).
-- **Window management**: Frameless window with custom titlebar. Maximize button toggles icon (□/❐) and responds to OS-level maximize/unmaximize events (snap, double-click). `win:maximized-state` IPC channel notifies renderer of state changes.
+```
+Renderer (app.js + index.html)
+    │  IPC (context bridge via preload.js)
+    ▼
+Main Process (src/main.js)
+    ├── OAuth local HTTP server (127.0.0.1:42813)
+    ├── Crypto (AES-256-CBC + HMAC-SHA256)
+    └── Supabase (PostgreSQL)
+```
 
-### Preload (`preload.js`)
+### Module Registration Pattern
 
-- Stores the session token in a **closure variable** (inaccessible to renderer DOM).
-- `window.__vaultToken` exposes `set()` and `clear()` methods for the renderer to manage the token.
-- All sensitive `window.api` methods auto-prepend the session token as the first IPC argument.
-- Auth methods (`login`, `reauth`, `verify2fa`) do not require a token (they obtain one).
-- Exposes `onMaximizedState(cb)` for window maximize/unmaximize state changes.
+`main.js` is the entry point. Domain modules (`jobs.js`, `totp.js`, `settings.js`, `monitor.js`, `logo.js`) export a `register()` function called inside `app.whenReady()`. Each `register()` receives `ipcMain`, auth wrappers, `supabase`, `validation`, `getSession`, `logger`, and `logError` — then calls `ipcMain.handle()` directly. This avoids passing `supabase` as a constructor parameter before it's initialized.
 
-### Renderer (`app.js` + `index.html`)
+### IPC Channels
 
-- **Tab-based UI**: Passwords, Notes, Job Tracker, Authenticator (TOTP), Trash, Generator, Monitor, Settings.
-- **State**: Held in-memory in `app.js` (no state management library). Vault data is loaded on login and kept in JS objects; changes are pushed to Supabase via IPC and the local state is updated optimistically or re-synced.
-- **Custom titlebar**: Frameless Electron window with HTML titlebar buttons (minimize/maximize/close). Double-click titlebar toggles maximize.
-- **CSP**: Restrictive Content-Security-Policy in `index.html` meta tag — `script-src 'self'` only (no `unsafe-inline`), `connect-src` scoped to Supabase/HIBP, `object-src 'none'`, `base-uri 'self'`.
-- **XSS prevention**: User-controlled data (avatars, favicons, QR codes) rendered via `createElement` instead of `innerHTML`. Image URLs validated for `https://` prefix.
-- **Sound system**: Web Audio API with configurable tones. Master toggle + per-event toggles (login, exit, hover) with selectable tone presets (chime, ding, soft, bright, click, tap, pop). Hover sounds play on interactive elements with debounce.
-- **Accent colors**: 13 color options (violet, blue, teal, cyan, green, lime, yellow, amber, orange, red, rose, pink, indigo). Applied via CSS custom properties on `:root`.
-- **Settings**: All settings persist to Supabase `vault_settings` table. Debounced save (400ms). Instant-apply with visual feedback via toast.
+All async handlers use `ipcMain.handle`. Channels are namespaced:
 
-### Settings data model
+| Namespace | Auth | Description |
+|---|---|---|
+| `auth:` | No | Login, reauth, 2FA verify, logout, lock |
+| `vault:` | Yes | CRUD for passwords & notes |
+| `trash:` | Yes | Soft-delete restore & purge |
+| `jobs:` | Yes | CRUD for job applications (including `jobs:trash:*`) |
+| `totp:` | Yes | TOTP secret management |
+| `2fa:` | Yes | 2FA setup/enable/disable |
+| `settings:` | Yes | Settings read/write |
+| `monitor:` | Admin | DB stats & log viewing |
+| `admin:` | Admin | User listing & global stats |
+| `logo:` | Yes | Favicon fetching & caching |
+| `log:` | Admin | Error log access |
+| `win:` | Yes | Window minimize/maximize/close |
 
-The `vault_settings` table stores all user preferences:
+### Session & Auth
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `lock_timeout` | int | 5 | Minutes before auto-lock (0–120) |
-| `lock_action` | text | 'lock' | Action on timeout: `lock` or `exit` |
-| `lock_countdown` | bool | true | Show countdown in titlebar |
-| `lock_on_minimize` | bool | false | Lock when window minimized |
-| `compact` | bool | false | Compact list view spacing |
-| `animations` | bool | true | Enable CSS transitions |
-| `accent` | text | 'violet' | Accent color name (13 options) |
-| `gen_length` | int | 20 | Default password length (8–128) |
-| `gen_symbols` | bool | true | Include symbols in generator |
-| `gen_numbers` | bool | true | Include numbers in generator |
-| `gen_ambiguous` | bool | false | Exclude similar chars |
-| `gen_copy` | bool | true | Auto-copy generated passwords |
-| `sounds` | bool | true | Master sound toggle |
-| `sound_login` | bool | true | Play sound on login |
-| `sound_exit` | bool | true | Play sound on lock/exit |
-| `sound_hover` | bool | false | Play sound on hover |
-| `sound_login_tone` | text | 'chime' | Tone for login (chime/ding/soft/bright) |
-| `sound_exit_tone` | text | 'chime' | Tone for exit (chime/ding/soft/bright) |
-| `sound_hover_tone` | text | 'click' | Tone for hover (click/tap/pop/none) |
-| `toast_duration` | int | 2400 | Toast visibility in ms |
+- **Session token**: 256-bit random hex string stored in a preload closure (inaccessible to renderer DOM). Auto-prepended to all sensitive IPC calls.
+- **Validation**: `crypto.timingSafeEqual()` with safe fallback buffers to prevent timing attacks. 12-hour max token age.
+- **Rotation**: Token is regenerated on every auth event (login, 2FA verify, reauth). Cleared on logout/lock.
+- **Admin guard**: `requireAdminNoArgs` checks `session.email === ADMIN_EMAIL` (`ysmagri@gmail.com`).
+- **2FA rate limiting**: 5 attempts per 15-minute sliding window, 15-minute lockout.
 
-### Key data model
+### Encryption
 
-- `vault_items`: `id, user_id, type ('password'|'note'), encrypted_data, sort_order, created_at, deleted_at`
-- `vault_jobs`: `id, user_id, company, role, email, applied_at, status, notes, sort_order, created_at, updated_at, deleted_at` (jobs are NOT encrypted — stored as plaintext columns)
-- `vault_totp`: `id, user_id, name, issuer, secret (encrypted), icon, sort_order`
-- `vault_2fa`: `user_id, secret, enabled` (for the user's own 2FA)
-- `vault_settings`: `user_id, lock_timeout, lock_action, lock_countdown, lock_on_minimize, compact, animations, accent, gen_length, gen_symbols, gen_numbers, gen_ambiguous, gen_copy, sounds, sound_login, sound_exit, sound_hover, sound_login_tone, sound_exit_tone, sound_hover_tone, toast_duration`
-- `vault_logos`: `domain, url, cached_at` (favicon cache)
+- **New format**: AES-256-CBC + HMAC-SHA256 encrypt-then-MAC. Output: `base64(HMAC(32) || IV(16) || ciphertext)`.
+- **Key derivation**: `SHA-256("vault:" + googleId)` → 32 hex chars. Separate enc/MAC keys via `SHA-256(key)` / `SHA-256(key + "mac")`.
+- **Legacy fallback**: Old CryptoJS ciphertext (starts with `U2FsdGVk`) auto-detected and decrypted via CryptoJS.
+- **What's encrypted**: Passwords, notes, TOTP secrets, 2FA secrets. Jobs are plaintext.
 
-### Important notes
+### Database Tables
 
-- **No test suite exists.** There are no test files or test configuration.
-- **No TypeScript.** All code is plain JavaScript.
-- **No frontend framework.** Vanilla JS DOM manipulation only.
-- **Secrets are in `.env`** (gitignored), not in source code. See `.env.example` for the template.
-- **Error logging** writes to `vault-errors.log` next to the executable and to `Logs/error.log`. The Monitor tab can view and clear this log.
-- **Password generator** uses CSPRNG (`crypto.getRandomValues`) with Fisher-Yates shuffle and guarantees at least one character from each enabled class. Toggling character class options auto-generates a new password.
-- **Theme**: Deep black base with purple accent, glassmorphism panels, canvas background animation. All colors use `oklch()` color space.
+| Table | Purpose |
+|---|---|
+| `vault_users` | User profiles (google_id, email, name, avatar_url) |
+| `vault_items` | Encrypted passwords & notes (`type`, `encrypted_data`, `deleted_at`) |
+| `vault_jobs` | Plaintext job applications (company, role, email, status, notes) |
+| `vault_totp` | Encrypted TOTP secrets (name, issuer, secret, icon) |
+| `vault_2fa` | User's own 2FA config (secret, enabled) |
+| `vault_settings` | UI preferences (lock, accent, sounds, generator defaults) |
+| `vault_logos` | Favicon cache (domain → data URL) |
+
+All tables are scoped by `vault_users.id`. Soft deletes use `deleted_at` with 30-day auto-purge.
+
+### Security Measures
+
+- **CSP**: `script-src 'self'`, `frame-src 'none'`, `worker-src 'none'`, no external fonts.
+- **XSS**: User data rendered via `createElement` / `textContent` only. No `innerHTML` for dynamic content.
+- **Navigation**: `will-navigate` blocks non-file: URLs. `setWindowOpenHandler` denies child windows.
+- **OAuth hardening**: Origin validation, single-use `state`, 5-minute state expiry, exact pathname match.
+- **Input validation**: All IPC handlers validate type, length, and format at the boundary. Errors sanitized before reaching renderer.
+- **Clipboard**: Auto-clears after 30 seconds.
+- **Lock**: Clears session from memory + clears sensitive DOM data.
+
+### Preload Bridge (`preload.js`)
+
+- `window.api` — all IPC methods. Sensitive methods auto-prepend `sessionToken`.
+- `window.__vaultToken` — exposes `set(token)` and `clear()` for the renderer.
+- Auth methods (`login`, `reauth`, `verify2fa`) don't require a token.
+- Bridge calls are logged to main via `preload:log` and `preload:log` IPC channels.
+
+### Renderer
+
+- **Tabs**: Passwords, Notes, Job Tracker, Authenticator, Trash, Generator, Monitor, Settings.
+- **State**: In-memory JS objects, no state management library.
+- **Sounds**: Web Audio API with configurable tones (chime, ding, soft, bright, click, tap, pop).
+- **Accent colors**: 13 options applied via CSS custom properties on `:root`.
+- **Password generator**: CSPRNG (`crypto.getRandomValues`) with Fisher-Yates shuffle.
+
+### Environment Variables
+
+Required in `.env` (gitignored, see `.env.example`):
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_KEY`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `REDIRECT_URI` (optional, defaults to `http://localhost:42813/oauth2callback`)
+
+App exits with a dialog if any required var is missing.
+
+### Logging
+
+Per-level log files in `Logs/` directory: `debug.log`, `info.log`, `success.log`, `warn.log`, `error.log`, `auth.log`, `ipc.log`, `db.log`, plus a combined `all.log`. Legacy `vault-errors.log` kept for backward compat. Log rotation at 5 MB.
