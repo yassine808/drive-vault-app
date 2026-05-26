@@ -102,7 +102,7 @@ async function dbLoadItems(userId, encKey) {
   for (const row of data) {
     const item = dec(row.encrypted_data, encKey);
     if (!item) continue;
-    item._dbId = row.id; item._sort = row.sort_order;
+    item._dbId = row.id; item._sort = row.sort_order; item.id = row.id;
     (row.type==='password' ? passwords : notes).push(item);
   }
   logger.db('dbLoadItems', 'Items loaded', { passwords: passwords.length, notes: notes.length });
@@ -372,11 +372,9 @@ const monitorModule = require('./modules/monitor');
 
 const getSessionFn = getSession;
 
-jobsModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation, getSessionFn, logger, logError);
-totpModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger, enc, dec, logError);
-settingsModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger, logError);
-logoModule.register(ipcMain, requireAuth, supabase, logger, getSessionFn, logError);
-monitorModule.register(ipcMain, requireAdminNoArgs, supabase, logger, getSessionFn, LOG_PATH);
+// Module IPC handlers are registered inside app.whenReady() below,
+// after supabase is initialized. This avoids passing undefined supabase
+// as a parameter (JavaScript passes primitives by value, not reference).
 
 // ─── AUTH IPC HANDLERS ────────────────────────────────────────────────────────
 ipcMain.handle('auth:login', async () => {
@@ -693,6 +691,11 @@ app.whenReady().then(() => {
     realtime: { transport: ws }
   });
   logger.success('app', 'Dependencies loaded (CryptoJS, speakeasy, Supabase)');
+  jobsModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation, getSessionFn, logger, logError);
+  totpModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger, enc, dec, logError);
+  settingsModule.register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger, logError);
+  logoModule.register(ipcMain, requireAuth, supabase, logger, getSessionFn, logError);
+  monitorModule.register(ipcMain, requireAdminNoArgs, supabase, logger, getSessionFn, LOG_PATH);
   createWindow();
 });
 

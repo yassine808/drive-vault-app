@@ -63,11 +63,10 @@ async function fetchLogo(site, supabase, logger) {
 function register(ipcMain, requireAuth, supabase, logger, getSession, logError) {
   ipcMain.handle('logo:fetch', requireAuth(async (_e, { site }) => {
     logger.ipc('logo:fetch', 'Fetching logo', { site });
-    if (typeof site !== 'string' || !site.trim()) { logger.warn('logo:fetch', 'Invalid site'); return { ok: false, error: 'Invalid site' }; }
+    if (typeof site !== 'string' || !site.trim()) return { ok: false, error: 'Invalid site' };
     try {
-      const logoUrl = await fetchLogo(site, supabase, logger);
-      logger.success('logo:fetch', 'Logo fetched', { site, url: logoUrl });
-      return { ok: true, url: logoUrl };
+      const url = await fetchLogo(site, supabase, logger);
+      return { ok: true, url };
     } catch (e) { logError('logo:fetch', e); return { ok: false }; }
   }));
 }

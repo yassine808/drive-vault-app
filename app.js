@@ -369,13 +369,12 @@ document.getElementById('btn-sync').addEventListener('click',async()=>{
 document.getElementById('btn-add-pw').addEventListener('click',()=>{ logInfo('password', 'Add password clicked'); openPwModal(); });
 document.getElementById('pw-search').addEventListener('input',renderPasswords);
 
-const logoCache={};
 async function getLogo(site){
   if(!site)return null;
-  if(logoCache[site]!==undefined)return logoCache[site];
-  const r=await api.logoFetch(site);
-  logoCache[site]=r.ok?r.url:null;
-  return logoCache[site];
+  try{
+    const r=await api.logoFetch(site);
+    return r?.ok?r.url:null;
+  }catch{return null;}
 }
 
 // HIBP breach check
@@ -405,7 +404,8 @@ function renderPasswords(){
     const row=document.createElement('div');row.className='pw-row';
     const initial=(pw.site||'?')[0].toUpperCase();
 
-    const iconDiv=document.createElement('div');iconDiv.className='pw-icon';iconDiv.id='icon-'+(pw.id||'x');iconDiv.textContent=initial;row.appendChild(iconDiv);
+    const iconId='icon-'+pw.id;
+    const iconDiv=document.createElement('div');iconDiv.className='pw-icon';iconDiv.id=iconId;iconDiv.textContent=initial;row.appendChild(iconDiv);
     const infoDiv=document.createElement('div');infoDiv.className='pw-info';
     const siteDiv=document.createElement('div');siteDiv.className='pw-site';siteDiv.textContent=pw.site||'';infoDiv.appendChild(siteDiv);
     const userDiv=document.createElement('div');userDiv.className='pw-user';userDiv.textContent=pw.username||'';infoDiv.appendChild(userDiv);
@@ -436,15 +436,14 @@ function renderPasswords(){
     actsDiv.appendChild(delBtn);
     row.appendChild(actsDiv);
     getLogo(pw.site).then(url=>{
-      const el=document.getElementById('icon-'+pw.id);
-      if(el&&url){
-        el.innerHTML='';
-        const img=document.createElement('img');img.width=22;img.height=22;
-        img.style.borderRadius='4px';img.style.objectFit='contain';
-        if(url.startsWith('https://') || url.startsWith('data:')){img.src=url;}
-        img.addEventListener('error',()=>{ img.remove(); });
-        el.appendChild(img);
-      }
+      if(!url)return;
+      const el=document.getElementById(iconId);
+      if(!el)return;
+      el.innerHTML='';
+      const img=document.createElement('img');img.width=22;img.height=22;
+      img.style.borderRadius='4px';img.style.objectFit='contain';img.src=url;
+      img.addEventListener('error',()=>{img.remove();});
+      el.appendChild(img);
     });
     eyeBtn.addEventListener('mousedown',()=>{
       hidSpan.hidden=true;revSpan.hidden=false;
