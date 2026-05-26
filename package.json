@@ -19,7 +19,10 @@
       "icon": "assets/icon.png"
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/icon.ico"
     },
     "linux": {
@@ -38,7 +41,8 @@
   },
   "devDependencies": {
     "electron": "^42.2.0",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^24.0.0",
+    "sharp": "^0.34.5"
   },
   "overrides": {
     "uuid": "^11.1.1"
