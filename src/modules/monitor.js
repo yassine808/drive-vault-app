@@ -49,12 +49,31 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
   }));
 
   ipcMain.handle('log:read', requireAdminNoArgs(async () => {
-    logger.ipc('log:read', 'Reading log');
+    logger.ipc('log:read', 'Reading logs');
     try {
-      const content = logger.readLog('ERROR', 10000);
-      return { ok: true, log: content };
+      const levels = ['ERROR','WARN','INFO','DEBUG','AUTH','DB','IPC','SUCCESS'];
+      const allEntries = [];
+      for (const lvl of levels) {
+        const content = logger.readLog(lvl, 5000);
+        if (!content || content.startsWith('(no ') || content.startsWith('(could')) continue;
+        const lines = content.split('\n').filter(l => l.trim());
+        for (const line of lines) {
+          // Parse: [2026-01-01T00:00:00.000Z] [context] message
+          const tsMatch = line.match(/^\[([^\]]+)\]/);
+          const ctxMatch = line.match(/\]\s+\[([^\]]+)\]/);
+          allEntries.push({
+            level: lvl,
+            ts: tsMatch ? tsMatch[1] : '',
+            ctx: ctxMatch ? ctxMatch[1] : '',
+            text: line,
+          });
+        }
+      }
+      // Sort by timestamp
+      allEntries.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+      return { ok: true, entries: allEntries.slice(-200) };
     } catch (e) {
-      return { ok: true, log: '(could not read log)' };
+      return { ok: true, entries: [] };
     }
   }));
 

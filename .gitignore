@@ -5,6 +5,7 @@ node_modules/
 dist/
 out/
 build/
+assets/
 
 # Environment files
 .env

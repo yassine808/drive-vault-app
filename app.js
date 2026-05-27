@@ -34,6 +34,21 @@ const uid  = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
 const wc   = t => { t=(t||'').trim(); return t?t.split(/\s+/).length:0; };
 const days = d => Math.max(0,Math.ceil((30*86400000-(Date.now()-new Date(d)))/86400000));
 
+function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+function formatLockTimer(ms){
+  const totalSec=Math.ceil(ms/1000);
+  if(totalSec<=0)return '0s';
+  const s=totalSec%60;
+  const totalMin=Math.floor(totalSec/60);
+  const m=totalMin%60;
+  const totalHr=Math.floor(totalMin/60);
+  const h=totalHr%24;
+  const d=Math.floor(totalHr/24);
+  if(d>0)return `${d}d ${h}h`;
+  if(totalHr>0)return `${totalHr}h ${String(m).padStart(2,'0')}min`;
+  if(totalMin>0)return `${totalMin}min ${String(s).padStart(2,'0')}s`;
+  return `${s}s`;
+}
 function toast(msg,ms){if(ms===undefined)ms=S.settings.toast_duration||2400;logInfo('ui', 'Toast: ' + msg);const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),ms);}
 function show(id){document.getElementById(id).hidden=false;}
 function hide(id){document.getElementById(id).hidden=true;}
@@ -220,9 +235,8 @@ function armLock(){
   if(row && S.settings.lock_countdown !== false)row.hidden=false;
   lockTick=setInterval(()=>{
     const rem=Math.max(0,lockDeadline-Date.now());
-    const m=Math.floor(rem/60000),s=Math.floor((rem%60000)/1000);
     const el=document.getElementById('lock-label');
-    if(el)el.textContent=`locks in ${m}:${String(s).padStart(2,'0')}`;
+    if(el)el.textContent=`locks in ${formatLockTimer(rem)}`;
     if(rem<=0)clearInterval(lockTick);
   },1000);
   lockTimer=setTimeout(()=>{
@@ -332,20 +346,21 @@ function renderUserChip(){
 }
 
 // ═══ TABS ══════════════════════════════════════════════════════════════════════
+const _tabCache={}; // tracks whether a tab has been loaded at least once
 document.querySelectorAll('.nav-btn[data-tab]').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
 function switchTab(tab){
-  // Admin guard: non-admins can't open the monitor tab
   if(tab==='monitor'&&!isAdmin()){logWarn('ui', 'Non-admin tried to open monitor tab');return;}
   logInfo('ui', 'Tab switched', { tab });
   document.querySelectorAll('.nav-btn[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   ['passwords','notes','jobs','totp','trash','monitor','settings'].forEach(t=>document.getElementById('tab-'+t).hidden=t!==tab);
+  // Only fetch from backend once per session; subsequent visits use cached renderer state
   if(tab==='passwords')renderPasswords();
   if(tab==='notes')renderNotesList();
-  if(tab==='trash')loadAndRenderTrash();
-  if(tab==='jobs')loadAndRenderJobs();
-  if(tab==='totp')loadAndRenderTotp();
-  if(tab==='monitor')loadMonitor();
-  if(tab==='settings')loadSettingsTab();
+  if(tab==='trash'){if(!_tabCache.trash){loadAndRenderTrash();_tabCache.trash=true;}}
+  if(tab==='jobs'){if(!_tabCache.jobs){loadAndRenderJobs();_tabCache.jobs=true;}}
+  if(tab==='totp'){if(!_tabCache.totp){loadAndRenderTotp();_tabCache.totp=true;}}
+  if(tab==='monitor')loadMonitor(); // always fresh — dashboard shows live data
+  if(tab==='settings'){if(!_tabCache.settings){loadSettingsTab();_tabCache.settings=true;}}
   updateCounts();
 }
 function updateCounts(){
@@ -418,7 +433,7 @@ function renderPasswords(){
     const smBars=document.createElement('div');smBars.className='sm-bars sm-inline';for(let i=0;i<4;i++){const b=document.createElement('div');b.className='sm-bar';smBars.appendChild(b);}
     smWrap.appendChild(smBars);
     const smLbl=document.createElement('span');smLbl.className='sm-lbl psm-lbl';smLbl.textContent='—';smWrap.appendChild(smLbl);
-    const breachBadge=document.createElement('span');breachBadge.className='breach-badge';breachBadge.id='breach-'+pw.id;breachBadge.hidden=true;breachBadge.textContent='⚠️ breached';smWrap.appendChild(breachBadge);
+    const breachBadge=document.createElement('span');breachBadge.className='breach-badge';breachBadge.id='breach-'+pw.id;breachBadge.hidden=true;breachBadge.textContent='⚠️ breached';row.appendChild(breachBadge);
     pwWrap.appendChild(smWrap);
     const eyeBtn=document.createElement('button');eyeBtn.className='eye-inline';eyeBtn.title='Hold to show';
     eyeBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -445,14 +460,15 @@ function renderPasswords(){
       img.addEventListener('error',()=>{img.remove();});
       el.appendChild(img);
     });
+    // Check breach on render — show badge immediately without requiring eye click
+    checkBreach(pw.password||'').then(breached=>{
+      const b=document.getElementById('breach-'+pw.id);
+      if(b)b.hidden=!breached;
+    });
     eyeBtn.addEventListener('mousedown',()=>{
       hidSpan.hidden=true;revSpan.hidden=false;
       smWrap.hidden=false;
       updateInlineSm(smWrap,pw.password||'');
-      checkBreach(pw.password||'').then(breached=>{
-        const b=document.getElementById('breach-'+pw.id);
-        if(b)b.hidden=!breached;
-      });
     });
     const hideEye=()=>{hidSpan.hidden=false;revSpan.hidden=true;smWrap.hidden=true;};
     eyeBtn.addEventListener('mouseup',hideEye);
@@ -1039,15 +1055,36 @@ document.getElementById('totp-cancel').addEventListener('click',()=>hide('totp-o
 document.getElementById('totp-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('totp-overlay'))hide('totp-overlay');});
 
 // ═══ MONITOR with circle gauges ═══════════════════════════════════════════════
+let _monitorEntries = [];
+let _monitorFilter = 'all';
+let _monitorRefreshTimer = null;
+
+function fmtSize(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';}
+
+function renderLogEntries(){
+  const el=document.getElementById('log-view');
+  const filtered=_monitorFilter==='all'?_monitorEntries:_monitorEntries.filter(e=>e.level.toLowerCase()===_monitorFilter);
+  if(!filtered.length){el.innerHTML='<span class="log-empty">(no entries)</span>';return;}
+  el.innerHTML=filtered.map(e=>{
+    const cls='log-level-'+e.level.toLowerCase();
+    return `<div class="log-entry ${cls}"><span class="log-ts">${e.ts||''}</span> <span class="log-ctx">[${e.ctx||''}]</span> <span class="log-msg">${escapeHtml(e.text)}</span></div>`;
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
 async function loadMonitor(){
   logInfo('monitor', 'Loading monitor data');
   const [sr,lr]=await Promise.all([api.monitor.stats(),api.monitor.readLog()]);
   if(sr.ok){
     const st=sr.stats;
-    const fmt=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';
     const DB_LIMIT=500*1024*1024;
     const dbPct=st.dbSizeBytes?Math.min(100,Math.round(st.dbSizeBytes/DB_LIMIT*100)):0;
     const logPct=Math.min(100,Math.round(st.logSize/(5*1024*1024)*100));
+
+    // Dashboard stat cards
+    const fmt=n=>fmtSize(n);
+    document.getElementById('dash-storage').textContent=fmt(st.dbSizeBytes||0);
+    document.getElementById('dash-storage-pct').textContent=dbPct+'% of 500 MB';
 
     const circlesWrap=document.getElementById('monitor-circles');circlesWrap.innerHTML='';
     const cw1=document.createElement('div');cw1.className='mon-circle-wrap';
@@ -1062,6 +1099,21 @@ async function loadMonitor(){
     const sub2=document.createElement('div');sub2.className='mon-circle-sub';sub2.textContent='Log file';cw2.appendChild(sub2);
     circlesWrap.appendChild(cw2);
 
+    // Activity timeline from log entries
+    const actEl=document.getElementById('dash-activity');actEl.innerHTML='';
+    const recentEntries=(lr.ok?lr.entries:[]).filter(e=>e.level==='AUTH'||e.level==='ERROR'||e.level==='WARN').slice(-8).reverse();
+    if(!recentEntries.length){
+      actEl.innerHTML='<div class="dash-activity-empty">No recent activity</div>';
+    } else {
+      recentEntries.forEach(e=>{
+        const row=document.createElement('div');row.className='dash-activity-entry';
+        const ts=document.createElement('span');ts.className='dash-activity-time';ts.textContent=e.ts?e.ts.replace('T',' ').replace(/\.\d{3}Z$/,''):'';row.appendChild(ts);
+        const ctx=document.createElement('span');ctx.className='dash-activity-ctx';ctx.textContent='['+(e.ctx||e.level)+']';row.appendChild(ctx);
+        const msg=document.createElement('span');msg.className='dash-activity-msg';msg.textContent=e.text;row.appendChild(msg);
+        actEl.appendChild(row);
+      });
+    }
+
     const gridWrap=document.getElementById('monitor-grid');gridWrap.innerHTML='';
     const mkCard=function(num,lbl,wide){const c=document.createElement('div');c.className='mon-card'+(wide?' mon-wide':'');const n=document.createElement('div');n.className='mon-num';n.textContent=num;c.appendChild(n);const l=document.createElement('div');l.className='mon-lbl';l.textContent=lbl;c.appendChild(l);return c;};
     gridWrap.appendChild(mkCard(st.items,'Vault items'));
@@ -1075,7 +1127,15 @@ async function loadMonitor(){
   } else {
     logErr('monitor', 'Failed to load stats', sr.error);
   }
-  if(lr.ok){const el=document.getElementById('log-view');el.textContent=lr.log||'(no errors logged)';el.scrollTop=el.scrollHeight;}
+
+  if(lr.ok){
+    _monitorEntries=lr.entries||[];
+    renderLogEntries();
+  }
+
+  // Update refresh timestamp
+  const refEl=document.getElementById('monitor-last-refresh');
+  if(refEl)refEl.textContent='Updated '+new Date().toLocaleTimeString();
 
   // Load admin dashboard if user is admin
   if(isAdmin()){
@@ -1084,6 +1144,13 @@ async function loadMonitor(){
   } else {
     document.getElementById('admin-dashboard').hidden=true;
   }
+
+  // Schedule auto-refresh every 30s while monitor tab is visible
+  clearTimeout(_monitorRefreshTimer);
+  _monitorRefreshTimer=setTimeout(()=>{
+    const tab=document.getElementById('tab-monitor');
+    if(tab&&!tab.hidden)loadMonitor();
+  },30000);
 }
 
 async function loadAdminDashboard(){
@@ -1125,7 +1192,6 @@ async function loadAdminDashboard(){
 }
 
 function makeCircleSvg(pct,color){
-  // Sanitize inputs to prevent SVG injection
   const safePct = Math.max(0, Math.min(100, parseInt(pct) || 0));
   const safeColor = String(color).replace(/[<>"'&]/g, '');
   const r=44,circ=2*Math.PI*r;
@@ -1142,8 +1208,18 @@ function makeCircleSvg(pct,color){
 document.getElementById('btn-refresh-monitor').addEventListener('click',()=>{ logInfo('monitor', 'Refresh clicked'); loadMonitor(); });
 document.getElementById('btn-clear-log').addEventListener('click',async()=>{
   logInfo('monitor', 'Clear log clicked');
-  await api.monitor.clearLog();document.getElementById('log-view').textContent='(log cleared)';toast('Log cleared');
+  await api.monitor.clearLog();_monitorEntries=[];renderLogEntries();toast('Log cleared');
   logOk('monitor', 'Log cleared');
+});
+
+// Log filter buttons
+document.querySelectorAll('.log-filter').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.log-filter').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    _monitorFilter=btn.dataset.level;
+    renderLogEntries();
+  });
 });
 
 // ═══ SETTINGS ══════════════════════════════════════════════════════════════════
