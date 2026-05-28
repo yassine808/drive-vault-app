@@ -93,7 +93,7 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
     logger.ipc('admin:users', 'Admin listing all users');
     try {
       const { data: users, error } = await supabase.from('vault_users')
-        .select('*')
+        .select('id,name,email,avatar_url,created_at,last_seen')
         .order('created_at', { ascending: false });
       if (error) { logger.error('admin:users', 'Failed', error.message); throw new Error('Failed to list users'); }
       logger.success('admin:users', 'Found ' + (users ? users.length : 0) + ' users');

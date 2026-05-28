@@ -8,9 +8,16 @@ const { validDomain } = require('./validation');
 async function fetchLogo(site, supabase, logger) {
   logger.db('fetchLogo', 'Fetching logo', { site });
   try {
+    if (typeof site !== 'string' || site.length > 2048) return null;
     let domain = site.replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase().trim();
     if (!domain.includes('.')) domain += '.com';
     if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
+    if (domain === 'localhost' || domain.startsWith('127.') || domain.startsWith('10.') ||
+        domain.startsWith('192.168.') || domain.startsWith('169.254.') ||
+        domain === '[::1]' || domain.includes(':')) {
+      logger.warn('fetchLogo', 'Blocked internal domain', { domain });
+      return null;
+    }
 
     const { data, error } = await supabase.from('vault_logos').select('url').eq('domain',domain).maybeSingle();
     if (error) throw error;
@@ -24,6 +31,10 @@ async function fetchLogo(site, supabase, logger) {
       const req = https.get(faviconUrl, { timeout: 5000 }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           const redirectUrl = new URL(res.headers.location, faviconUrl);
+          if (!redirectUrl.hostname.endsWith('google.com') && !redirectUrl.hostname.endsWith('gstatic.com')) {
+            logger.warn('fetchLogo', 'Blocked redirect to untrusted domain', { host: redirectUrl.hostname });
+            return reject(new Error('redirect blocked'));
+          }
           https.get(redirectUrl.toString(), { timeout: 5000 }, (res2) => {
             const chunks = [];
             res2.on('data', (c) => chunks.push(c));
@@ -51,6 +62,7 @@ async function fetchLogo(site, supabase, logger) {
     else if (imgData[0] === 0x3C && imgData[1] === 0x3F) mime = 'image/svg+xml';
     else if (imgData.toString('utf8', 0, 4).includes('<svg')) mime = 'image/svg+xml';
     else if (imgData[0] === 0x00 && imgData[1] === 0x00 && imgData[2] === 0x01 && imgData[3] === 0x00) mime = 'image/x-icon';
+    else if (imgData[0] === 0x52 && imgData[1] === 0x49 && imgData[2] === 0x46 && imgData[3] === 0x46) mime = 'image/webp';
 
     const dataUrl = `data:${mime};base64,${imgData.toString('base64')}`;
 

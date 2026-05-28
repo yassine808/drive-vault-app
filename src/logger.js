@@ -48,7 +48,9 @@ function fileForLevel(levelName) {
 function write(level, ctx, msg, data) {
   init();
   const levelName = LEVEL_NAMES[level] || 'UNKNOWN';
-  let line = `[${ts()}] [${ctx}] ${msg}`;
+  const safeCtx = String(ctx).replace(/\n/g, '\\n').replace(/\r/g, '');
+  const safeMsg = String(msg).replace(/\n/g, '\\n').replace(/\r/g, '');
+  let line = `[${ts()}] [${safeCtx}] ${safeMsg}`;
   if (data !== undefined) {
     try {
       const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 0) : String(data);
@@ -73,7 +75,6 @@ function writeError(ctx, err) {
   const extra = err?.response?.data ? ` | response: ${JSON.stringify(err.response.data)}` : '';
   const line = `[${ts()}] [${ctx}] ${err?.message || err}${extra}\ncode: ${err?.code || 'none'} | status: ${err?.response?.status || 'none'}\n${err?.stack || ''}\n---\n`;
   try { fs.appendFileSync(fileForLevel('ERROR'), line); } catch {}
-  try { fs.appendFileSync(path.join(LOG_DIR, 'all.log'), `[ERROR] ${line}`); } catch {}
 }
 
 // ─── PUBLIC API ───────────────────────────────────────────────────────────────
@@ -108,7 +109,21 @@ function rotateIfNeeded(maxSize = 5 * 1024 * 1024) {
       if (stat.size > maxSize) {
         const rotated = allPath + '.' + Date.now() + '.bak';
         fs.renameSync(allPath, rotated);
-        // rotated: all.log → ${path.basename(rotated)}
+      }
+    } catch {}
+
+    // Clean up .bak files older than 7 days
+    try {
+      const files = fs.readdirSync(LOG_DIR);
+      const now = Date.now();
+      for (const f of files) {
+        if (f.endsWith('.bak')) {
+          const filePath = path.join(LOG_DIR, f);
+          const stat = fs.statSync(filePath);
+          if (now - stat.mtimeMs > 7 * 24 * 60 * 60 * 1000) {
+            fs.unlinkSync(filePath);
+          }
+        }
       }
     } catch {}
   } catch {}

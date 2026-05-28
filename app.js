@@ -246,7 +246,10 @@ function armLock(){
   },LOCK_MS);
 }
 function disarmLock(){clearTimeout(lockTimer);clearInterval(lockTick);const row=document.getElementById('lock-row');if(row)row.hidden=true;}
+let _lockInProgress = false;
 function doLock(){
+  if (_lockInProgress) return;
+  _lockInProgress = true;
   logInfo('auth', 'Locking vault');
   disarmLock();
   // Clear all sensitive data from renderer memory before locking
@@ -255,6 +258,7 @@ function doLock(){
   document.querySelectorAll('.pw-real').forEach(el=>{el.textContent='';el.remove();});
   api.lock();screen('s-lock');
   logInfo('auth', 'Sensitive data cleared from memory on lock');
+  setTimeout(() => { _lockInProgress = false; }, 2000);
 }
 ['mousemove','keydown','mousedown','touchstart'].forEach(e=>document.addEventListener(e,()=>{if(S.user&&S.settings.lock_timeout>0)armLock();},{passive:true}));
 
@@ -296,6 +300,7 @@ async function doLogout(){
   logInfo('auth', 'Logout clicked', { user: S.user?.email });
   playSound('logout');await api.logout();
   S.user=null;S.passwords=[];S.notes=[];S.trash=[];S.jobs=[];S.totp=[];S.activeNote=null;
+  Object.keys(_tabCache).forEach(k=>delete _tabCache[k]);
   disarmLock();clearAllInputs();screen('s-login');
   document.getElementById('btn-login').textContent='Sign in with Google';
   document.getElementById('btn-login').disabled=false;
@@ -332,7 +337,7 @@ function renderUserChip(){
   const chip=document.getElementById('user-chip');chip.innerHTML='';
   if(u.avatar){
     const img=document.createElement('img');img.className='avatar';
-    if(u.avatar.startsWith('https://')){img.src=u.avatar;}
+    if(u.avatar.startsWith('https://') && (u.avatar.includes('googleusercontent.com') || u.avatar.includes('google.com'))){img.src=u.avatar;}
     chip.appendChild(img);
   }else{
     const fb=document.createElement('div');fb.className='avatar-fb';fb.textContent=init;
@@ -518,6 +523,8 @@ function openPwModal(existing=null){
   updateSm('sm',existing?.password||'');
   const pwInp=document.getElementById('f-pw');
   const newInp=pwInp.cloneNode(true);pwInp.parentNode.replaceChild(newInp,pwInp);
+  newInp.value = existing?.password || '';
+  newInp.type = 'password';
   newInp.addEventListener('input',()=>updateSm('sm',newInp.value));
   show('modal-overlay');setTimeout(()=>document.getElementById('f-site').focus(),60);
 }
@@ -659,8 +666,8 @@ async function loadAndRenderTrash(){
 
   const [r1,r2]=await Promise.all([api.trashLoad(),api.jobsTrash.load()]);
   loading.remove();
-  if (!r1.ok) logErr('trash', 'Failed to load vault trash', r1.error);
-  if (!r2.ok) logErr('trash', 'Failed to load job trash', r2.error);
+  if (!r1.ok) { logErr('trash', 'Failed to load vault trash', r1.error); toast('Failed to load some trash items'); }
+  if (!r2.ok) { logErr('trash', 'Failed to load job trash', r2.error); toast('Failed to load job trash'); }
   const vaultItems=r1.ok?r1.items:[];
   const jobItems=(r2.ok?r2.items:[]).map(j=>({...j,_type:'job',_dbId:j.id,_deletedAt:j.deleted_at}));
   S.trash=[...vaultItems,...jobItems].sort((a,b)=>new Date(b._deletedAt)-new Date(a._deletedAt));
@@ -996,7 +1003,7 @@ function renderTotpGrid(){
         navigator.clipboard.writeText(code);
         toast('Code copied! (clipboard clears in 30s)');
         logInfo('totp', 'TOTP code copied', { name: item.name });
-        setTimeout(()=>{navigator.clipboard.writeText('')?.catch?.(()=>{});},30000);
+        setTimeout(()=>{navigator.clipboard.writeText('').then(()=>{logInfo('app', 'Clipboard auto-cleared');}).catch(()=>{logWarn('app', 'Clipboard clear failed');});},30000);
       }
     };
     grid.appendChild(card);
@@ -1066,8 +1073,8 @@ function renderLogEntries(){
   const filtered=_monitorFilter==='all'?_monitorEntries:_monitorEntries.filter(e=>e.level.toLowerCase()===_monitorFilter);
   if(!filtered.length){el.innerHTML='<span class="log-empty">(no entries)</span>';return;}
   el.innerHTML=filtered.map(e=>{
-    const cls='log-level-'+e.level.toLowerCase();
-    return `<div class="log-entry ${cls}"><span class="log-ts">${e.ts||''}</span> <span class="log-ctx">[${e.ctx||''}]</span> <span class="log-msg">${escapeHtml(e.text)}</span></div>`;
+    const cls='log-level-'+(e.level||'').toLowerCase();
+    return `<div class="log-entry ${cls}"><span class="log-ts">${escapeHtml(e.ts||'')}</span> <span class="log-ctx">[${escapeHtml(e.ctx||'')}]</span> <span class="log-msg">${escapeHtml(e.text)}</span></div>`;
   }).join('');
   el.scrollTop=el.scrollHeight;
 }
@@ -1393,7 +1400,7 @@ function doGenerate(){
     try {
       navigator.clipboard.writeText(pwStr);
       // Auto-clear generator clipboard after 30s
-      setTimeout(()=>{navigator.clipboard.writeText('')?.catch?.(()=>{});},30000);
+      setTimeout(()=>{navigator.clipboard.writeText('').then(()=>{logInfo('app', 'Clipboard auto-cleared');}).catch(()=>{logWarn('app', 'Clipboard clear failed');});},30000);
     } catch {} }
   logInfo('generator', 'Password generated', { length: len, strength: lbl });
   return pwStr;

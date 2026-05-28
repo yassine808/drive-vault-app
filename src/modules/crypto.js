@@ -49,8 +49,13 @@ function _isNewFormat(ciphertext) {
   if (!ciphertext || typeof ciphertext !== 'string') return false;
   // Old CryptoJS format starts with "U2FsdGVk" (base64 of "Salted__")
   if (ciphertext.startsWith('U2FsdGVk')) return false;
-  // New format: compact base64, minimum 64 raw bytes → >= 70 base64 chars
-  if (ciphertext.length >= 70 && /^[A-Za-z0-9+/=]+$/.test(ciphertext)) return true;
+  // New format: compact base64, minimum 48 raw bytes (32 MAC + 16 IV) → >= 64 base64 chars
+  if (ciphertext.length >= 64 && /^[A-Za-z0-9+/=]+$/.test(ciphertext)) {
+    try {
+      const decoded = Buffer.from(ciphertext, 'base64');
+      return decoded.length >= 48;
+    } catch { return false; }
+  }
   return false;
 }
 
@@ -101,6 +106,7 @@ function dec(str, key) {
     }
   }
   // Fall back to legacy CryptoJS format for backward compatibility
+  // NOTE: Legacy decryption has no HMAC authentication — migrate all data to new format
   if (!_CryptoJS) return null;
   try {
     return JSON.parse(_CryptoJS.AES.decrypt(str, key).toString(_CryptoJS.enc.Utf8));

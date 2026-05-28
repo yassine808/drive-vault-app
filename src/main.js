@@ -57,7 +57,6 @@ logger.info('main', 'Global error handlers registered');
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let win, supabase, CryptoJS, speakeasy, tray;
-let session = null;
 let oauthInProgress = false;
 let oauthServer = null;
 
@@ -101,7 +100,7 @@ async function dbLoadItems(userId, encKey) {
   const passwords=[], notes=[];
   for (const row of data) {
     const item = dec(row.encrypted_data, encKey);
-    if (!item) continue;
+    if (!item) { logger.warn('dbLoadItems', 'Failed to decrypt item', { id: row.id }); continue; }
     item._dbId = row.id; item._sort = row.sort_order; item.id = row.id;
     (row.type==='password' ? passwords : notes).push(item);
   }
@@ -352,7 +351,9 @@ setTimeout(()=>window.close(),5000);
       shell.openExternal(authUrl);
     });
     setTimeout(() => {
-      if (oauthServer) { oauthServer.close(); oauthServer=null; }
+      try {
+        if (oauthServer) { oauthServer.close(); oauthServer = null; }
+      } catch {}
       oauthInProgress = false;
       logger.warn('oauth', 'OAuth timed out after 180s');
       reject(new Error('OAuth timed out'));
@@ -390,15 +391,15 @@ ipcMain.handle('auth:login', async () => {
     const encKey  = deriveKey(profile.googleId);
     const twofa   = await db2faGet(userId);
     if (twofa?.enabled) {
-      session = { ...profile, userId, encKey, pending2fa:true };
-      setSession(session);
+      const sess = { ...profile, userId, encKey, pending2fa:true };
+      setSession(sess);
       logger.auth('auth:login', 'Login success — 2FA required', { email: profile.email, userId });
       return { ok:true, needs2fa:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar } };
     }
     const token = genSessionToken();
     const vault = await dbLoadItems(userId, encKey);
-    session = { ...profile, userId, encKey, pending2fa:false };
-    setSession(session);
+    const sess = { ...profile, userId, encKey, pending2fa:false };
+    setSession(sess);
     playSound('login');
     logger.auth('auth:login', 'Login success', { email: profile.email, userId, passwords: vault.passwords.length, notes: vault.notes.length });
     return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token, vault };
@@ -409,7 +410,7 @@ ipcMain.handle('auth:login', async () => {
   }
 });
 
-ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
+ipcMain.handle('auth:verify2fa', requireAuth(async (_e, { token }) => {
   logger.ipc('auth:verify2fa', '2FA verification attempt');
   try {
     if (isRateLimited()) {
@@ -421,43 +422,45 @@ ipcMain.handle('auth:verify2fa', async (_e, { token }) => {
       logger.warn('auth:verify2fa', '2FA rejected — invalid token format');
       return { ok:false, error:'Invalid code format. Enter a 6-digit number.' };
     }
-    if (!session?.pending2fa) {
+    const s = getSession();
+    if (!s?.pending2fa) {
       recordFailedAttempt();
       logger.warn('auth:verify2fa', '2FA rejected — no pending 2FA session');
       return { ok:false, error:'No pending 2FA' };
     }
-    const twofa = await db2faGet(session.userId);
+    const twofa = await db2faGet(s.userId);
     if (!verify2fa(twofa.secret, token)) {
       recordFailedAttempt();
       logger.warn('auth:verify2fa', '2FA rejected — invalid code');
       return { ok:false, error:'Invalid code' };
     }
     resetRateLimit();
-    session.pending2fa = false;
+    s.pending2fa = false;
+    setSession(s);
     const newToken = genSessionToken();
-    const vault = await dbLoadItems(session.userId, session.encKey);
+    const vault = await dbLoadItems(s.userId, s.encKey);
     playSound('login');
-    logger.auth('auth:verify2fa', '2FA verified successfully', { userId: session.userId });
+    logger.auth('auth:verify2fa', '2FA verified successfully', { userId: s.userId });
     return { ok:true, token:newToken, vault };
   } catch (e) {
     logger.error('auth:verify2fa', '2FA verification error', e.message);
     logError('auth:verify2fa', e);
     return { ok:false, error:'Verification failed. Please try again.' };
   }
-});
+}));
 
 ipcMain.handle('auth:logout', requireAuthNoArgs(() => {
-  logger.ipc('auth:logout', 'Logout', { user: session?.email });
+  const s = getSession();
+  logger.ipc('auth:logout', 'Logout', { user: s?.email });
   playSound('logout');
-  session = null;
   clearSession();
   logger.auth('auth:logout', 'Session cleared');
   return { ok:true };
 }));
 
 ipcMain.handle('auth:lock', requireAuthNoArgs(() => {
-  logger.ipc('auth:lock', 'Lock', { user: session?.email });
-  session = null;
+  const s = getSession();
+  logger.ipc('auth:lock', 'Lock', { user: s?.email });
   clearSession();
   logger.auth('auth:lock', 'Session locked — full session cleared');
   return { ok:true };
@@ -465,6 +468,7 @@ ipcMain.handle('auth:lock', requireAuthNoArgs(() => {
 
 ipcMain.handle('auth:reauth', async () => {
   logger.ipc('auth:reauth', 'Re-authentication attempt');
+  const prevSession = getSession();
   clearSession();
   if (oauthInProgress) {
     logger.warn('auth:reauth', 'Reauth rejected — auth already in progress');
@@ -472,15 +476,15 @@ ipcMain.handle('auth:reauth', async () => {
   }
   try {
     const profile = await googleOAuth();
-    if (session && profile.googleId !== session.googleId) {
-      logger.warn('auth:reauth', 'Reauth rejected — different account', { expected: session.googleId, got: profile.googleId });
+    if (prevSession && profile.googleId !== prevSession.googleId) {
+      logger.warn('auth:reauth', 'Reauth rejected — different account', { expected: prevSession.googleId, got: profile.googleId });
       return { ok:false, error:'Different account' };
     }
     const userId = await dbUpsertUser(profile);
     const encKey = deriveKey(profile.googleId);
     const vault  = await dbLoadItems(userId, encKey);
-    session = { ...profile, userId, encKey, pending2fa:false };
-    setSession(session);
+    const sess = { ...profile, userId, encKey, pending2fa:false };
+    setSession(sess);
     const token = genSessionToken();
     playSound('login');
     logger.auth('auth:reauth', 'Re-authentication success', { email: profile.email, userId });
@@ -494,81 +498,92 @@ ipcMain.handle('auth:reauth', async () => {
 
 // ─── VAULT / TRASH IPC HANDLERS ───────────────────────────────────────────────
 ipcMain.handle('vault:save', requireAuth(async (_e,{type,item}) => {
+  const s = getSession();
   logger.ipc('vault:save', 'Save vault item', { type, dbId: item?._dbId });
   try {
     if(!validType(type)){ logger.warn('vault:save', 'Invalid type', { type }); return{ok:false,error:'Invalid item type'}; }
     if(!item||typeof item!=='object'){ logger.warn('vault:save', 'Invalid item'); return{ok:false,error:'Invalid item'}; }
     item.site=sanitizeStr(item.site);item.username=sanitizeStr(item.username);item.password=sanitizeStr(item.password,MAX_NOTES_LEN);item.notes=sanitizeStr(item.notes,MAX_NOTES_LEN);
-    const dbId = await dbSaveItem(session.userId,type,item,session.encKey);
+    const dbId = await dbSaveItem(s.userId,type,item,s.encKey);
     logger.success('vault:save', 'Item saved', { type, dbId });
     return {ok:true,dbId};
-  } catch(e){ logError('vault:save',e);return{ok:false,error:e.message};}
+  } catch(e){ logError('vault:save',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('vault:delete', requireAuth(async (_e,{dbId}) => {
+  const s = getSession();
   logger.ipc('vault:delete', 'Delete vault item', { dbId });
-  try { await dbSoftDelete(dbId,session.userId); logger.success('vault:delete', 'Item deleted', { dbId }); return{ok:true}; } catch(e){ logError('vault:delete',e);return{ok:false,error:e.message};}
+  try { await dbSoftDelete(dbId,s.userId); logger.success('vault:delete', 'Item deleted', { dbId }); return{ok:true}; } catch(e){ logError('vault:delete',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('vault:sync', requireAuthNoArgs(async () => {
+  const s = getSession();
   logger.ipc('vault:sync', 'Syncing vault');
-  try { const vault = await dbLoadItems(session.userId,session.encKey); logger.success('vault:sync', 'Vault synced', { passwords: vault.passwords.length, notes: vault.notes.length }); return {ok:true,vault}; } catch(e){ logError('vault:sync',e);return{ok:false,error:e.message};}
+  try { const vault = await dbLoadItems(s.userId,s.encKey); logger.success('vault:sync', 'Vault synced', { passwords: vault.passwords.length, notes: vault.notes.length }); return {ok:true,vault}; } catch(e){ logError('vault:sync',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('vault:reorder', requireAuth(async (_e,{type,items}) => {
+  const s = getSession();
   logger.ipc('vault:reorder', 'Reordering items', { type, count: items?.length });
-  try { await dbUpdateSortOrder(items,session.userId); logger.success('vault:reorder', 'Items reordered'); return{ok:true}; } catch(e){ logError('vault:reorder',e);return{ok:false};}
+  try { await dbUpdateSortOrder(items,s.userId); logger.success('vault:reorder', 'Items reordered'); return{ok:true}; } catch(e){ logError('vault:reorder',e);return{ok:false};}
 }));
 
 ipcMain.handle('trash:load', requireAuthNoArgs(async () => {
+  const s = getSession();
   logger.ipc('trash:load', 'Loading trash');
-  try { const items = await dbLoadTrash(session.userId,session.encKey); logger.success('trash:load', 'Trash loaded', { count: items.length }); return {ok:true,items}; } catch(e){ logError('trash:load',e);return{ok:false,error:e.message};}
+  try { const items = await dbLoadTrash(s.userId,s.encKey); logger.success('trash:load', 'Trash loaded', { count: items.length }); return {ok:true,items}; } catch(e){ logError('trash:load',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('trash:restore', requireAuth(async (_e,{dbId}) => {
+  const s = getSession();
   logger.ipc('trash:restore', 'Restoring from trash', { dbId });
-  try { await dbRestore(dbId,session.userId); logger.success('trash:restore', 'Item restored', { dbId }); return{ok:true}; } catch(e){ logError('trash:restore',e);return{ok:false,error:e.message};}
+  try { await dbRestore(dbId,s.userId); logger.success('trash:restore', 'Item restored', { dbId }); return{ok:true}; } catch(e){ logError('trash:restore',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('trash:purge', requireAuth(async (_e,{dbId}) => {
+  const s = getSession();
   logger.ipc('trash:purge', 'Purging from trash', { dbId });
-  try { await dbPermDelete(dbId,session.userId); logger.success('trash:purge', 'Item purged', { dbId }); return{ok:true}; } catch(e){ logError('trash:purge',e);return{ok:false,error:e.message};}
+  try { await dbPermDelete(dbId,s.userId); logger.success('trash:purge', 'Item purged', { dbId }); return{ok:true}; } catch(e){ logError('trash:purge',e);return{ok:false,error:'Operation failed'};}
 }));
 
 // ─── 2FA IPC HANDLERS ─────────────────────────────────────────────────────────
 ipcMain.handle('2fa:status', requireAuthNoArgs(async () => {
+  const s = getSession();
   logger.ipc('2fa:status', 'Checking 2FA status');
-  try { const d=await db2faGet(session.userId);const enabled=d?.enabled||false; logger.success('2fa:status', '2FA status', { enabled }); return{ok:true,enabled}; } catch(e){ logger.warn('2fa:status', 'No 2FA record, defaulting to disabled'); return{ok:true,enabled:false};}
+  try { const d=await db2faGet(s.userId);const enabled=d?.enabled||false; logger.success('2fa:status', '2FA status', { enabled }); return{ok:true,enabled}; } catch(e){ logger.warn('2fa:status', 'No 2FA record, defaulting to disabled'); return{ok:true,enabled:false};}
 }));
 
 ipcMain.handle('2fa:setup', requireAuthNoArgs(async () => {
+  const s = getSession();
   logger.ipc('2fa:setup', 'Setting up 2FA');
-  try { const s=speakeasy.generateSecret({name:`Vault (${session.email})`,length:20});await db2faSave(session.userId,s.base32,false);logger.success('2fa:setup', '2FA setup initiated');return{ok:true,secret:s.base32,otpauth:s.otpauth_url}; } catch(e){ logError('2fa:setup',e);return{ok:false,error:e.message};}
+  try { const secret=speakeasy.generateSecret({name:`Vault (${s.email})`,length:20});await db2faSave(s.userId,secret.base32,false);logger.success('2fa:setup', '2FA setup initiated');return{ok:true,secret:secret.base32,otpauth:secret.otpauth_url}; } catch(e){ logError('2fa:setup',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('2fa:enable', requireAuth(async (_e,{token}) => {
+  const s = getSession();
   logger.ipc('2fa:enable', 'Enabling 2FA');
   try {
     if (isRateLimited()) { logger.warn('2fa:enable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
     if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid token format'); return{ok:false,error:'Invalid code format. Enter a 6-digit number.'}; }
-    const d=await db2faGet(session.userId);if(!d||!verify2fa(d.secret,token)){ recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid 2FA code'); return{ok:false,error:'Invalid code'}; }
+    const d=await db2faGet(s.userId);if(!d||!verify2fa(d.secret,token)){ recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid 2FA code'); return{ok:false,error:'Invalid code'}; }
     resetRateLimit();
-    await db2faSave(session.userId,d.secret,true); logger.success('2fa:enable', '2FA enabled'); return{ok:true};
-  } catch(e){ logError('2fa:enable',e);return{ok:false,error:e.message};}
+    await db2faSave(s.userId,d.secret,true); logger.success('2fa:enable', '2FA enabled'); return{ok:true};
+  } catch(e){ logError('2fa:enable',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('2fa:disable', requireAuth(async (_e, { token }) => {
+  const s = getSession();
   logger.ipc('2fa:disable', 'Disabling 2FA');
   try {
     if (isRateLimited()) { logger.warn('2fa:disable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
     if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid token format'); return { ok: false, error: 'Enter your current 6-digit 2FA code to disable.' }; }
-    const d = await db2faGet(session.userId);
+    const d = await db2faGet(s.userId);
     if (!d || !verify2fa(d.secret, token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid 2FA code'); return { ok: false, error: 'Invalid code' }; }
     resetRateLimit();
-    await db2faSave(session.userId, d.secret, false);
+    await db2faSave(s.userId, d.secret, false);
     logger.success('2fa:disable', '2FA disabled');
     return { ok: true };
-  } catch (e) { logError('2fa:disable', e); return { ok: false, error: e.message }; }
+  } catch (e) { logError('2fa:disable', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
 // ─── WINDOW CONTROL IPC ───────────────────────────────────────────────────────

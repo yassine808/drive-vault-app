@@ -13,8 +13,30 @@ async function dbLoadSettings(supabase, userId, logger) {
 }
 
 async function dbSaveSettings(supabase, userId, settings, logger) {
-  logger.db('dbSaveSettings', 'Saving settings', { userId, settings });
-  await supabase.from('vault_settings').upsert({ user_id: userId, ...settings });
+  logger.db('dbSaveSettings', 'Saving settings', { userId });
+  const safeSettings = {
+    lock_timeout: settings.lock_timeout,
+    lock_action: settings.lock_action,
+    lock_countdown: settings.lock_countdown,
+    lock_on_minimize: settings.lock_on_minimize,
+    compact: settings.compact,
+    animations: settings.animations,
+    accent: settings.accent,
+    gen_length: settings.gen_length,
+    gen_symbols: settings.gen_symbols,
+    gen_numbers: settings.gen_numbers,
+    gen_ambiguous: settings.gen_ambiguous,
+    gen_copy: settings.gen_copy,
+    sounds: settings.sounds,
+    sound_login: settings.sound_login,
+    sound_exit: settings.sound_exit,
+    sound_hover: settings.sound_hover,
+    sound_login_tone: settings.sound_login_tone,
+    sound_exit_tone: settings.sound_exit_tone,
+    sound_hover_tone: settings.sound_hover_tone,
+    toast_duration: settings.toast_duration,
+  };
+  await supabase.from('vault_settings').upsert({ user_id: userId, ...safeSettings });
   logger.db('dbSaveSettings', 'Success');
 }
 
@@ -22,6 +44,8 @@ async function dbSaveSettings(supabase, userId, settings, logger) {
 
 const VALID_ACCENTS = ['violet', 'blue', 'teal', 'green', 'orange', 'rose', 'red', 'pink', 'yellow', 'amber', 'cyan', 'indigo', 'lime'];
 const VALID_TOAST_DURATIONS = [1500, 2400, 3500, 5000];
+const VALID_TONES = ['chime', 'ding', 'soft', 'bright'];
+const VALID_HOVER_TONES = ['chime', 'ding', 'soft', 'bright', 'click', 'tap', 'pop', 'none'];
 
 function validateSettings(input, logger) {
   if (!input || typeof input !== 'object') {
@@ -62,9 +86,9 @@ function validateSettings(input, logger) {
     sound_login: !!input.sound_login,
     sound_exit: !!input.sound_exit,
     sound_hover: !!input.sound_hover,
-    sound_login_tone: typeof input.sound_login_tone === 'string' ? input.sound_login_tone : 'chime',
-    sound_exit_tone: typeof input.sound_exit_tone === 'string' ? input.sound_exit_tone : 'chime',
-    sound_hover_tone: typeof input.sound_hover_tone === 'string' ? input.sound_hover_tone : 'click',
+    sound_login_tone: VALID_TONES.includes(input.sound_login_tone) ? input.sound_login_tone : 'chime',
+    sound_exit_tone: VALID_TONES.includes(input.sound_exit_tone) ? input.sound_exit_tone : 'chime',
+    sound_hover_tone: VALID_HOVER_TONES.includes(input.sound_hover_tone) ? input.sound_hover_tone : 'click',
     toast_duration,
   };
 

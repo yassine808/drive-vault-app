@@ -21,15 +21,24 @@ function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation,
   async function dbSaveJob(userId, job) {
     logger.db('dbSaveJob', 'Saving job', { userId, jobId: job?.id, company: job?.company });
     const { id, ...payload } = job;
+    const safePayload = {
+      company: payload.company,
+      role: payload.role,
+      email: payload.email,
+      applied_at: payload.applied_at,
+      status: payload.status,
+      notes: payload.notes,
+      sort_order: payload.sort_order,
+    };
     if (id) {
       const { error } = await supabase.from('vault_jobs')
-        .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
+        .update({ ...safePayload, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
       if (error) { logger.error('dbSaveJob', 'Update failed', error.message); throw new Error('Failed to save job'); }
       logger.db('dbSaveJob', 'Job updated', { jobId: id });
       return id;
     }
     const { data, error } = await supabase.from('vault_jobs')
-      .insert({ user_id: userId, ...payload }).select('id').single();
+      .insert({ user_id: userId, ...safePayload }).select('id').single();
     if (error) { logger.error('dbSaveJob', 'Insert failed', error.message); throw new Error('Failed to save job'); }
     logger.db('dbSaveJob', 'Job inserted', { jobId: data.id });
     return data.id;
@@ -99,7 +108,11 @@ function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation,
       if (job.email && !validEmail(job.email)) { logger.warn('jobs:save', 'Invalid email', { email: job.email }); return { ok: false, error: 'Invalid email' }; }
       job.notes = sanitizeStr(job.notes, MAX_NOTES_LEN);
       if (job.status && !VALID_JOB_STATUSES.includes(job.status)) { logger.warn('jobs:save', 'Invalid status', { status: job.status }); return { ok: false, error: 'Invalid status' }; }
-      if (job.applied_at && !/^\d{4}-\d{2}-\d{2}$/.test(job.applied_at)) { logger.warn('jobs:save', 'Invalid date', { applied_at: job.applied_at }); return { ok: false, error: 'Invalid date format (YYYY-MM-DD)' }; }
+      if (job.applied_at) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(job.applied_at)) { logger.warn('jobs:save', 'Invalid date', { applied_at: job.applied_at }); return { ok: false, error: 'Invalid date format (YYYY-MM-DD)' }; }
+        const year = parseInt(job.applied_at.slice(0, 4), 10);
+        if (year < 2000 || year > 2100) { logger.warn('jobs:save', 'Date out of range', { applied_at: job.applied_at }); return { ok: false, error: 'Applied date must be between 2000 and 2100' }; }
+      }
       const session = getSession();
       const id = await dbSaveJob(session.userId, job);
       logger.success('jobs:save', 'Job saved', { jobId: id, company: job.company });

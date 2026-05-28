@@ -35,20 +35,13 @@ function genSessionToken() {
  * @returns {boolean}
  */
 function validateToken(token) {
-  const expected = _sessionToken || crypto.randomBytes(32).toString('hex');
-  const safeToken = (typeof token === 'string' && token.length === 64)
-    ? token
-    : crypto.randomBytes(32).toString('hex');
+  if (!_sessionToken) return false;
+  if (typeof token !== 'string' || token.length !== 64) return false;
   try {
-    const a = Buffer.from(safeToken, 'hex');
-    const b = Buffer.from(expected, 'hex');
-    const valid = crypto.timingSafeEqual(a, b);
-    if (!token || !_sessionToken || !valid) {
-      if (_sessionToken && Date.now() - _sessionTokenCreated > SESSION_TOKEN_MAX_AGE) {
-        _sessionToken = null;
-      }
-      return false;
-    }
+    const a = Buffer.from(token, 'hex');
+    const b = Buffer.from(_sessionToken, 'hex');
+    if (a.length !== b.length) return false;
+    if (!crypto.timingSafeEqual(a, b)) return false;
     if (Date.now() - _sessionTokenCreated > SESSION_TOKEN_MAX_AGE) {
       _sessionToken = null;
       return false;
@@ -100,7 +93,11 @@ function requireAuth(fn) {
     if (!validateToken(token)) {
       return { ok: false, error: 'Not authenticated' };
     }
-    return fn(event, ...args);
+    try {
+      return await fn(event, ...args);
+    } catch (e) {
+      return { ok: false, error: 'Operation failed' };
+    }
   };
 }
 
@@ -114,7 +111,11 @@ function requireAuthNoArgs(fn) {
     if (!validateToken(token)) {
       return { ok: false, error: 'Not authenticated' };
     }
-    return fn(event);
+    try {
+      return await fn(event);
+    } catch (e) {
+      return { ok: false, error: 'Operation failed' };
+    }
   };
 }
 
@@ -132,7 +133,11 @@ function requireAdminNoArgs(fn) {
     if (!_session || _session.email !== ADMIN_EMAIL) {
       return { ok: false, error: 'Admin access required' };
     }
-    return fn(event);
+    try {
+      return await fn(event);
+    } catch (e) {
+      return { ok: false, error: 'Operation failed' };
+    }
   };
 }
 

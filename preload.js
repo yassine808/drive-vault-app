@@ -15,11 +15,6 @@ function clearToken() {
   ipcRenderer.send('preload:token', 'cleared');
 }
 
-// Wraps an IPC call to prepend the session token
-function withToken(...args) {
-  return ipcRenderer.invoke(...args);
-}
-
 // Helper to log bridge calls via a fire-and-forget IPC to main
 function bridgeLog(action, channel, ok, detail) {
   ipcRenderer.send('preload:log', { action, channel, ok, detail, ts: Date.now() });
@@ -47,9 +42,9 @@ contextBridge.exposeInMainWorld('api', {
     bridgeLog('call', 'auth:reauth', true);
     return ipcRenderer.invoke('auth:reauth');
   },
-  verify2fa: (token) => {
+  verify2fa: (code) => {
     bridgeLog('call', 'auth:verify2fa', true);
-    return ipcRenderer.invoke('auth:verify2fa', { token });
+    return ipcRenderer.invoke('auth:verify2fa', sessionToken, { token: code });
   },
 
   // Sensitive — token prepended automatically

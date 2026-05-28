@@ -5,7 +5,8 @@ const MAX_NOTES_LEN = 5000;
 const VALID_ITEM_TYPES = ['password', 'note'];
 
 function sanitizeStr(s, max = MAX_FIELD_LEN) {
-  return String(s || '').trim().slice(0, max);
+  if (s === null || s === undefined || typeof s !== 'string') return '';
+  return s.trim().slice(0, max);
 }
 
 function validType(t) {
@@ -13,11 +14,12 @@ function validType(t) {
 }
 
 function validEmail(e) {
-  return /^[^\s@]{1,128}@[^\s@]{1,256}\.[^\s@]{2,}$/.test(String(e || ''));
+  if (typeof e !== 'string') return false;
+  return /^[a-zA-Z0-9._%+\-]{1,128}@[a-zA-Z0-9.\-]{1,256}\.[a-zA-Z]{2,}$/.test(e.trim());
 }
 
 function validTotpSecret(s) {
-  return /^[A-Z2-7]{16,64}$/.test(String(s || '').replace(/\s/g, ''));
+  return /^[A-Za-z2-7]{16,64}$/.test(String(s || '').replace(/\s/g, ''));
 }
 
 function validDomain(d) {
