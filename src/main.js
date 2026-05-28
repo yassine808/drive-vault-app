@@ -402,7 +402,8 @@ ipcMain.handle('auth:login', async () => {
     setSession(sess);
     playSound('login');
     logger.auth('auth:login', 'Login success', { email: profile.email, userId, passwords: vault.passwords.length, notes: vault.notes.length });
-    return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token, vault };
+    const isAdmin = profile.email === authModule.ADMIN_EMAIL;
+    return { ok:true, needs2fa:false, user:{ name:profile.name, email:profile.email, avatar:profile.avatar, isAdmin }, token, vault };
   } catch (e) {
     logger.error('auth:login', 'Login failed', { message: e.message, code: e.code });
     logError('auth:login', e);
@@ -440,8 +441,9 @@ ipcMain.handle('auth:verify2fa', requireAuth(async (_e, { token }) => {
     const newToken = genSessionToken();
     const vault = await dbLoadItems(s.userId, s.encKey);
     playSound('login');
+    const isAdmin = s.email === authModule.ADMIN_EMAIL;
     logger.auth('auth:verify2fa', '2FA verified successfully', { userId: s.userId });
-    return { ok:true, token:newToken, vault };
+    return { ok:true, token:newToken, vault, user:{ name:s.name, email:s.email, avatar:s.avatar, isAdmin } };
   } catch (e) {
     logger.error('auth:verify2fa', '2FA verification error', e.message);
     logError('auth:verify2fa', e);
@@ -487,8 +489,9 @@ ipcMain.handle('auth:reauth', async () => {
     setSession(sess);
     const token = genSessionToken();
     playSound('login');
+    const isAdmin = profile.email === authModule.ADMIN_EMAIL;
     logger.auth('auth:reauth', 'Re-authentication success', { email: profile.email, userId });
-    return { ok:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar }, token, vault };
+    return { ok:true, user:{ name:profile.name, email:profile.email, avatar:profile.avatar, isAdmin }, token, vault };
   } catch (e) {
     logger.error('auth:reauth', 'Re-authentication failed', { message: e.message, code: e.code });
     logError('auth:reauth', e);

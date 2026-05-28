@@ -5,7 +5,7 @@ const crypto = require('crypto');
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const SESSION_TOKEN_MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
-const ADMIN_EMAIL = 'ysmagri@gmail.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'ysmagri@gmail.com';
 
 // ─── INTERNAL STATE ───────────────────────────────────────────────────────────
 

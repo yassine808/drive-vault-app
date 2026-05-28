@@ -291,7 +291,7 @@ document.getElementById('btn-verify2fa').addEventListener('click',async()=>{
   const r=await api.verify2fa(token);
   if(!r.ok){document.getElementById('twofa-err').hidden=false;document.getElementById('twofa-err').textContent=r.error;logWarn('auth', '2FA verify failed', r.error);return;}
   if(r.token)window.__vaultToken.set(r.token);
-  loadVault(r.vault);await loadSettings();enterApp();
+  S.user=r.user;loadVault(r.vault);await loadSettings();enterApp();
   logOk('auth', '2FA verified, login complete');
 });
 document.getElementById('twofa-code').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('btn-verify2fa').click();});
@@ -321,8 +321,7 @@ async function loadSettings(){
   window.__soundsEnabled = S.settings.sounds !== false;
   logInfo('settings', 'Settings loaded', S.settings);
 }
-const ADMIN_EMAIL = 'ysmagri@gmail.com';
-function isAdmin(){return S.user?.email === ADMIN_EMAIL;}
+function isAdmin(){return S.user?.isAdmin === true;}
 function enterApp(){
   logInfo('app', 'Entering app screen');
   screen('s-app');renderUserChip();
@@ -1187,7 +1186,7 @@ async function loadAdminDashboard(){
       const meta=document.createElement('div');meta.className='admin-user-meta';meta.textContent='Joined '+joined+' · Last login '+lastLogin;
       info.appendChild(nm);info.appendChild(em);info.appendChild(meta);
       row.appendChild(info);
-      if(u.email===ADMIN_EMAIL){
+      if(u.email===S.user?.email && S.user?.isAdmin){
         const badge=document.createElement('span');badge.className='admin-user-badge badge-admin';badge.textContent='admin';row.appendChild(badge);
       }
       listEl.appendChild(row);
