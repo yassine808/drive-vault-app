@@ -33,3 +33,6 @@ package-lock.json
 # Build tool installers
 vs_buildtools.exe
 node-gyp/
+
+.claude
+.claude/
