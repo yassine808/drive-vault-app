@@ -137,69 +137,6 @@ document.getElementById('titlebar').addEventListener('dblclick',e=>{
   api.maximize();
 });
 
-// ═══ AMBIENT BACKGROUND ══════════════════════════════════════════════════════
-(function initCanvas(){
-  const canvas=document.getElementById('bg-canvas');
-  const ctx=canvas.getContext('2d');
-  let W,H;
-
-  // Slow-drifting purple nebulae — visible glowing clouds
-  const nebulae=[
-    {x:.2,y:.3,r:.42,sx:.015,sy:.01,h:290,b:.20},    // bright purple (upper-left)
-    {x:.75,y:.6,r:.48,sx:-.01,sy:.012,h:290,b:.18},  // bright purple (lower-right)
-    {x:.5,y:.15,r:.35,sx:.008,sy:-.006,h:290,b:.14}, // purple (top-center)
-    {x:.65,y:.8,r:.32,sx:-.005,sy:.008,h:270,b:.14}, // deep indigo (bottom)
-    {x:.15,y:.7,r:.28,sx:.006,sy:.007,h:280,b:.12},  // mid purple (left)
-    {x:.85,y:.25,r:.25,sx:-.007,sy:.005,h:300,b:.12}, // lavender (right)
-  ];
-
-  function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
-  window.addEventListener('resize',resize);resize();
-
-  let t=0;
-  function draw(){
-    t+=.004;
-    ctx.clearRect(0,0,W,H);
-
-    for(const n of nebulae){
-      // Gentle figure-8 drift so shapes never feel static
-      const cx=W*(n.x+Math.sin(t*n.sx*10)*.08);
-      const cy=H*(n.y+Math.cos(t*n.sy*10)*.06);
-      const rad=Math.min(W,H)*n.r;
-
-      const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,rad);
-      const b=n.b||.06;
-      if(n.h===290){
-        grad.addColorStop(0,`oklch(0.75 0.26 290 / ${b})`);
-        grad.addColorStop(.3,`oklch(0.68 0.24 290 / ${b*.5})`);
-        grad.addColorStop(.6,`oklch(0.6 0.2 290 / ${b*.15})`);
-        grad.addColorStop(1,'oklch(0.6 0.2 290 / 0)');
-      }else if(n.h===300){
-        grad.addColorStop(0,`oklch(0.75 0.24 300 / ${b})`);
-        grad.addColorStop(.3,`oklch(0.68 0.22 300 / ${b*.45})`);
-        grad.addColorStop(.6,`oklch(0.58 0.18 300 / ${b*.12})`);
-        grad.addColorStop(1,'oklch(0.58 0.18 300 / 0)');
-      }else{
-        grad.addColorStop(0,`oklch(0.7 0.22 270 / ${b})`);
-        grad.addColorStop(.3,`oklch(0.6 0.2 270 / ${b*.45})`);
-        grad.addColorStop(.6,`oklch(0.52 0.16 270 / ${b*.12})`);
-        grad.addColorStop(1,'oklch(0.52 0.16 270 / 0)');
-      }
-      ctx.fillStyle=grad;
-      ctx.fillRect(0,0,W,H);
-    }
-
-    // Subtle vignette — edges fall off, center stays open
-    const vg=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.25,W/2,H/2,Math.max(W,H)*.7);
-    vg.addColorStop(0,'oklch(0 0 0 / 0)');
-    vg.addColorStop(1,'oklch(0 0 0 / 0.25)');
-    ctx.fillStyle=vg;
-    ctx.fillRect(0,0,W,H);
-
-    requestAnimationFrame(draw);
-  }
-  draw();
-})();
 
 // ═══ CONFIRM ══════════════════════════════════════════════════════════════════
 function confirm(opts){
