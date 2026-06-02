@@ -69,8 +69,11 @@ function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation,
 
   async function dbLoadJobTrash(userId) {
     logger.db('dbLoadJobTrash', 'Loading job trash', { userId });
-    await supabase.from('vault_jobs').delete().eq('user_id', userId)
-      .not('deleted_at', 'is', null).lt('deleted_at', new Date(Date.now() - 30 * 86400000).toISOString());
+    // Best-effort purge of jobs deleted >30 days ago. Don't let purge failure block loading.
+    try {
+      await supabase.from('vault_jobs').delete().eq('user_id', userId)
+        .not('deleted_at', 'is', null).lt('deleted_at', new Date(Date.now() - 30 * 86400000).toISOString());
+    } catch (e) { logger.warn('dbLoadJobTrash', '30-day purge failed, continuing', e.message); }
     const { data, error } = await supabase.from('vault_jobs')
       .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at,deleted_at')
       .eq('user_id', userId).not('deleted_at', 'is', null).order('deleted_at', { ascending: false });
@@ -111,7 +114,12 @@ function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation,
       if (job.applied_at) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(job.applied_at)) { logger.warn('jobs:save', 'Invalid date', { applied_at: job.applied_at }); return { ok: false, error: 'Invalid date format (YYYY-MM-DD)' }; }
         const year = parseInt(job.applied_at.slice(0, 4), 10);
-        if (year < 2000 || year > 2100) { logger.warn('jobs:save', 'Date out of range', { applied_at: job.applied_at }); return { ok: false, error: 'Applied date must be between 2000 and 2100' }; }
+        const month = parseInt(job.applied_at.slice(5, 7), 10);
+        const day = parseInt(job.applied_at.slice(8, 10), 10);
+        if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) { logger.warn('jobs:save', 'Date out of range', { applied_at: job.applied_at }); return { ok: false, error: 'Applied date must be a valid date between 2000 and 2100' }; }
+        // Verify the date is real (e.g. reject Feb 30)
+        const d = new Date(job.applied_at + 'T00:00:00.000Z');
+        if (isNaN(d.getTime()) || d.getUTCMonth() + 1 !== month || d.getUTCDate() !== day) { logger.warn('jobs:save', 'Invalid calendar date', { applied_at: job.applied_at }); return { ok: false, error: 'Applied date is not a valid calendar date' }; }
       }
       const session = getSession();
       const id = await dbSaveJob(session.userId, job);
