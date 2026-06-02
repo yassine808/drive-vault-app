@@ -126,7 +126,7 @@ function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSession,
       return { ok: true };
     } catch (e) {
       logError('settings:save', e);
-      return { ok: false };
+      return { ok: false, error: 'Failed to save settings' };
     }
   }));
 

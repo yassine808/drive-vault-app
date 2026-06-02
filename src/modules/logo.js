@@ -12,9 +12,18 @@ async function fetchLogo(site, supabase, logger) {
     let domain = site.replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase().trim();
     if (!domain.includes('.')) domain += '.com';
     if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
-    if (domain === 'localhost' || domain.startsWith('127.') || domain.startsWith('10.') ||
-        domain.startsWith('192.168.') || domain.startsWith('169.254.') ||
-        domain === '[::1]' || domain.includes(':')) {
+    const isPrivateIP = (d) => {
+      if (d === 'localhost' || d === '0.0.0.0' || d === '[::1]' || d.includes(':')) return true;
+      const octets = d.split('.');
+      if (octets.length !== 4) return false;
+      const [a, b] = [parseInt(octets[0], 10), parseInt(octets[1], 10)];
+      if (a === 10 || a === 127) return true;
+      if (a === 192 && b === 168) return true;
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 169 && b === 254) return true;
+      return false;
+    };
+    if (isPrivateIP(domain)) {
       logger.warn('fetchLogo', 'Blocked internal domain', { domain });
       return null;
     }

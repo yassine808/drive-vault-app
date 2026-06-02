@@ -193,7 +193,8 @@ function doLock(){
   S.passwords=[];S.notes=[];S.totp=[];S.jobs=[];S.trash=[];S.activeNote=null;
   // Remove any password DOM elements that might retain plaintext in memory
   document.querySelectorAll('.pw-real').forEach(el=>{el.textContent='';el.remove();});
-  api.lock();screen('s-lock');
+  api.lock().catch(()=>{}); // Don't let IPC failure prevent lock
+  screen('s-lock');
   logInfo('auth', 'Sensitive data cleared from memory on lock');
   setTimeout(() => { _lockInProgress = false; }, 2000);
 }
@@ -292,6 +293,8 @@ document.querySelectorAll('.nav-btn[data-tab]').forEach(btn=>btn.addEventListene
 function switchTab(tab){
   if(tab==='monitor'&&!isAdmin()){logWarn('ui', 'Non-admin tried to open monitor tab');return;}
   logInfo('ui', 'Tab switched', { tab });
+  // Stop monitor auto-refresh when switching away from monitor tab
+  if(tab!=='monitor'){clearTimeout(_monitorRefreshTimer);_monitorRefreshTimer=null;}
   document.querySelectorAll('.nav-btn[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   ['passwords','notes','jobs','totp','trash','monitor','settings'].forEach(t=>document.getElementById('tab-'+t).hidden=t!==tab);
   // Only fetch from backend once per session; subsequent visits use cached renderer state
