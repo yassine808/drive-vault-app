@@ -110,8 +110,11 @@ async function dbLoadItems(userId, encKey) {
 
 async function dbLoadTrash(userId, encKey) {
   logger.db('dbLoadTrash', 'Loading trash', { userId });
-  await supabase.from('vault_items').delete().eq('user_id', userId)
-    .not('deleted_at','is',null).lt('deleted_at', new Date(Date.now()-30*86400000).toISOString());
+  // Best-effort purge of items deleted >30 days ago. Don't let purge failure block loading.
+  try {
+    await supabase.from('vault_items').delete().eq('user_id', userId)
+      .not('deleted_at','is',null).lt('deleted_at', new Date(Date.now()-30*86400000).toISOString());
+  } catch (e) { logger.warn('dbLoadTrash', '30-day purge failed, continuing', e.message); }
   const { data, error } = await supabase.from('vault_items')
     .select('id,type,encrypted_data,deleted_at')
     .eq('user_id', userId).not('deleted_at','is',null).order('deleted_at',{ascending:false});
@@ -169,7 +172,7 @@ async function dbUpdateSortOrder(items, userId) {
 // ─── 2FA DB HELPERS ───────────────────────────────────────────────────────────
 async function db2faGet(userId) {
   logger.db('db2faGet', 'Getting 2FA record', { userId });
-  const { data } = await supabase.from('vault_2fa').select('user_id,secret,enabled').eq('user_id',userId).single();
+  const { data } = await supabase.from('vault_2fa').select('user_id,secret,enabled').eq('user_id',userId).maybeSingle();
   return data;
 }
 async function db2faSave(userId, secret, enabled) {
@@ -559,7 +562,18 @@ ipcMain.handle('2fa:status', requireAuthNoArgs(async () => {
 ipcMain.handle('2fa:setup', requireAuthNoArgs(async () => {
   const s = getSession();
   logger.ipc('2fa:setup', 'Setting up 2FA');
-  try { const secret=speakeasy.generateSecret({name:`Vault (${s.email})`,length:20});await db2faSave(s.userId,secret.base32,false);logger.success('2fa:setup', '2FA setup initiated');return{ok:true,secret:secret.base32,otpauth:secret.otpauth_url}; } catch(e){ logError('2fa:setup',e);return{ok:false,error:'Operation failed'};}
+  try {
+    // Check if user already has a 2FA record to avoid silently overwriting an existing unverified secret
+    const existing = await db2faGet(s.userId);
+    if (existing?.enabled) {
+      logger.warn('2fa:setup', '2FA already enabled, cannot re-setup without disabling first');
+      return { ok: false, error: '2FA is already enabled. Disable it first before setting up again.' };
+    }
+    const secret=speakeasy.generateSecret({name:`Vault (${s.email})`,length:20});
+    await db2faSave(s.userId,secret.base32,false);
+    logger.success('2fa:setup', '2FA setup initiated');
+    return { ok:true, secret:secret.base32, otpauth:secret.otpauth_url };
+  } catch(e){ logError('2fa:setup',e);return{ok:false,error:'Operation failed'};}
 }));
 
 ipcMain.handle('2fa:enable', requireAuth(async (_e,{token}) => {
