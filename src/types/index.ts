@@ -37,6 +37,8 @@ export interface TrashItem extends VaultItem {
   _deletedAt: string;
 }
 
+export type ItemType = 'password' | 'note';
+
 export type JobStatus = 'wait' | 'accepted' | 'rejected';
 
 export interface Job {

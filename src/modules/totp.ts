@@ -1,27 +1,49 @@
-'use strict';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { TotpItem, Session } from '../types';
+import { sanitizeStr, validTotpSecret } from './validation';
 
-const { sanitizeStr, validTotpSecret } = require('./validation');
+import type Electron from 'electron';
+type Logger = {
+  db: (ctx: string, msg: string, data?: unknown) => void;
+  error: (ctx: string, msg: string, data?: unknown) => void;
+  success: (ctx: string, msg: string, data?: unknown) => void;
+  warn: (ctx: string, msg: string, data?: unknown) => void;
+  ipc: (ctx: string, msg: string, data?: unknown) => void;
+};
+type LogError = (ctx: string, err: unknown) => void;
+type AuthWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
+type EncFn = (obj: object, key: string) => string;
+type DecFn = (str: string, key: string) => Record<string, unknown> | null;
 
-function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSession, logger, enc, dec, logError) {
-
-  async function dbLoadTotp(userId, encKey) {
+function register(
+  ipcMain: Electron.IpcMain,
+  requireAuth: AuthWrapper,
+  requireAuthNoArgs: AuthWrapper,
+  supabase: SupabaseClient,
+  getSession: () => Session | null,
+  logger: Logger,
+  enc: EncFn,
+  dec: DecFn,
+  logError: LogError,
+) {
+  async function dbLoadTotp(userId: string, encKey: string): Promise<TotpItem[]> {
     logger.db('dbLoadTotp', 'Loading TOTP items', { userId });
     const { data, error } = await supabase.from('vault_totp')
       .select('id,user_id,name,issuer,secret,icon,sort_order')
       .eq('user_id', userId).order('sort_order', { ascending: true });
     if (error) { logger.error('dbLoadTotp', 'Failed', error.message); throw new Error('Failed to load TOTP items'); }
     logger.db('dbLoadTotp', 'TOTP items loaded', { count: data.length });
-    return data.map(row => ({
-      id: row.id, name: row.name, issuer: row.issuer,
-      secret: dec(row.secret, encKey) || '',
-      icon: row.icon, sort_order: row.sort_order,
+    return data.map((row: Record<string, unknown>) => ({
+      id: row.id as number, name: row.name as string, issuer: row.issuer as string,
+      secret: (dec(row.secret as string, encKey) as Record<string, string>)?.['secret'] || '',
+      icon: row.icon as string, sort_order: row.sort_order as number,
     }));
   }
 
-  async function dbSaveTotp(userId, item, encKey) {
+  async function dbSaveTotp(userId: string, item: TotpItem, encKey: string): Promise<number> {
     logger.db('dbSaveTotp', 'Saving TOTP item', { userId, itemId: item?.id, name: item?.name });
     const { id, ...payload } = item;
-    const encSecret = enc(item.secret, encKey);
+    const encSecret = enc({ secret: item.secret }, encKey);
     if (id) {
       const { error } = await supabase.from('vault_totp')
         .update({ name: payload.name, issuer: payload.issuer, secret: encSecret, icon: payload.icon })
@@ -38,7 +60,7 @@ function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSession,
     return data.id;
   }
 
-  async function dbDeleteTotp(id, userId) {
+  async function dbDeleteTotp(id: number, userId: string): Promise<void> {
     logger.db('dbDeleteTotp', 'Deleting TOTP item', { itemId: id, userId });
     const { error } = await supabase.from('vault_totp').delete().eq('id', id).eq('user_id', userId);
     if (error) { logger.error('dbDeleteTotp', 'Failed', error.message); throw new Error('Failed to delete TOTP item'); }
@@ -49,34 +71,37 @@ function register(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSession,
     logger.ipc('totp:load', 'Loading TOTP items');
     try {
       const session = getSession();
+      if (!session) throw new Error('No session');
       const items = await dbLoadTotp(session.userId, session.encKey);
       logger.success('totp:load', 'TOTP items loaded', { count: items.length });
       return { ok: true, items };
-    } catch (e) { logError('totp:load', e); return { ok: false, error: e.message }; }
+    } catch (e: unknown) { const err = e as Error; logError('totp:load', err); return { ok: false, error: err.message }; }
   }));
 
-  ipcMain.handle('totp:save', requireAuth(async (_e, { item }) => {
+  ipcMain.handle('totp:save', requireAuth(async (_e, { item }: { item: TotpItem }) => {
     logger.ipc('totp:save', 'Saving TOTP item', { itemId: item?.id, name: item?.name });
     try {
       if (!item || typeof item !== 'object') { logger.warn('totp:save', 'Invalid TOTP data'); return { ok: false, error: 'Invalid TOTP data' }; }
       item.name = sanitizeStr(item.name); item.issuer = sanitizeStr(item.issuer);
       if (!validTotpSecret(item.secret)) { logger.warn('totp:save', 'Invalid TOTP secret'); return { ok: false, error: 'Invalid TOTP secret (base32: A-Z, 2-7, 16+ chars)' }; }
       const session = getSession();
+      if (!session) throw new Error('No session');
       const id = await dbSaveTotp(session.userId, item, session.encKey);
       logger.success('totp:save', 'TOTP item saved', { itemId: id, name: item.name });
       return { ok: true, id };
-    } catch (e) { logError('totp:save', e); return { ok: false, error: e.message }; }
+    } catch (e: unknown) { const err = e as Error; logError('totp:save', err); return { ok: false, error: err.message }; }
   }));
 
-  ipcMain.handle('totp:delete', requireAuth(async (_e, { id }) => {
+  ipcMain.handle('totp:delete', requireAuth(async (_e, { id }: { id: number }) => {
     logger.ipc('totp:delete', 'Deleting TOTP item', { itemId: id });
     try {
       const session = getSession();
+      if (!session) throw new Error('No session');
       await dbDeleteTotp(id, session.userId);
       logger.success('totp:delete', 'TOTP item deleted', { itemId: id });
       return { ok: true };
-    } catch (e) { logError('totp:delete', e); return { ok: false, error: e.message }; }
+    } catch (e: unknown) { const err = e as Error; logError('totp:delete', err); return { ok: false, error: err.message }; }
   }));
 }
 
-module.exports = { register };
+export { register };

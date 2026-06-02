@@ -1,18 +1,28 @@
-'use strict';
+import https from 'https';
+import url from 'url';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Session } from '../types';
+import { validDomain } from './validation';
 
-const https = require('https');
-const url   = require('url');
+import type Electron from 'electron';
+type Logger = {
+  db: (ctx: string, msg: string, data?: unknown) => void;
+  error: (ctx: string, msg: string, data?: unknown) => void;
+  success: (ctx: string, msg: string, data?: unknown) => void;
+  warn: (ctx: string, msg: string, data?: unknown) => void;
+  ipc: (ctx: string, msg: string, data?: unknown) => void;
+};
+type LogError = (ctx: string, err: unknown) => void;
+type AuthWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
 
-const { validDomain } = require('./validation');
-
-async function fetchLogo(site, supabase, logger) {
+async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger): Promise<string | null> {
   logger.db('fetchLogo', 'Fetching logo', { site });
   try {
     if (typeof site !== 'string' || site.length > 2048) return null;
-    let domain = site.replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase().trim();
+    let domain = site.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase().trim();
     if (!domain.includes('.')) domain += '.com';
     if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
-    const isPrivateIP = (d) => {
+    const isPrivateIP = (d: string): boolean => {
       if (d === 'localhost' || d === '0.0.0.0' || d === '[::1]' || d.includes(':')) return true;
       const octets = d.split('.');
       if (octets.length !== 4) return false;
@@ -28,7 +38,7 @@ async function fetchLogo(site, supabase, logger) {
       return null;
     }
 
-    const { data, error } = await supabase.from('vault_logos').select('url').eq('domain',domain).maybeSingle();
+    const { data, error } = await supabase.from('vault_logos').select('url').eq('domain', domain).maybeSingle();
     if (error) throw error;
     if (data?.url && data.url.startsWith('data:')) {
       logger.db('fetchLogo', 'Logo from cache', { domain });
@@ -36,7 +46,7 @@ async function fetchLogo(site, supabase, logger) {
     }
 
     const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
-    const imgData = await new Promise((resolve, reject) => {
+    const imgData = await new Promise<Buffer>((resolve, reject) => {
       const req = https.get(faviconUrl, { timeout: 5000 }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           const redirectUrl = new URL(res.headers.location, faviconUrl);
@@ -45,14 +55,14 @@ async function fetchLogo(site, supabase, logger) {
             return reject(new Error('redirect blocked'));
           }
           https.get(redirectUrl.toString(), { timeout: 5000 }, (res2) => {
-            const chunks = [];
-            res2.on('data', (c) => chunks.push(c));
+            const chunks: Buffer[] = [];
+            res2.on('data', (c) => chunks.push(c as Buffer));
             res2.on('end', () => resolve(Buffer.concat(chunks)));
           }).on('error', reject).on('timeout', () => reject(new Error('timeout')));
           return;
         }
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
+        const chunks: Buffer[] = [];
+        res.on('data', (c) => chunks.push(c as Buffer));
         res.on('end', () => resolve(Buffer.concat(chunks)));
       });
       req.on('error', reject);
@@ -78,18 +88,25 @@ async function fetchLogo(site, supabase, logger) {
     await supabase.from('vault_logos').upsert({ domain, url: dataUrl, cached_at: new Date().toISOString() });
     logger.db('fetchLogo', 'Logo fetched and cached as data URL', { domain, mime, size: imgData.length });
     return dataUrl;
-  } catch (e) { logger.warn('fetchLogo', 'Failed to fetch logo', { site, error: e?.message }); return null; }
+  } catch (e: unknown) { logger.warn('fetchLogo', 'Failed to fetch logo', { site, error: e instanceof Error ? e.message : String(e) }); return null; }
 }
 
-function register(ipcMain, requireAuth, supabase, logger, getSession, logError) {
-  ipcMain.handle('logo:fetch', requireAuth(async (_e, { site }) => {
+function register(
+  ipcMain: Electron.IpcMain,
+  requireAuth: AuthWrapper,
+  supabase: SupabaseClient,
+  logger: Logger,
+  getSession: () => Session | null,
+  logError: LogError,
+) {
+  ipcMain.handle('logo:fetch', requireAuth(async (_e, { site }: { site: string }) => {
     logger.ipc('logo:fetch', 'Fetching logo', { site });
     if (typeof site !== 'string' || !site.trim()) return { ok: false, error: 'Invalid site' };
     try {
-      const url = await fetchLogo(site, supabase, logger);
-      return { ok: true, url };
-    } catch (e) { logError('logo:fetch', e); return { ok: false }; }
+      const logoUrl = await fetchLogo(site, supabase, logger);
+      return { ok: true, url: logoUrl };
+    } catch (e: unknown) { const err = e as Error; logError('logo:fetch', err); return { ok: false }; }
   }));
 }
 
-module.exports = { register };
+export { register };

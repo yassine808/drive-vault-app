@@ -1,13 +1,27 @@
-'use strict';
+import path from 'path';
+import fs from 'fs';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { DbStats, AdminStats, LogEntry, Session, VaultUser } from '../types';
 
-const path = require('path');
-const fs   = require('fs');
+import type Electron from 'electron';
+type Logger = {
+  db: (ctx: string, msg: string, data?: unknown) => void;
+  error: (ctx: string, msg: string, data?: unknown) => void;
+  success: (ctx: string, msg: string, data?: unknown) => void;
+  ipc: (ctx: string, msg: string, data?: unknown) => void;
+};
+type LogError = (ctx: string, err: unknown) => void;
+type AdminWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
 
-function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG_PATH) {
-
-  // ── DB helpers ──────────────────────────────────────────────────────────────
-
-  async function dbGetStats(userId) {
+function register(
+  ipcMain: Electron.IpcMain,
+  requireAdminNoArgs: AdminWrapper,
+  supabase: SupabaseClient,
+  logger: Logger,
+  getSession: () => Session | null,
+  LOG_PATH: string,
+) {
+  async function dbGetStats(userId: string): Promise<DbStats> {
     logger.db('dbGetStats', 'Getting stats', { userId });
     const [items, jobs, jobTrash, itemTrash] = await Promise.all([
       supabase.from('vault_items').select('id', { count: 'exact' }).eq('user_id', userId).is('deleted_at', null),
@@ -16,13 +30,13 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
       supabase.from('vault_items').select('id', { count: 'exact' }).eq('user_id', userId).not('deleted_at', 'is', null),
     ]);
     let logSize = 0;
-    try { logSize = fs.statSync(LOG_PATH).size; } catch {}
+    try { logSize = fs.statSync(LOG_PATH).size; } catch { /* noop */ }
     let dbSizeBytes = 0;
     try {
       const { data } = await supabase.rpc('get_db_size').single();
-      if (data) dbSizeBytes = data;
-    } catch {}
-    const stats = {
+      if (data) dbSizeBytes = data as number;
+    } catch { /* noop */ }
+    const stats: DbStats = {
       items: items.count || 0,
       jobs: jobs.count || 0,
       trash: (itemTrash.count || 0) + (jobTrash.count || 0),
@@ -33,32 +47,27 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
     return stats;
   }
 
-  // ── IPC handlers ────────────────────────────────────────────────────────────
-
   ipcMain.handle('monitor:stats', requireAdminNoArgs(async () => {
     logger.ipc('monitor:stats', 'Loading monitor stats');
     try {
       const session = getSession();
+      if (!session) throw new Error('No session');
       const stats = await dbGetStats(session.userId);
       logger.success('monitor:stats', 'Stats loaded', stats);
       return { ok: true, stats };
-    } catch (e) {
-      logger.error('monitor:stats', e.message, { stack: e.stack });
-      return { ok: false, error: e.message };
-    }
+    } catch (e: unknown) { const err = e as Error; logger.error('monitor:stats', err.message, { stack: err.stack }); return { ok: false, error: err.message }; }
   }));
 
   ipcMain.handle('log:read', requireAdminNoArgs(async () => {
     logger.ipc('log:read', 'Reading logs');
     try {
-      const levels = ['ERROR','WARN','INFO','DEBUG','AUTH','DB','IPC','SUCCESS'];
-      const allEntries = [];
+      const levels = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'AUTH', 'DB', 'IPC', 'SUCCESS'];
+      const allEntries: LogEntry[] = [];
       for (const lvl of levels) {
-        const content = logger.readLog(lvl, 5000);
+        const content = logger.readLog ? logger.readLog(lvl, 5000) : '';
         if (!content || content.startsWith('(no ') || content.startsWith('(could')) continue;
         const lines = content.split('\n').filter(l => l.trim());
         for (const line of lines) {
-          // Parse: [2026-01-01T00:00:00.000Z] [context] message
           const tsMatch = line.match(/^\[([^\]]+)\]/);
           const ctxMatch = line.match(/\]\s+\[([^\]]+)\]/);
           allEntries.push({
@@ -69,10 +78,9 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
           });
         }
       }
-      // Sort by timestamp
       allEntries.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
       return { ok: true, entries: allEntries.slice(-200) };
-    } catch (e) {
+    } catch {
       return { ok: true, entries: [] };
     }
   }));
@@ -80,13 +88,10 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
   ipcMain.handle('log:clear', requireAdminNoArgs(async () => {
     logger.ipc('log:clear', 'Clearing log');
     try {
-      logger.clearAllLogs();
+      if (logger.clearAllLogs) logger.clearAllLogs();
       logger.success('log:clear', 'All logs cleared');
       return { ok: true };
-    } catch (e) {
-      logger.error('log:clear', e.message, { stack: e.stack });
-      return { ok: false };
-    }
+    } catch (e: unknown) { const err = e as Error; logger.error('log:clear', err.message, { stack: err.stack }); return { ok: false }; }
   }));
 
   ipcMain.handle('admin:users', requireAdminNoArgs(async () => {
@@ -97,12 +102,8 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
         .order('created_at', { ascending: false });
       if (error) { logger.error('admin:users', 'Failed', error.message); throw new Error('Failed to list users'); }
       logger.success('admin:users', 'Found ' + (users ? users.length : 0) + ' users');
-      return { ok: true, users: users || [] };
-    } catch (e) {
-      logger.error('admin:users', e.message, { stack: e.stack });
-      logger.writeError('admin:users', e);
-      return { ok: false, error: 'Failed to list users' };
-    }
+      return { ok: true, users: (users || []) as unknown as VaultUser[] };
+    } catch (e: unknown) { const err = e as Error; logger.error('admin:users', err.message, { stack: err.stack }); logger.writeError ? logger.writeError('admin:users', err) : null; return { ok: false, error: 'Failed to list users' }; }
   }));
 
   ipcMain.handle('admin:stats', requireAdminNoArgs(async () => {
@@ -114,20 +115,16 @@ function register(ipcMain, requireAdminNoArgs, supabase, logger, getSession, LOG
         supabase.from('vault_jobs').select('id', { count: 'exact', head: true }).is('deleted_at', null),
         supabase.from('vault_totp').select('id', { count: 'exact', head: true }),
       ]);
-      const stats = {
+      const stats: AdminStats = {
         totalUsers: users.count || 0,
         totalItems: items.count || 0,
-        totalJobs:  jobs.count || 0,
-        totalTotp:  totp.count || 0,
+        totalJobs: jobs.count || 0,
+        totalTotp: totp.count || 0,
       };
       logger.success('admin:stats', 'Global stats loaded', stats);
       return { ok: true, stats };
-    } catch (e) {
-      logger.error('admin:stats', e.message, { stack: e.stack });
-      logger.writeError('admin:stats', e);
-      return { ok: false, error: 'Failed to load stats' };
-    }
+    } catch (e: unknown) { const err = e as Error; logger.error('admin:stats', err.message, { stack: err.stack }); logger.writeError ? logger.writeError('admin:stats', err) : null; return { ok: false, error: 'Failed to load stats' }; }
   }));
 }
 
-module.exports = { register };
+export { register };
