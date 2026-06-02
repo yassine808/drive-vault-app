@@ -6,6 +6,10 @@ dist/
 out/
 build/
 assets/
+app.js
+app.js.map
+preload.js
+preload.js.map
 
 # Environment files
 .env
