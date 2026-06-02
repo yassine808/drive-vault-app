@@ -2,10 +2,14 @@
   "name": "vault",
   "version": "2.0.0",
   "description": "Encrypted password & notes vault",
-  "main": "src/main.js",
+  "main": "dist/main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
+    "build:main": "tsc",
+    "typecheck": "tsc --noEmit",
+    "build:renderer": "node esbuild.config.mjs",
+    "build:all": "npm run build:main && npm run build:renderer",
+    "start": "npm run build:main && electron .",
+    "dev": "npm run build:main && electron . --dev",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux"
@@ -40,12 +44,17 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^25.9.1",
+    "@types/speakeasy": "^2.0.10",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
     "electron": "^42.2.0",
     "electron-builder": "^24.0.0",
+    "esbuild": "^0.28.0",
     "prettier": "^3.8.3",
-    "sharp": "^0.34.5"
-  },
-  "overrides": {
-    "uuid": "^11.1.1"
+    "sharp": "^0.34.5",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   }
 }
