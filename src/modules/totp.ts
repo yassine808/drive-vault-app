@@ -11,7 +11,8 @@ type Logger = {
   ipc: (ctx: string, msg: string, data?: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
-type AuthWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
+type IpcHandler = (...args: any[]) => any;
+type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 type EncFn = (obj: object, key: string) => string;
 type DecFn = (str: string, key: string) => Record<string, unknown> | null;
 

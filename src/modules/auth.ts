@@ -56,7 +56,7 @@ function getSession(): Session | null {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type IpcMainHandler = (event: Electron.IpcMainInvokeEvent, ...args: any[]) => Promise<any>;
+type IpcMainHandler = (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any;
 
 function requireAuth(fn: IpcMainHandler): IpcMainHandler {
   return async (event: Electron.IpcMainInvokeEvent, token: string, ...args: unknown[]) => {

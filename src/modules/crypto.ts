@@ -11,7 +11,7 @@ declare global {
   };
 }
 
-let _CryptoJS: typeof globalThis.CryptoJS | null = null;
+let _CryptoJS: any = null;
 
 function setCryptoJS(lib: typeof globalThis.CryptoJS): void {
   _CryptoJS = lib;

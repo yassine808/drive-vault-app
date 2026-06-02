@@ -9,7 +9,8 @@ type Logger = {
   ipc: (ctx: string, msg: string, data?: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
-type AuthWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
+type IpcHandler = (...args: any[]) => any;
+type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 
 const VALID_ACCENTS = ['violet', 'blue', 'teal', 'green', 'orange', 'rose', 'red', 'pink', 'yellow', 'amber', 'cyan', 'indigo', 'lime'] as const;
 const VALID_TOAST_DURATIONS = [1500, 2400, 3500, 5000] as const;
@@ -21,13 +22,13 @@ type ValidToastDuration = typeof VALID_TOAST_DURATIONS[number];
 type ValidTone = typeof VALID_TONES[number];
 type ValidHoverTone = typeof VALID_HOVER_TONES[number];
 
-interface SettingsValidationResult {
+type SettingsValidationResult = {
   ok: true;
   settings: Settings;
 } | {
   ok: false;
   error: string;
-}
+};
 
 function validateSettings(input: Record<string, unknown>, logger: Logger): SettingsValidationResult {
   if (!input || typeof input !== 'object') {
@@ -154,7 +155,7 @@ function register(
     try {
       const validation = validateSettings(settings, logger);
       if (!validation.ok) {
-        logger.warn('settings:save', validation.error, { lock_timeout: settings?.lock_timeout, lock_action: settings?.lock_action });
+        logger.warn('settings:save', (validation as any).error, { lock_timeout: settings?.lock_timeout, lock_action: settings?.lock_action });
         return validation;
       }
       await dbSaveSettings(session.userId, validation.settings);

@@ -12,7 +12,7 @@ import url from 'url';
 import crypto from 'crypto';
 import fs from 'fs';
 
-import logger from './logger';
+import * as logger from './logger';
 logger.init();
 logger.info('main', 'Main process starting');
 
@@ -52,16 +52,15 @@ process.on('unhandledRejection', (e: unknown) => { const msg = e instanceof Erro
 logger.info('main', 'Global error handlers registered');
 
 let win: electron.BrowserWindow | null = null;
-let supabase: ReturnType<typeof import('@supabase/supabase-js').createClient> | null = null;
-let CryptoJS: import('crypto-js') | null = null;
-let speakeasy: typeof import('speakeasy') | null = null;
+let supabase: any = null;
+let CryptoJS: any = null;
+let speakeasy: any = null;
 let tray: electron.Tray | null = null;
 let oauthInProgress = false;
 let oauthServer: http.Server | null = null;
 
-import { register as registerAuth } from './modules/auth';
 import * as authModule from './modules/auth';
-import { register as registerCrypto, deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
+import { deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
 import * as validation from './modules/validation';
 
 const {
@@ -380,7 +379,7 @@ ipcMain.handle('auth:verify2fa', requireAuth(async (_e: electron.IpcMainInvokeEv
   }
 }));
 
-ipcMain.handle('auth:logout', requireAuthNoArgs(() => {
+ipcMain.handle('auth:logout', requireAuthNoArgs(async () => {
   const s = getSession();
   logger.ipcLog('auth:logout', 'Logout', { user: s?.email });
   playSound('logout');
@@ -389,7 +388,7 @@ ipcMain.handle('auth:logout', requireAuthNoArgs(() => {
   return { ok: true };
 }));
 
-ipcMain.handle('auth:lock', requireAuthNoArgs(() => {
+ipcMain.handle('auth:lock', requireAuthNoArgs(async () => {
   const s = getSession();
   logger.ipcLog('auth:lock', 'Lock', { user: s?.email });
   clearSession();
@@ -427,7 +426,7 @@ ipcMain.handle('auth:reauth', async () => {
     logError('auth:reauth', err);
     return { ok: false, error: 'Re-authentication failed. Please try again.' };
   }
-}));
+});
 
 ipcMain.handle('vault:save', requireAuth(async (_e: electron.IpcMainInvokeEvent, { type, item }: { type: string; item: Record<string, unknown> }) => {
   const s = getSession()!;
@@ -572,8 +571,8 @@ function setupTray(): void {
     { type: 'separator' },
     { label: 'Quit', click: () => { logger.info('tray', 'Quit from tray menu'); (app as unknown as { isQuitting: boolean }).isQuitting = true; app.quit(); } },
   ]);
-  tray.setContextMenu(buildTrayMenu());
-  tray.on('right-click', () => { tray.setContextMenu(buildTrayMenu()); });
+  tray!.setContextMenu(buildTrayMenu());
+  tray.on('right-click', () => { tray!.setContextMenu(buildTrayMenu()); });
   tray.on('double-click', () => { if (win) { win.show(); win.focus(); win.setSkipTaskbar(false); } });
 }
 
@@ -626,9 +625,9 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   logger.info('app', 'Electron app ready');
-  CryptoJS = require('crypto-js') as import('crypto-js');
+  CryptoJS = require('crypto-js');
   setCryptoJS(CryptoJS);
-  speakeasy = require('speakeasy') as typeof import('speakeasy');
+  speakeasy = require('speakeasy');
   const ws = require('ws');
   const { createClient } = require('@supabase/supabase-js');
   supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -636,11 +635,11 @@ app.whenReady().then(() => {
     realtime: { transport: ws }
   });
   logger.success('app', 'Dependencies loaded (CryptoJS, speakeasy, Supabase)');
-  registerJobs(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation, getSessionFn, logger as unknown as import('./modules/jobs').Logger, logError);
-  registerTotp(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as unknown as import('./modules/totp').Logger, enc, dec, logError);
-  registerSettings(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as unknown as import('./modules/settings').Logger, logError);
-  registerLogo(ipcMain, requireAuth, supabase, logger as unknown as import('./modules/logo').Logger, getSessionFn, logError);
-  registerMonitor(ipcMain, requireAdminNoArgs, supabase, logger as unknown as import('./modules/monitor').Logger, getSessionFn, LOG_PATH);
+  registerJobs(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation, getSessionFn, logger as any, logError);
+  registerTotp(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as any, enc, dec, logError);
+  registerSettings(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as any, logError);
+  registerLogo(ipcMain, requireAuth, supabase, logger as any, getSessionFn, logError);
+  registerMonitor(ipcMain, requireAdminNoArgs, supabase, logger as any, getSessionFn, LOG_PATH);
   createWindow();
 });
 

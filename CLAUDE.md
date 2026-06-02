@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Vault** is an Electron desktop app for secure storage of passwords, notes, job applications, and TOTP authenticator secrets. All sensitive data is AES-256 encrypted client-side before being stored in Supabase (PostgreSQL). Authentication is via Google OAuth 2.0 with optional TOTP-based 2FA.
 
-No frontend framework, no build step for renderer code, no TypeScript.
+No frontend framework. TypeScript throughout: main process uses `tsc` + `tsx`, renderer uses `esbuild` bundling. Renderer has `@ts-nocheck` (bundled to JS); main process uses strict mode.
 
 ## Commands
 

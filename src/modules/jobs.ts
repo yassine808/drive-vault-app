@@ -11,7 +11,8 @@ type Logger = {
   ipc: (ctx: string, msg: string, data?: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
-type AuthWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
+type IpcHandler = (...args: any[]) => any;
+type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 
 const VALID_JOB_STATUSES: readonly JobStatus[] = ['wait', 'accepted', 'rejected'];
 

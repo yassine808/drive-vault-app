@@ -154,3 +154,8 @@ export {
   getLogDir, getLogPath,
   LEVELS, LEVEL_FILES,
 };
+
+// Re-export dbLog as 'db' for backward compat with main.ts
+export { dbLog as db };
+
+export default { init, debug, info, success, warn, error, authLog, ipcLog, db: dbLog, writeError, readLog, clearAllLogs, getLogDir };

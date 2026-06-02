@@ -9,9 +9,14 @@ type Logger = {
   error: (ctx: string, msg: string, data?: unknown) => void;
   success: (ctx: string, msg: string, data?: unknown) => void;
   ipc: (ctx: string, msg: string, data?: unknown) => void;
+  warn: (ctx: string, msg: string, data?: unknown) => void;
+  readLog?: (level: string, maxLines: number) => string;
+  clearAllLogs?: () => void;
+  writeError?: (ctx: string, err: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
-type AdminWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
+type IpcHandler = (...args: any[]) => any;
+type AdminWrapper = (fn: IpcHandler) => IpcHandler;
 
 function register(
   ipcMain: Electron.IpcMain,

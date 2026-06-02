@@ -13,7 +13,8 @@ type Logger = {
   ipc: (ctx: string, msg: string, data?: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
-type AuthWrapper = (fn: Electron.IpcMainInvokeEventHandler) => Electron.IpcMainInvokeEventHandler;
+type IpcHandler = (...args: any[]) => any;
+type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 
 async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger): Promise<string | null> {
   logger.db('fetchLogo', 'Fetching logo', { site });
@@ -48,7 +49,7 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
     const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
     const imgData = await new Promise<Buffer>((resolve, reject) => {
       const req = https.get(faviconUrl, { timeout: 5000 }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        if ((res.statusCode ?? 0) >= 300 && (res.statusCode ?? 0) < 400 && res.headers.location) {
           const redirectUrl = new URL(res.headers.location, faviconUrl);
           if (!redirectUrl.hostname.endsWith('google.com') && !redirectUrl.hostname.endsWith('gstatic.com')) {
             logger.warn('fetchLogo', 'Blocked redirect to untrusted domain', { host: redirectUrl.hostname });
