@@ -586,9 +586,15 @@ function createWindow(): void {
     titleBarOverlay: { color: '#00000000', symbolColor: '#a78bfa', height: 40 },
     icon: path.join(__dirname, '..', 'icon.png'),
     backgroundColor: '#0a0a0f',
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true, nodeIntegration: false, spellcheck: false },
+    webPreferences: { preload: path.join(__dirname, '..', 'preload.ts'), contextIsolation: true, nodeIntegration: false, spellcheck: false },
   });
-  win.loadFile(path.join(__dirname, '..', 'index.html'));
+  const isDev = !app.isPackaged;
+  if (isDev) {
+    win.loadURL('http://localhost:5173/index.html');
+    win.webContents.openDevTools({ mode: 'detach' });
+  } else {
+    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  }
 
   win.webContents.on('will-navigate', (event, navUrl) => {
     const parsedUrl = new URL(navUrl);

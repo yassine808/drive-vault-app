@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://www.google.com/s2/favicons https://*.googleusercontent.com https://api.qrserver.com; connect-src 'self' https://*.supabase.co https://api.pwnedpasswords.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; worker-src 'none'; frame-ancestors 'none';" />
+    content="default-src 'self' http://localhost:5173; script-src 'self' http://localhost:5173; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://www.google.com/s2/favicons https://*.googleusercontent.com https://api.qrserver.com; connect-src 'self' http://localhost:5173 https://*.supabase.co https://api.pwnedpasswords.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; worker-src 'none'; frame-ancestors 'none';" />
   <title>Vault</title>
   <link rel="stylesheet" href="app.css" />
 </head>
@@ -206,6 +206,6 @@
 <!-- CONFIRM --><div class="overlay" id="confirm-overlay" hidden><div class="confirm-modal"><div class="confirm-icon" id="confirm-icon">ðŸ—‘ï¸</div><h3 id="confirm-title">Delete this item?</h3><p class="confirm-msg" id="confirm-msg">It will be moved to Trash and auto-deleted after 30 days.</p><div class="modal-foot"><button class="btn-ghost" id="confirm-cancel">Cancel</button><button class="btn-danger" id="confirm-ok">Delete</button></div></div></div>
 <!-- STATUS POPUP --><div class="status-popup" id="status-popup" hidden><button class="status-pop-opt" data-val="accepted">âœ… Accepted</button><button class="status-pop-opt" data-val="wait">â³ Waiting</button><button class="status-pop-opt" data-val="rejected">âŒ Rejected</button></div>
 <div class="toast" id="toast"></div>
-<script src="app.js"></script>
+<script type="module" src="/app.ts"></script>
 </body>
 </html>

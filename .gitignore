@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build output (Vite — zero .js on disk)
 dist/
 out/
 build/
@@ -10,6 +10,7 @@ app.js
 app.js.map
 preload.js
 preload.js.map
+vite.config.ts.timestamp-*
 
 # Environment files
 .env

@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { VaultItem, Job, TotpItem, Settings, UserProfile, VaultData, ConfirmOpts, TotpConfig, AuthResult, PreloadApi } from './src/types';
 
 // ── Global declarations from preload bridge ──

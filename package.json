@@ -4,15 +4,13 @@
   "description": "Encrypted password & notes vault",
   "main": "dist/main.js",
   "scripts": {
-    "build:main": "tsc",
     "typecheck": "tsc --noEmit",
-    "build:renderer": "node esbuild.config.mjs",
-    "build:all": "npm run build:main && npm run build:renderer",
-    "start": "npm run build:main && electron .",
-    "dev": "npm run build:main && electron . --dev",
-    "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win",
-    "build:linux": "electron-builder --linux"
+    "dev": "vite --clearScreen false & tsx src/main.ts",
+    "start": "vite build && tsx src/main.ts",
+    "build:all": "vite build && tsc",
+    "build:mac": "npm run build:all && electron-builder --mac",
+    "build:win": "npm run build:all && electron-builder --win",
+    "build:linux": "npm run build:all && electron-builder --linux"
   },
   "build": {
     "appId": "com.vault.app",
@@ -55,6 +53,7 @@
     "prettier": "^3.8.3",
     "sharp": "^0.34.5",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
   }
 }
