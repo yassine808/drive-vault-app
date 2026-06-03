@@ -1,14 +1,20 @@
 // Type declarations for the renderer process (app.ts)
 // These extend the global Window interface for the preload bridge
 
-import type { VaultItem, Job, TotpItem, Settings, UserProfile, VaultData, LogEntry, DbStats, AdminStats } from './index';
+import type {
+  VaultItem, Job, TotpItem, Settings, UserProfile,
+  VaultData, LogEntry, DbStats, AdminStats, ConfirmOpts, TotpConfig,
+  AuthResult
+} from './index';
+
+export type { ConfirmOpts, TotpConfig, AuthResult, PreloadApi };
 
 export interface PreloadApi {
-  login(): Promise<{ ok: boolean; token?: string; user?: UserProfile & { isAdmin?: boolean }; needs2fa?: boolean; error?: string; vault?: VaultData }>;
+  login(): Promise<AuthResult>;
   logout(): Promise<void>;
   lock(): Promise<void>;
-  reauth(): Promise<{ ok: boolean; token?: string; user?: UserProfile & { isAdmin?: boolean }; vault?: VaultData; error?: string }>;
-  verify2fa(code: string): Promise<{ ok: boolean; token?: string; user?: UserProfile & { isAdmin?: boolean }; error?: string }>;
+  reauth(): Promise<AuthResult>;
+  verify2fa(code: string): Promise<AuthResult>;
 
   save(type: string, item: Record<string, unknown>): Promise<{ ok: boolean; dbId?: number; error?: string }>;
   delete(dbId: number): Promise<{ ok: boolean; error?: string }>;

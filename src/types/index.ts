@@ -23,19 +23,18 @@ export interface Session {
 export interface VaultItem {
   _dbId?: number;
   _sort?: number;
-  id?: number;
+  id?: number | string;
   site?: string;
   username?: string;
   password?: string;
   notes?: string;
   type?: string;
+  title?: string;
+  body?: string;
   [key: string]: unknown;
 }
 
-export interface TrashItem extends VaultItem {
-  _type: string;
-  _deletedAt: string;
-}
+export type TrashItem = (VaultItem & { _type: string; _deletedAt: string }) | (Job & { _type: string; _deletedAt: string });
 
 export type ItemType = 'password' | 'note';
 
@@ -92,6 +91,18 @@ export interface UserProfile {
   email: string;
   avatar: string | null;
   isAdmin?: boolean;
+  created_at?: string;
+  last_seen?: string;
+}
+
+/** Return type for login/reauth/verify2fa IPC calls */
+export interface AuthResult {
+  ok: boolean;
+  token?: string;
+  user?: UserProfile & { isAdmin?: boolean };
+  needs2fa?: boolean;
+  error?: string;
+  vault?: VaultData;
 }
 
 export interface VaultData {
@@ -120,3 +131,30 @@ export interface AdminStats {
   totalJobs: number;
   totalTotp: number;
 }
+
+// ── Renderer-specific types ──
+
+export interface ConfirmOpts {
+  title: string;
+  msg: string;
+  icon?: string;
+  okLabel?: string;
+  okClass?: string;
+  onOk: () => void;
+}
+
+export interface TotpConfig {
+  freqs: number[];
+  type: string;
+  dur: number;
+  vol: number;
+  gap: number;
+}
+
+export type AppAccent =
+  | 'violet' | 'blue' | 'teal' | 'green' | 'orange'
+  | 'rose' | 'red' | 'pink' | 'yellow' | 'amber'
+  | 'cyan' | 'indigo' | 'lime';
+
+export type AppSoundTone = 'chime' | 'ding' | 'soft' | 'bright';
+export type AppHoverTone = AppSoundTone | 'click' | 'tap' | 'pop' | 'none';
