@@ -5,8 +5,8 @@
   "main": "dist/main.js",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "dev": "vite --clearScreen false & tsx src/main.ts",
-    "start": "vite build && tsx src/main.ts",
+    "dev": "vite --clearScreen false & tsc --watch & electron .",
+    "start": "vite build && tsc && tsc -p tsconfig.preload.json && electron .",
     "build:all": "vite build && tsc",
     "build:mac": "npm run build:all && electron-builder --mac",
     "build:win": "npm run build:all && electron-builder --win",

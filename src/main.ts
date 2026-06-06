@@ -5,7 +5,8 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 import electron from 'electron';
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } = electron;
+const { ipcMain, BrowserWindow, shell, Tray, Menu, nativeImage, dialog } = electron;
+const { app } = electron;
 import http from 'http';
 import https from 'https';
 import url from 'url';
@@ -64,14 +65,14 @@ import { deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
 import * as validation from './modules/validation';
 
 const {
-  genSessionToken, validateToken, clearSession, setSession, getSession,
+  genSessionToken, clearSession, setSession, getSession,
   requireAuth, requireAuthNoArgs, requireAdminNoArgs,
   isRateLimited, recordFailedAttempt, resetRateLimit,
 } = authModule;
 
 const {
-  MAX_FIELD_LEN, MAX_NOTES_LEN, VALID_ITEM_TYPES,
-  sanitizeStr, validType, validEmail, validTotpSecret,
+  MAX_NOTES_LEN,
+  sanitizeStr, validType,
 } = validation;
 
 type GoogleProfile = {
@@ -177,13 +178,15 @@ async function dbUpdateSortOrder(items: Array<{ _dbId?: number }>, userId: strin
 
 async function db2faGet(userId: string): Promise<{ user_id: string; secret: string; enabled: boolean } | null> {
   logger.db('db2faGet', 'Getting 2FA record', { userId });
-  const { data } = await supabase!.from('vault_2fa').select('user_id,secret,enabled').eq('user_id', userId).maybeSingle();
+  const { data, error } = await supabase!.from('vault_2fa').select('user_id,secret,enabled').eq('user_id', userId).maybeSingle();
+  if (error) { logger.error('db2faGet', 'Failed', error.message); throw new Error('Failed to get 2FA record'); }
   return data as { user_id: string; secret: string; enabled: boolean } | null;
 }
 
 async function db2faSave(userId: string, secret: string, enabled: boolean): Promise<void> {
   logger.db('db2faSave', 'Saving 2FA record', { userId, enabled });
-  await supabase!.from('vault_2fa').upsert({ user_id: userId, secret, enabled });
+  const { error } = await supabase!.from('vault_2fa').upsert({ user_id: userId, secret, enabled });
+  if (error) { logger.error('db2faSave', 'Failed', error.message); throw new Error('Failed to save 2FA record'); }
 }
 
 function verify2fa(secret: string, token: string): boolean {
@@ -586,14 +589,16 @@ function createWindow(): void {
     titleBarOverlay: { color: '#00000000', symbolColor: '#a78bfa', height: 40 },
     icon: path.join(__dirname, '..', 'icon.png'),
     backgroundColor: '#0a0a0f',
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.ts'), contextIsolation: true, nodeIntegration: false, spellcheck: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, spellcheck: false },
   });
-  const isDev = !app.isPackaged;
-  if (isDev) {
+  const builtIndex = path.join(__dirname, '..', 'dist', 'index.html');
+  if (fs.existsSync(builtIndex)) {
+    win.loadFile(builtIndex);
+  } else if (!app.isPackaged) {
     win.loadURL('http://localhost:5173/index.html');
     win.webContents.openDevTools({ mode: 'detach' });
   } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    win.loadFile(builtIndex);
   }
 
   win.webContents.on('will-navigate', (event, navUrl) => {

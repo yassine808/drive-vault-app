@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
-import type { VaultItem, Job, TotpItem, Settings, UserProfile, VaultData, ConfirmOpts, TotpConfig, AuthResult, PreloadApi } from './src/types';
+import type { PreloadApi } from './src/types/renderer.d.ts';
+import type { VaultItem, Job, TotpItem, Settings, UserProfile, VaultData, LogEntry, ConfirmOpts } from './src/types';
 
 // ── Global declarations from preload bridge ──
 declare global {
@@ -19,13 +20,13 @@ interface AppSettings extends Settings {
 }
 
 interface AppState {
-  user: (UserProfile & { isAdmin?: boolean }) | null;
+  user: (UserProfile & { isAdmin?: boolean }) | null | undefined;
   passwords: VaultItem[];
   notes: VaultItem[];
   trash: Array<(VaultItem & { _type: string; _deletedAt: string }) | (Job & { _type: string; _deletedAt: string })>;
   jobs: Job[];
   totp: TotpItem[];
-  activeNote: string | null;
+  activeNote: string | null | undefined;
   jobSort: { col: string; dir: number };
   jobFilter: string;
   settings: AppSettings;
@@ -162,7 +163,6 @@ function playSound(type: string): void {
       break;
   }
 }
-function logDebug(_ctx: string, _msg: string): void { /* noop */ }
 api.onPlaySound((type: string) => playSound(type));
 api.onTrayLock(() => { if (S.user) { logInfo('auth', 'Tray lock'); doLock(); hide('tab-monitor'); } });
 api.onTrayLogout(() => { if (S.user) { logInfo('auth', 'Tray logout'); doLogout(); hide('tab-monitor'); } });
@@ -295,7 +295,7 @@ function doLock(): void {
   const r = await api.login();
   if (!r.ok) {
     const err = document.getElementById('login-err') as HTMLElement;
-    err.hidden = false; err.textContent = r.error;
+    err.hidden = false; err.textContent = r.error ?? "";
     logErr('auth', 'Login failed', r.error);
     btn.textContent = 'Sign in with Google'; btn.disabled = false; return;
   }
@@ -314,7 +314,7 @@ function doLock(): void {
   const r = await api.verify2fa(token);
   if (!r.ok) {
     (document.getElementById('twofa-err') as HTMLElement).hidden = false;
-    (document.getElementById('twofa-err') as HTMLElement).textContent = r.error;
+    (document.getElementById('twofa-err') as HTMLElement).textContent = r.error ?? "";
     logWarn('auth', '2FA verify failed', r.error); return;
   }
   if (r.token) window.__vaultToken.set(r.token);
@@ -381,7 +381,7 @@ function renderUserChip(): void {
 
 // ═══ TABS ══════════════════════════════════════════════════════════════════════
 const _tabCache: Record<string, boolean> = {};
-const _monitorRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let _monitorRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 document.querySelectorAll('.nav-btn[data-tab]').forEach((btn) => {
   const b = btn as HTMLElement;
   b.addEventListener('click', () => switchTab(b.dataset.tab!));
@@ -494,7 +494,7 @@ function renderPasswords(): void {
     delBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
     actsDiv.appendChild(delBtn);
     row.appendChild(actsDiv);
-    getLogo(pw.site).then((url) => {
+    getLogo(pw.site ?? '').then((url) => {
       if (!url) return;
       const el = document.getElementById(iconId) as HTMLElement;
       if (!el) return;
@@ -709,7 +709,7 @@ async function loadAndRenderTrash(): Promise<void> {
   if (!r1.ok) { logErr('trash', 'Failed to load vault trash', r1.error); toast('Failed to load some trash items'); }
   if (!r2.ok) { logErr('trash', 'Failed to load job trash', r2.error); toast('Failed to load job trash'); }
   const vaultItems: (VaultItem & { _type: string; _deletedAt: string })[] = r1.ok ? (r1.items as (VaultItem & { _type: string; _deletedAt: string })[]) : [];
-  const jobItems: (Job & { _type: string; _deletedAt: string })[] = (r2.ok ? r2.items : []).map((j) => ({ ...j, _type: 'job', _dbId: j.id, _deletedAt: j.deleted_at }));
+  const jobItems: (Job & { _type: string; _deletedAt: string })[] = (r2.ok ? r2.items : []).map((j: Job) => ({ ...j, _type: 'job', _dbId: j.id, _deletedAt: j.deleted_at! }));
   S.trash = [...vaultItems, ...jobItems].sort((a, b) => new Date(b._deletedAt).getTime() - new Date(a._deletedAt).getTime());
   updateCounts();
   (document.getElementById('trash-empty') as HTMLElement).hidden = !!S.trash.length;
@@ -747,7 +747,8 @@ async function loadAndRenderTrash(): Promise<void> {
         if (isJob) { const res = await api.jobsTrash.restore(jobItem.id!); ok = res.ok; }
         else { const res = await api.trashRestore(vaultItem._dbId!); ok = res.ok; }
         if (!ok) { toast('Restore failed'); logErr('trash', 'Restore failed', { label }); return; }
-        S.trash = S.trash.filter((t) => t._dbId !== item._dbId);
+        const itemDbId = (item as unknown as VaultItem)._dbId;
+        S.trash = S.trash.filter((t) => (t as unknown as VaultItem)._dbId !== itemDbId);
         loadAndRenderTrash(); updateCounts(); toast('Restored ✓');
         logOk('trash', 'Item restored', { label });
       }
@@ -780,8 +781,8 @@ async function loadAndRenderTrash(): Promise<void> {
       const vaultItems = S.trash.filter((t) => t._type !== 'job');
       const jobItems = S.trash.filter((t) => t._type === 'job');
       await Promise.all([
-        ...vaultItems.map((t) => api.trashPurge(t._dbId!)),
-        ...jobItems.map((t) => api.jobsTrash.purge(t._dbId!)),
+        ...vaultItems.map((t) => api.trashPurge((t as unknown as VaultItem)._dbId!)),
+        ...jobItems.map((t) => api.jobsTrash.purge((t as unknown as Job).id!)),
       ]);
       S.trash = []; loadAndRenderTrash(); updateCounts(); toast('Trash emptied');
       logOk('trash', 'Trash emptied');
@@ -1003,7 +1004,7 @@ document.querySelectorAll('.status-pick').forEach((btn) => {
 });
 
 // ═══ TOTP VAULT ════════════════════════════════════════════════════════════════
-let totpTimers: number[] = [];
+let totpTimers: Array<ReturnType<typeof setInterval>> = [];
 async function loadAndRenderTotp(): Promise<void> {
   logInfo('totp', 'Loading TOTP accounts');
   totpTimers.forEach((t) => clearInterval(t)); totpTimers = [];
@@ -1044,7 +1045,7 @@ function renderTotpGrid(): void {
       onOk: async () => { logInfo('totp', 'TOTP account removed', { name: item.name }); await api.totpDelete(item.id!); S.totp = S.totp.filter((t) => t.id !== item.id); renderTotpGrid(); updateCounts(); toast('Removed'); }
     });
     (card.querySelector('.totp-copy') as HTMLButtonElement).onclick = () => {
-      const code = (document.getElementById(codeId) as HTMLElement).textContent!.replace(/s/g, '');
+      const code = (document.getElementById(codeId) as HTMLElement).textContent!.replace(/\s/g, '');
       if (code && code !== '——') {
         navigator.clipboard.writeText(code);
         toast('Code copied! (clipboard clears in 30s)');
@@ -1075,8 +1076,8 @@ async function computeTotpAsync(secret: string, id: number | undefined): Promise
     const key = base32Decode(secret);
     const T = Math.floor(Date.now() / 30000);
     const msg = new DataView(new ArrayBuffer(8)); msg.setUint32(4, T, false);
-    const ck = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
-    const hmac = new Uint8Array(await crypto.subtle.sign('HMAC', ck, msg.buffer));
+    const ck = await crypto.subtle.importKey('raw', key as BufferSource, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const hmac = new Uint8Array(await crypto.subtle.sign('HMAC', ck, msg.buffer) as ArrayBuffer);
     const off = hmac[19] & 0xf;
     const code = (((hmac[off] & 0x7f) << 24) | ((hmac[off + 1] & 0xff) << 16) | ((hmac[off + 2] & 0xff) << 8) | (hmac[off + 3] & 0xff)) % 1000000;
     const str = String(code).padStart(6, '0');
@@ -1105,7 +1106,7 @@ let _totpEdit: TotpItem | null = null;
     secret, icon: (document.getElementById('t-icon') as HTMLInputElement).value || '🔐',
   };
   hide('totp-overlay');
-  const r = await api.totpSave(item);
+  const r = await api.totpSave(item as unknown as Record<string, unknown>);
   if (r.ok) {
     if (_totpEdit) Object.assign(_totpEdit, item); else { item.id = r.id; S.totp.unshift(item); }
     renderTotpGrid(); updateCounts(); toast('Saved');
@@ -1162,11 +1163,11 @@ async function loadMonitor(): Promise<void> {
     circlesWrap.appendChild(cw2);
 
     const actEl = document.getElementById('dash-activity') as HTMLElement; actEl.innerHTML = '';
-    const recentEntries = (lr.ok ? lr.entries : []).filter((e) => e.level === 'AUTH' || e.level === 'ERROR' || e.level === 'WARN').slice(-8).reverse();
+    const recentEntries = (lr.ok ? lr.entries : []).filter((e: LogEntry) => e.level === 'AUTH' || e.level === 'ERROR' || e.level === 'WARN').slice(-8).reverse();
     if (!recentEntries.length) {
       actEl.innerHTML = '<div class="dash-activity-empty">No recent activity</div>';
     } else {
-      recentEntries.forEach((e) => {
+      recentEntries.forEach((e: LogEntry) => {
         const row = document.createElement('div'); row.className = 'dash-activity-entry';
         const ts = document.createElement('span'); ts.className = 'dash-activity-time'; ts.textContent = e.ts ? e.ts.replace('T', ' ').replace(/\.\d{3}Z$/, '') : ''; row.appendChild(ts);
         const ctx = document.createElement('span'); ctx.className = 'dash-activity-ctx'; ctx.textContent = '[' + (e.ctx || e.level) + ']'; row.appendChild(ctx);
@@ -1215,7 +1216,7 @@ async function loadAdminDashboard(): Promise<void> {
 
   const listEl = document.getElementById('admin-users-list') as HTMLElement; listEl.innerHTML = '';
   if (usersRes.ok && usersRes.users.length) {
-    usersRes.users.forEach((u) => {
+    usersRes.users.forEach((u: UserProfile) => {
       const row = document.createElement('div'); row.className = 'admin-user-row';
       const init = (u.name || u.email || '?')[0].toUpperCase();
       if (u.avatar && u.avatar.startsWith('https://')) { const img = document.createElement('img'); img.className = 'admin-user-avatar'; img.src = u.avatar; row.appendChild(img); }
@@ -1306,7 +1307,7 @@ function applyAccent(name: string): void {
 }
 
 function applySetting(key: string, value: unknown): void {
-  (S.settings as Record<string, unknown>)[key] = value;
+  (S.settings as unknown as Record<string, unknown>)[key] = value;
   if (key === 'lock_timeout' || key === 'lock_action' || key === 'lock_countdown') { applyLockSettings(); armLock(); }
   if (key === 'compact') document.body.classList.toggle('compact', !!value);
   if (key === 'animations') document.body.style.setProperty('--transition', value ? '' : '0s');
@@ -1317,7 +1318,7 @@ function applySetting(key: string, value: unknown): void {
 let __saveTimer: ReturnType<typeof setTimeout> | null = null;
 function __saveSettings(): void {
   clearTimeout(__saveTimer!);
-  __saveTimer = setTimeout(async () => { try { await api.settings.save(S.settings); } catch { /* noop */ } }, 400);
+  __saveTimer = setTimeout(async () => { try { await api.settings.save(S.settings as unknown as Record<string, unknown>); } catch { /* noop */ } }, 400);
 }
 
 async function loadSettingsTab(): Promise<void> {
@@ -1325,14 +1326,14 @@ async function loadSettingsTab(): Promise<void> {
   const r = await api.settings.load();
   if (r.ok) S.settings = { ...DEFAULT_SETTINGS, ...r.settings } as AppSettings;
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
-    if ((S.settings as Record<string, unknown>)[k] === undefined) (S.settings as Record<string, unknown>)[k] = v;
+    if ((S.settings as unknown as Record<string, unknown>)[k] === undefined) (S.settings as unknown as Record<string, unknown>)[k] = v;
   }
 
   const bind = (id: string, key: string, type: string): void => {
     const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
     if (!el) return;
-    if (type === 'toggle') (el as HTMLInputElement).checked = !!(S.settings as Record<string, unknown>)[key];
-    else el.value = String((S.settings as Record<string, unknown>)[key] ?? '');
+    if (type === 'toggle') (el as HTMLInputElement).checked = !!(S.settings as unknown as Record<string, unknown>)[key];
+    else el.value = String((S.settings as unknown as Record<string, unknown>)[key] ?? '');
     el.addEventListener('change', () => {
       let val: unknown;
       if (type === 'toggle') val = (el as HTMLInputElement).checked;
@@ -1411,11 +1412,18 @@ function doGenerate(): string {
   if ((document.getElementById('go-nums') as HTMLInputElement).checked) classes.push(NUMS);
   if ((document.getElementById('go-syms') as HTMLInputElement).checked) classes.push(SYMS);
   const allCs = classes.join('');
-  const arr = new Uint32Array(len); crypto.getRandomValues(arr);
-  const guaranteed = classes.map((cs, i) => cs[arr[i] % cs.length]);
-  const rest = Array.from(arr).slice(classes.length).map((n) => allCs[n % allCs.length]);
+  // Use rejection sampling to avoid modulo bias
+  function pickRandom(chars: string): string {
+    const max = 0x100000000 - (0x100000000 % chars.length);
+    let v: number;
+    do { const tmp = new Uint32Array(1); crypto.getRandomValues(tmp); v = tmp[0]; } while (v >= max);
+    return chars[v % chars.length];
+  }
+  const guaranteed = classes.map((cs) => pickRandom(cs));
+  const rest = Array.from({ length: len - classes.length }, () => pickRandom(allCs));
   let pw = [...guaranteed, ...rest];
-  for (let i = pw.length - 1; i > 0; i--) { const j = arr[i < arr.length ? i : i % arr.length] % (i + 1); [pw[i], pw[j]] = [pw[j], pw[i]]; }
+  const shuffleArr = new Uint32Array(pw.length); crypto.getRandomValues(shuffleArr);
+  for (let i = pw.length - 1; i > 0; i--) { const j = shuffleArr[i] % (i + 1); [pw[i], pw[j]] = [pw[j], pw[i]]; }
   const pwStr = pw.join('');
   (document.getElementById('gen-out') as HTMLElement).textContent = pwStr;
   const { n, lbl, cls } = scoreP(pwStr);
@@ -1491,7 +1499,7 @@ function closeGen(): void { hide('gen-overlay'); }
     okBtn.hidden = false; disBtn.hidden = true;
     const sr = await api.twofa.setup();
     if (sr.ok) {
-      (document.getElementById('2fa-secret-text') as HTMLElement).textContent = sr.secret;
+      (document.getElementById('2fa-secret-text') as HTMLElement).textContent = sr.secret ?? '';
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(sr.otpauth!)}`;
       const qrEl = document.getElementById('qr-wrap') as HTMLElement; qrEl.innerHTML = '';
       const qrImg = document.createElement('img'); qrImg.width = 160; qrImg.height = 160;
@@ -1504,7 +1512,7 @@ function closeGen(): void { hide('gen-overlay'); }
     newOk.addEventListener('click', async () => {
       const token = (document.getElementById('twofa-setup-code') as HTMLInputElement)?.value.trim();
       const er = await api.twofa.enable(token);
-      if (!er.ok) { const el = document.getElementById('twofa-setup-err') as HTMLElement; el.hidden = false; el.textContent = er.error; logWarn('2fa', '2FA enable failed', er.error); return; }
+      if (!er.ok) { const el = document.getElementById('twofa-setup-err') as HTMLElement; el.hidden = false; el.textContent = er.error ?? ""; logWarn('2fa', '2FA enable failed', er.error); return; }
       hide('twofa-overlay'); toast('2FA enabled ✓'); logOk('2fa', '2FA enabled');
     });
   }

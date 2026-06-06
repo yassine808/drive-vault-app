@@ -21,7 +21,7 @@ function register(
   requireAuth: AuthWrapper,
   requireAuthNoArgs: AuthWrapper,
   supabase: SupabaseClient,
-  validation: { sanitizeStr: typeof sanitizeStr; validEmail: typeof validEmail; MAX_NOTES_LEN: number },
+  _validation: { sanitizeStr: typeof sanitizeStr; validEmail: typeof validEmail; MAX_NOTES_LEN: number },
   getSession: () => Session | null,
   logger: Logger,
   logError: LogError,

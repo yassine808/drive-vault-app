@@ -25,13 +25,21 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
     if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
     const isPrivateIP = (d: string): boolean => {
       if (d === 'localhost' || d === '0.0.0.0' || d === '[::1]' || d.includes(':')) return true;
+      // Resolve DNS to check for private IPs (handled at fetch time via redirect check)
+      // At domain-extraction time, block obvious private IPv4 patterns
       const octets = d.split('.');
+      if (octets.length >= 4) {
+        // Check if first 4 octets form a private IP (handles 10.0.0.1.nip.io)
+        const [a, b, c, dv] = [parseInt(octets[0], 10), parseInt(octets[1], 10), parseInt(octets[2], 10), parseInt(octets[3], 10)];
+        if (!isNaN(a) && !isNaN(b) && a === 10) return true;
+        if (!isNaN(a) && !isNaN(b) && a === 127) return true;
+        if (!isNaN(a) && !isNaN(b) && a === 192 && b === 168) return true;
+        if (!isNaN(a) && !isNaN(b) && a === 172 && b >= 16 && b <= 31) return true;
+        if (!isNaN(a) && !isNaN(b) && a === 169 && b === 254) return true;
+        if (!isNaN(a) && a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+      }
+      // Only do exact match for 4-octet IPs
       if (octets.length !== 4) return false;
-      const [a, b] = [parseInt(octets[0], 10), parseInt(octets[1], 10)];
-      if (a === 10 || a === 127) return true;
-      if (a === 192 && b === 168) return true;
-      if (a === 172 && b >= 16 && b <= 31) return true;
-      if (a === 169 && b === 254) return true;
       return false;
     };
     if (isPrivateIP(domain)) {

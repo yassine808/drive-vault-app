@@ -98,9 +98,10 @@ function register(
 ) {
   async function dbLoadSettings(userId: string): Promise<Partial<Settings>> {
     logger.db('dbLoadSettings', 'Loading settings', { userId });
-    const { data } = await supabase.from('vault_settings')
+    const { data, error } = await supabase.from('vault_settings')
       .select('user_id,lock_timeout,lock_action,lock_countdown,lock_on_minimize,compact,animations,accent,gen_length,gen_symbols,gen_numbers,gen_ambiguous,gen_copy,sounds,sound_login,sound_exit,sound_hover,sound_login_tone,sound_exit_tone,sound_hover_tone,toast_duration')
-      .eq('user_id', userId).single();
+      .eq('user_id', userId).maybeSingle();
+    if (error) { logger.warn('dbLoadSettings', 'Failed', { error: error.message }); throw new Error('Failed to load settings'); }
     const result = data || {};
     logger.db('dbLoadSettings', 'Settings loaded', result);
     return result as Partial<Settings>;
@@ -142,9 +143,9 @@ function register(
       const settings = await dbLoadSettings(session.userId);
       logger.success('settings:load', 'Settings loaded', settings);
       return { ok: true, settings };
-    } catch {
-      logger.warn('settings:load', 'Using defaults');
-      return { ok: true, settings: { lock_timeout: 5, lock_action: 'lock' } as Partial<Settings> };
+    } catch (e: unknown) {
+      logger.warn('settings:load', 'Using defaults', { error: e instanceof Error ? e.message : String(e) });
+      return { ok: true, settings: { lock_timeout: 5, lock_action: 'lock', lock_countdown: true, lock_on_minimize: false, compact: false, animations: true, accent: 'violet', gen_length: 20, gen_symbols: true, gen_numbers: true, gen_ambiguous: false, gen_copy: true, sounds: true, sound_login: true, sound_exit: true, sound_hover: false, sound_login_tone: 'chime', sound_exit_tone: 'chime', sound_hover_tone: 'click', toast_duration: 2400 } as Partial<Settings> };
     }
   }));
 

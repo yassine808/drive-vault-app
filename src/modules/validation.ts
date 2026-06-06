@@ -19,7 +19,7 @@ function validEmail(e: string): boolean {
 }
 
 function validTotpSecret(s: string): boolean {
-  return /^[A-Za-z2-7]{16,64}$/.test(String(s || '').replace(/s/g, ''));
+  return /^[A-Za-z2-7]{16,64}$/.test(String(s || '').replace(/\s/g, ''));
 }
 
 function validDomain(d: string): boolean {

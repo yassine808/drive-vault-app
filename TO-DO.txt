@@ -1,0 +1,2 @@
+Fix removing everything from the clipboard after copying the password (only password should be removed)
+Add pin so i login using only PIN
