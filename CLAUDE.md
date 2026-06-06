@@ -38,6 +38,7 @@ No tests, linting, or formatting tools exist.
 | `src/modules/settings.ts` | Settings load/save with validation — registered via `register()` pattern. |
 | `src/modules/monitor.ts` | DB stats, log read/clear, admin user listing — registered via `register()`. All handlers use `requireAdminNoArgs`. |
 | `src/modules/logo.ts` | Favicon fetching + caching as data URLs — registered via `register()` pattern. |
+| `src/modules/pin.ts` | PIN-based authentication — setup, verify, change, disable, status. All local (no DB). Rate limited. |
 | `src/types/index.ts` | Shared TypeScript interfaces (Session, VaultItem, Job, TotpItem, Settings, etc.) |
 | `src/logger.ts` | Structured logging to per-level files in `Logs/` directory. |
 | `preload.ts` | Context bridge — session token in closure, auto-prepended to sensitive IPC calls. |
@@ -61,9 +62,9 @@ Main Process (src/main.ts)
 
 ### Module Registration Pattern
 
-`main.ts` is the entry point (~1400 lines). Domain modules (`jobs.ts`, `totp.ts`, `settings.ts`, `monitor.ts`, `logo.ts`) export a `register()` function called inside `app.whenReady()`. Each `register()` receives `ipcMain`, auth wrappers, `supabase`, `validation`, `getSession`, `logger`, and `logError` — then calls `ipcMain.handle()` directly. This avoids passing `supabase` as a constructor parameter before it's initialized.
+`main.ts` is the entry point (~1400 lines). Domain modules (`jobs.ts`, `totp.ts`, `settings.ts`, `monitor.ts`, `logo.ts`, `pin.ts`) export a `register()` function called inside `app.whenReady()`. Each `register()` receives `ipcMain`, auth wrappers, `supabase`, `validation`, `getSession`, `logger`, and `logError` — then calls `ipcMain.handle()` directly. This avoids passing `supabase` as a constructor parameter before it's initialized.
 
-Some modules with encrypted data (totp, settings) also receive `enc`/`dec` crypto functions directly in their `register()` signature.
+Some modules with encrypted data (totp, settings, pin) also receive `enc`/`dec` crypto functions directly in their `register()` signature. The `pin.ts` module is unique: it operates entirely locally (no Supabase) and receives only `ipcMain`, auth wrappers, `getSession`, `logger`, and `logError`.
 
 ### IPC Channels
 
@@ -83,6 +84,7 @@ All async handlers use `ipcMain.handle`. Channels are namespaced:
 | `logo:` | Yes | Favicon fetching & caching |
 | `log:` | Admin | Error log access |
 | `win:` | Yes | Window minimize/maximize/close |
+| `pin:` | Mixed | PIN auth: `verify` is public; `setup`, `change`, `disable` require auth; `status` is public |
 
 All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and returned as `{ ok: false, error: string }` — raw Supabase errors are never leaked to the renderer.
 
@@ -93,6 +95,30 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
 - **Rotation**: Token is regenerated on every auth event (login, 2FA verify, reauth). Cleared on logout/lock.
 - **Admin guard**: `requireAdminNoArgs` checks `session.email === ADMIN_EMAIL` (`ysmagri@gmail.com`, overridable via env var).
 - **2FA rate limiting**: 5 attempts per 15-minute sliding window, 15-minute lockout.
+
+### PIN Authentication
+
+- **Purpose**: Skip Google OAuth on subsequent logins. Users first sign in with Google, then enable PIN in settings.
+- **Storage**: All PIN data is local only — never sent to Supabase. Stored in `%APPDATA%/Vault/vault_user_key` (or `~/Library/Application Support/Vault/` on macOS, `~/.config/Vault/` on Linux).
+- **File format**: `JSON.stringify({ version: 1, salt: base64, data: enc({ pinHash, userKey: { googleId, email } }, derivePinKey(pin, salt)) })`
+- **Key derivation**: `derivePinKey(pin, salt)` — PBKDF2-SHA256, 600k iterations → 32-byte hex string.
+- **PIN hash**: Separate PBKDF2-SHA256 (600k iterations) stored inside the encrypted payload for verification.
+- **PIN policy**: 4-12 characters. Numbers-only by default; alphanumeric optional (`pin_allow_alpha` setting).
+- **Rate limiting**: 5 attempts per 15-minute sliding window, 15-minute lockout (same pattern as 2FA).
+- **Flow**:
+  1. Startup: renderer calls `pin:status` → if enabled, show `#s-pin` screen; else show `#s-login`
+  2. User enters PIN → `pin:verify` returns `{ ok, googleId, email }` on success
+  3. Renderer calls `auth:loginWithPin(googleId, email)` → main creates session, loads vault
+  4. Lock: if `pin_login_enabled` → show `#s-pin`; else → show `#s-lock`
+  5. Logout: if `pin_login_enabled` → show `#s-pin`; else → show `#s-login`
+- **Recovery**: "Sign in with Google instead" link on PIN screen falls back to full OAuth flow.
+- **IPC handlers**:
+  - `pin:setup` (auth): validates PIN, creates encrypted user key file
+  - `pin:verify` (public): rate-limited, decrypts file, returns googleId + email
+  - `pin:change` (auth): verifies old PIN, writes new file with new salt/key
+  - `pin:disable` (auth): deletes user key file
+  - `pin:status` (public): returns `{ enabled: boolean }` based on file existence
+- **Settings columns**: `pin_login_enabled` and `pin_allow_alpha` in `vault_settings` table (require DB migration if not already applied).
 
 ### Encryption
 
@@ -112,7 +138,7 @@ All tables are scoped by `vault_users.id` via `user_id` foreign key. Soft delete
 | `vault_jobs` | Plaintext job applications (company, role, email, status, notes) |
 | `vault_totp` | Encrypted TOTP secrets (name, issuer, secret, icon) |
 | `vault_2fa` | User's own 2FA config (secret, enabled) |
-| `vault_settings` | UI preferences (lock_timeout, accent, sounds, generator defaults, etc.) |
+| `vault_settings` | UI preferences (lock_timeout, accent, sounds, generator defaults, pin_login_enabled, pin_allow_alpha, etc.) |
 | `vault_logos` | Favicon cache (domain → data URL) |
 
 Explicit column lists are used on all Supabase queries (never `SELECT *`).
@@ -131,7 +157,9 @@ Explicit column lists are used on all Supabase queries (never `SELECT *`).
 
 - `window.api` — all IPC methods. Sensitive methods auto-prepend `sessionToken`.
 - `window.__vaultToken` — exposes `set(token)` and `clear()` for the renderer.
-- Auth methods (`login`, `reauth`, `verify2fa`) don't require a token.
+- Auth methods (`login`, `reauth`, `verify2fa`, `loginWithPin`) don't require a token.
+- `pin:verify` and `pin:status` don't require a token (used for startup screen decision).
+- All other `pin:*` methods require a token (user must be authenticated via Google first).
 - Bridge calls are logged to main via `preload:log` and `preload:token` IPC channels.
 
 ### Renderer
