@@ -81,4 +81,8 @@ function dec(str: string, key: string): Record<string, unknown> | null {
   } catch { return null; }
 }
 
-export { deriveKey, enc, dec, setCryptoJS };
+function derivePinKey(pin: string, salt: Buffer, iterations: number = 600000): string {
+  return crypto.pbkdf2Sync(pin, salt, iterations, 32, 'sha256').toString('hex');
+}
+
+export { deriveKey, derivePinKey, enc, dec, setCryptoJS };

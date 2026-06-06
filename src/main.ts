@@ -304,6 +304,7 @@ import { register as registerTotp } from './modules/totp';
 import { register as registerSettings } from './modules/settings';
 import { register as registerLogo } from './modules/logo';
 import { register as registerMonitor } from './modules/monitor';
+import { register as registerPin } from './modules/pin';
 
 const getSessionFn = getSession;
 
@@ -428,6 +429,27 @@ ipcMain.handle('auth:reauth', async () => {
     logger.authLog('auth:reauth', 'Re-authentication failed', { message: err.message });
     logError('auth:reauth', err);
     return { ok: false, error: 'Re-authentication failed. Please try again.' };
+  }
+});
+
+ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { googleId, email }: { googleId: string; email: string }) => {
+  logger.ipcLog('auth:loginWithPin', 'PIN login attempt', { email });
+  try {
+    const userId = await dbUpsertUser({ googleId, email, name: email.split('@')[0], avatar: null });
+    const encKey = deriveKey(googleId);
+    const vault = await dbLoadItems(userId, encKey);
+    const sess = { googleId, email, name: email.split('@')[0], avatar: null, userId, encKey, pending2fa: false };
+    setSession(sess);
+    const token = genSessionToken();
+    playSound('login');
+    const isAdmin = email === authModule.ADMIN_EMAIL;
+    logger.authLog('auth:loginWithPin', 'PIN login success', { email, userId, passwords: vault.passwords.length, notes: vault.notes.length });
+    return { ok: true, user: { name: sess.name, email, avatar: null, isAdmin }, token, vault };
+  } catch (e: unknown) {
+    const err = e as Error;
+    logger.authLog('auth:loginWithPin', 'PIN login failed', { email, message: err.message });
+    logError('auth:loginWithPin', err);
+    return { ok: false, error: 'Login failed. Please try again or sign in with Google.' };
   }
 });
 
@@ -651,6 +673,7 @@ app.whenReady().then(() => {
   registerSettings(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as any, logError);
   registerLogo(ipcMain, requireAuth, supabase, logger as any, getSessionFn, logError);
   registerMonitor(ipcMain, requireAdminNoArgs, supabase, logger as any, getSessionFn, LOG_PATH);
+  registerPin(ipcMain, requireAuth, requireAuthNoArgs, getSessionFn, logger as any, logError);
   createWindow();
 });
 

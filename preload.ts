@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('api', {
     bridgeLog('call', 'auth:login', true);
     return ipcRenderer.invoke('auth:login');
   },
+  loginWithPin: (googleId: string, email: string) => {
+    bridgeLog('call', 'auth:loginWithPin', true);
+    return ipcRenderer.invoke('auth:loginWithPin', { googleId, email });
+  },
   logout: () => {
     bridgeLog('call', 'auth:logout', true);
     const r = ipcRenderer.invoke('auth:logout', sessionToken);
@@ -136,6 +140,29 @@ contextBridge.exposeInMainWorld('api', {
     disable: (token: string) => {
       bridgeLog('call', '2fa:disable', true);
       return ipcRenderer.invoke('2fa:disable', sessionToken, { token });
+    },
+  },
+
+  pin: {
+    setup: (pin: string, allowAlpha: boolean) => {
+      bridgeLog('call', 'pin:setup', true);
+      return ipcRenderer.invoke('pin:setup', sessionToken, { pin, allowAlpha });
+    },
+    verify: (pin: string) => {
+      bridgeLog('call', 'pin:verify', true);
+      return ipcRenderer.invoke('pin:verify', { pin });
+    },
+    change: (oldPin: string, newPin: string, allowAlpha: boolean) => {
+      bridgeLog('call', 'pin:change', true);
+      return ipcRenderer.invoke('pin:change', sessionToken, { oldPin, newPin, allowAlpha });
+    },
+    disable: () => {
+      bridgeLog('call', 'pin:disable', true);
+      return ipcRenderer.invoke('pin:disable', sessionToken);
+    },
+    status: () => {
+      bridgeLog('call', 'pin:status', true);
+      return ipcRenderer.invoke('pin:status', sessionToken);
     },
   },
 

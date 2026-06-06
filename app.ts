@@ -103,7 +103,7 @@ function toast(msg: string, ms?: number): void {
 function show(id: string): void { (document.getElementById(id) as HTMLElement).hidden = false; }
 function hide(id: string): void { (document.getElementById(id) as HTMLElement).hidden = true; }
 function screen(s: string): void {
-  ['s-login', 's-2fa', 's-lock', 's-app'].forEach((id: string) => {
+  ['s-login', 's-2fa', 's-lock', 's-pin', 's-app'].forEach((id: string) => {
     const el = document.getElementById(id);
     if (el) el.hidden = id !== s;
   });
@@ -262,7 +262,13 @@ function doLock(): void {
   S.passwords = []; S.notes = []; S.totp = []; S.jobs = []; S.trash = []; S.activeNote = null;
   document.querySelectorAll('.pw-real').forEach((el) => { (el as HTMLElement).textContent = ''; el.remove(); });
   api.lock().catch(() => { /* noop */ });
-  screen('s-lock');
+  if (S.settings.pin_login_enabled) {
+    screen('s-pin');
+    logInfo('auth', 'Locked — showing PIN entry screen');
+  } else {
+    screen('s-lock');
+    logInfo('auth', 'Locked — showing Google unlock screen');
+  }
   logInfo('auth', 'Sensitive data cleared from memory on lock');
   setTimeout(() => { _lockInProgress = false; }, 2000);
 }
@@ -325,16 +331,55 @@ function doLock(): void {
   if (e.key === 'Enter') (document.getElementById('btn-verify2fa') as HTMLButtonElement).click();
 });
 
+// ═══ PIN UNLOCK ═══════════════════════════════════════════════════════════════
+(document.getElementById('btn-pin-unlock') as HTMLButtonElement).addEventListener('click', async () => {
+  const pin = (document.getElementById('pin-code') as HTMLInputElement).value;
+  logInfo('auth', 'PIN unlock attempt');
+  const r = await api.pin.verify(pin);
+  if (!r.ok) {
+    (document.getElementById('pin-err') as HTMLElement).hidden = false;
+    (document.getElementById('pin-err') as HTMLElement).textContent = r.error ?? 'Incorrect PIN';
+    logWarn('auth', 'PIN verify failed', r.error);
+    return;
+  }
+  logOk('auth', 'PIN verified, completing login', { email: r.email });
+  const r2 = await api.loginWithPin(r.googleId!, r.email!);
+  if (!r2.ok) {
+    (document.getElementById('pin-err') as HTMLElement).hidden = false;
+    (document.getElementById('pin-err') as HTMLElement).textContent = r2.error ?? 'Login failed';
+    logErr('auth', 'PIN login failed', r2.error);
+    return;
+  }
+  if (r2.token) window.__vaultToken.set(r2.token);
+  S.user = r2.user; loadVault(r2.vault); await loadSettings(); enterApp();
+  logOk('auth', 'PIN login successful', { email: S.user?.email });
+});
+(document.getElementById('pin-code') as HTMLInputElement).addEventListener('keydown', (e: KeyboardEvent) => {
+  if (e.key === 'Enter') (document.getElementById('btn-pin-unlock') as HTMLButtonElement).click();
+});
+(document.getElementById('btn-pin-google') as HTMLButtonElement).addEventListener('click', () => {
+  logInfo('auth', 'Switching to Google OAuth from PIN screen');
+  clearAllInputs();
+  (document.getElementById('pin-err') as HTMLElement).hidden = true;
+  screen('s-login');
+});
+
 async function doLogout(): Promise<void> {
   logInfo('auth', 'Logout clicked', { user: S.user?.email });
   playSound('logout'); await api.logout();
   S.user = null; S.passwords = []; S.notes = []; S.trash = []; S.jobs = []; S.totp = []; S.activeNote = null;
   Object.keys(_tabCache).forEach((k) => delete _tabCache[k]);
-  disarmLock(); clearAllInputs(); screen('s-login');
-  (document.getElementById('btn-login') as HTMLButtonElement).textContent = 'Sign in with Google';
-  (document.getElementById('btn-login') as HTMLButtonElement).disabled = false;
-  (document.getElementById('login-err') as HTMLElement).hidden = true;
-  logOk('auth', 'Logged out, state cleared');
+  disarmLock(); clearAllInputs();
+  if (S.settings.pin_login_enabled) {
+    screen('s-pin');
+    logOk('auth', 'Logged out, showing PIN entry screen');
+  } else {
+    screen('s-login');
+    (document.getElementById('btn-login') as HTMLButtonElement).textContent = 'Sign in with Google';
+    (document.getElementById('btn-login') as HTMLButtonElement).disabled = false;
+    (document.getElementById('login-err') as HTMLElement).hidden = true;
+    logOk('auth', 'Logged out, state cleared');
+  }
 }
 (document.getElementById('btn-logout') as HTMLButtonElement).addEventListener('click', () => doLogout());
 
@@ -1279,6 +1324,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   sounds: true, toast_duration: 2400,
   sound_login: true, sound_exit: true, sound_hover: false,
   sound_login_tone: 'chime', sound_exit_tone: 'chime', sound_hover_tone: 'click',
+  pin_login_enabled: false, pin_allow_alpha: false,
 };
 
 const ACCENT_MAP: Record<string, string> = {
@@ -1363,6 +1409,99 @@ async function loadSettingsTab(): Promise<void> {
   bind('s-sound-exit-tone', 'sound_exit_tone', 'select');
   bind('s-sound-hover-tone', 'sound_hover_tone', 'select');
   bind('s-toast-duration', 'toast_duration', 'select');
+  bind('s-pin-enabled', 'pin_login_enabled', 'toggle');
+  bind('s-pin-alpha', 'pin_allow_alpha', 'toggle');
+
+  // PIN settings UI logic
+  const pinEnabled = S.settings.pin_login_enabled;
+  const pinSetupRow = document.getElementById('pin-setup-row') as HTMLElement;
+  const pinChangeRow = document.getElementById('pin-change-row') as HTMLElement;
+  const pinDisableRow = document.getElementById('pin-disable-row') as HTMLElement;
+  if (pinSetupRow) pinSetupRow.hidden = pinEnabled;
+  if (pinChangeRow) pinChangeRow.hidden = !pinEnabled;
+  if (pinDisableRow) pinDisableRow.hidden = !pinEnabled;
+
+  // PIN enable toggle handler
+  const pinEnabledEl = document.getElementById('s-pin-enabled') as HTMLInputElement;
+  if (pinEnabledEl) {
+    pinEnabledEl.addEventListener('change', () => {
+      const enabled = pinEnabledEl.checked;
+      S.settings.pin_login_enabled = enabled;
+      if (pinSetupRow) pinSetupRow.hidden = enabled;
+      if (pinChangeRow) pinChangeRow.hidden = !enabled;
+      if (pinDisableRow) pinDisableRow.hidden = !enabled;
+      __saveSettings();
+      toast(enabled ? 'PIN login enabled — set your PIN below' : 'PIN login disabled', 1500);
+      logInfo('settings', 'PIN login toggled', { enabled });
+    });
+  }
+
+  // PIN allow alpha toggle handler
+  const pinAlphaEl = document.getElementById('s-pin-alpha') as HTMLInputElement;
+  if (pinAlphaEl) {
+    pinAlphaEl.addEventListener('change', () => {
+      S.settings.pin_allow_alpha = pinAlphaEl.checked;
+      __saveSettings();
+      toast(pinAlphaEl.checked ? 'Alphanumeric PINs enabled' : 'Numbers-only PINs', 1500);
+      logInfo('settings', 'PIN alpha setting changed', { allowAlpha: pinAlphaEl.checked });
+    });
+  }
+
+  // Set PIN button
+  document.getElementById('s-pin-save')?.addEventListener('click', async () => {
+    const pinVal = (document.getElementById('s-pin-value') as HTMLInputElement).value;
+    logInfo('pin', 'Set PIN clicked');
+    const r = await api.pin.setup(pinVal, S.settings.pin_allow_alpha);
+    if (!r.ok) {
+      toast(r.error || 'Failed to set PIN');
+      logWarn('pin', 'Set PIN failed', r.error);
+      return;
+    }
+    toast('PIN set successfully');
+    logOk('pin', 'PIN set');
+    (document.getElementById('s-pin-value') as HTMLInputElement).value = '';
+    // Switch to change/disable view
+    S.settings.pin_login_enabled = true;
+    if (pinSetupRow) pinSetupRow.hidden = true;
+    if (pinChangeRow) pinChangeRow.hidden = false;
+    if (pinDisableRow) pinDisableRow.hidden = false;
+    if (pinEnabledEl) pinEnabledEl.checked = true;
+  });
+
+  // Change PIN button
+  document.getElementById('s-pin-change-btn')?.addEventListener('click', async () => {
+    const oldPin = (document.getElementById('s-pin-old') as HTMLInputElement).value;
+    const newPin = (document.getElementById('s-pin-new') as HTMLInputElement).value;
+    logInfo('pin', 'Change PIN clicked');
+    const r = await api.pin.change(oldPin, newPin, S.settings.pin_allow_alpha);
+    if (!r.ok) {
+      toast(r.error || 'Failed to change PIN');
+      logWarn('pin', 'Change PIN failed', r.error);
+      return;
+    }
+    toast('PIN changed successfully');
+    logOk('pin', 'PIN changed');
+    (document.getElementById('s-pin-old') as HTMLInputElement).value = '';
+    (document.getElementById('s-pin-new') as HTMLInputElement).value = '';
+  });
+
+  // Disable PIN button
+  document.getElementById('s-pin-disable')?.addEventListener('click', async () => {
+    logInfo('pin', 'Disable PIN clicked');
+    const r = await api.pin.disable();
+    if (!r.ok) {
+      toast(r.error || 'Failed to disable PIN');
+      logWarn('pin', 'Disable PIN failed', r.error);
+      return;
+    }
+    toast('PIN login disabled');
+    logOk('pin', 'PIN disabled');
+    S.settings.pin_login_enabled = false;
+    if (pinSetupRow) pinSetupRow.hidden = false;
+    if (pinChangeRow) pinChangeRow.hidden = true;
+    if (pinDisableRow) pinDisableRow.hidden = true;
+    if (pinEnabledEl) pinEnabledEl.checked = false;
+  });
 
   document.querySelectorAll('.accent-swatch').forEach((s) => {
     (s as HTMLElement).classList.toggle('active', (s as HTMLElement).dataset.accent === S.settings.accent);
@@ -1551,5 +1690,16 @@ document.addEventListener('mouseover', (e: MouseEvent) => {
   __hoverTimer = setTimeout(() => playSound('hover'), 20);
 });
 
-screen('s-login');
-logInfo('app', 'App initialized, showing login screen');
+// ── Startup: check if PIN login is available ──
+(async () => {
+  try {
+    const pr = await api.pin.status();
+    if (pr.ok && pr.enabled) {
+      screen('s-pin');
+      logInfo('app', 'PIN login available, showing PIN entry screen');
+      return;
+    }
+  } catch { /* noop — fall through to login screen */ }
+  screen('s-login');
+  logInfo('app', 'App initialized, showing login screen');
+})();

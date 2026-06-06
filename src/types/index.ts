@@ -84,6 +84,8 @@ export interface Settings {
   sound_exit_tone: string;
   sound_hover_tone: string;
   toast_duration: number;
+  pin_login_enabled: boolean;
+  pin_allow_alpha: boolean;
 }
 
 export interface UserProfile {
@@ -130,6 +132,18 @@ export interface AdminStats {
   totalItems: number;
   totalJobs: number;
   totalTotp: number;
+}
+
+export interface PinStatus {
+  enabled: boolean;
+  allowAlpha: boolean;
+}
+
+export interface PinVerifyResult {
+  ok: boolean;
+  error?: string;
+  googleId?: string;
+  email?: string;
 }
 
 // ── Renderer-specific types ──

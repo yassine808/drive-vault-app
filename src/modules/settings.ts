@@ -66,6 +66,8 @@ function validateSettings(input: Record<string, unknown>, logger: Logger): Setti
     lock_action: input.lock_action as 'lock' | 'exit',
     lock_countdown: !!input.lock_countdown,
     lock_on_minimize: !!input.lock_on_minimize,
+    pin_login_enabled: !!input.pin_login_enabled,
+    pin_allow_alpha: !!input.pin_allow_alpha,
     compact: !!input.compact,
     animations: !!input.animations,
     accent,
@@ -99,7 +101,7 @@ function register(
   async function dbLoadSettings(userId: string): Promise<Partial<Settings>> {
     logger.db('dbLoadSettings', 'Loading settings', { userId });
     const { data, error } = await supabase.from('vault_settings')
-      .select('user_id,lock_timeout,lock_action,lock_countdown,lock_on_minimize,compact,animations,accent,gen_length,gen_symbols,gen_numbers,gen_ambiguous,gen_copy,sounds,sound_login,sound_exit,sound_hover,sound_login_tone,sound_exit_tone,sound_hover_tone,toast_duration')
+      .select('user_id,lock_timeout,lock_action,lock_countdown,lock_on_minimize,pin_login_enabled,pin_allow_alpha,compact,animations,accent,gen_length,gen_symbols,gen_numbers,gen_ambiguous,gen_copy,sounds,sound_login,sound_exit,sound_hover,sound_login_tone,sound_exit_tone,sound_hover_tone,toast_duration')
       .eq('user_id', userId).maybeSingle();
     if (error) { logger.warn('dbLoadSettings', 'Failed', { error: error.message }); throw new Error('Failed to load settings'); }
     const result = data || {};
@@ -114,6 +116,8 @@ function register(
       lock_action: settings.lock_action,
       lock_countdown: settings.lock_countdown,
       lock_on_minimize: settings.lock_on_minimize,
+      pin_login_enabled: settings.pin_login_enabled,
+      pin_allow_alpha: settings.pin_allow_alpha,
       compact: settings.compact,
       animations: settings.animations,
       accent: settings.accent,
@@ -145,7 +149,7 @@ function register(
       return { ok: true, settings };
     } catch (e: unknown) {
       logger.warn('settings:load', 'Using defaults', { error: e instanceof Error ? e.message : String(e) });
-      return { ok: true, settings: { lock_timeout: 5, lock_action: 'lock', lock_countdown: true, lock_on_minimize: false, compact: false, animations: true, accent: 'violet', gen_length: 20, gen_symbols: true, gen_numbers: true, gen_ambiguous: false, gen_copy: true, sounds: true, sound_login: true, sound_exit: true, sound_hover: false, sound_login_tone: 'chime', sound_exit_tone: 'chime', sound_hover_tone: 'click', toast_duration: 2400 } as Partial<Settings> };
+      return { ok: true, settings: { lock_timeout: 5, lock_action: 'lock', lock_countdown: true, lock_on_minimize: false, pin_login_enabled: false, pin_allow_alpha: false, compact: false, animations: true, accent: 'violet', gen_length: 20, gen_symbols: true, gen_numbers: true, gen_ambiguous: false, gen_copy: true, sounds: true, sound_login: true, sound_exit: true, sound_hover: false, sound_login_tone: 'chime', sound_exit_tone: 'chime', sound_hover_tone: 'click', toast_duration: 2400 } as Partial<Settings> };
     }
   }));
 

@@ -4,13 +4,14 @@
 import type {
   VaultItem, Job, TotpItem, Settings, UserProfile,
   VaultData, LogEntry, DbStats, AdminStats, ConfirmOpts, TotpConfig,
-  AuthResult
+  AuthResult, PinStatus, PinVerifyResult
 } from './index';
 
 export type { ConfirmOpts, TotpConfig, AuthResult, PreloadApi };
 
 export interface PreloadApi {
   login(): Promise<AuthResult>;
+  loginWithPin(googleId: string, email: string): Promise<AuthResult>;
   logout(): Promise<void>;
   lock(): Promise<void>;
   reauth(): Promise<AuthResult>;
@@ -69,6 +70,14 @@ export interface PreloadApi {
   onMaximizedState(cb: (maximized: boolean) => void): void;
   onTrayLock(cb: () => void): void;
   onTrayLogout(cb: () => void): void;
+
+  pin: {
+    setup(pin: string, allowAlpha: boolean): Promise<{ ok: boolean; error?: string }>;
+    verify(pin: string): Promise<PinVerifyResult>;
+    change(oldPin: string, newPin: string, allowAlpha: boolean): Promise<{ ok: boolean; error?: string }>;
+    disable(): Promise<{ ok: boolean; error?: string }>;
+    status(): Promise<PinStatus>;
+  };
 
   minimize(): Promise<void>;
   maximize(): Promise<void>;
