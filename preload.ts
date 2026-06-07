@@ -203,6 +203,25 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  accounts: {
+    list: () => {
+      bridgeLog('call', 'accounts:list', true);
+      return ipcRenderer.invoke('accounts:list');
+    },
+    save: () => {
+      bridgeLog('call', 'accounts:save', true);
+      return ipcRenderer.invoke('accounts:save', sessionToken);
+    },
+    remove: () => {
+      bridgeLog('call', 'accounts:remove', true);
+      return ipcRenderer.invoke('accounts:remove', sessionToken);
+    },
+    touch: (googleId: string) => {
+      bridgeLog('call', 'accounts:touch', true);
+      return ipcRenderer.invoke('accounts:touch', { googleId });
+    },
+  },
+
   onPlaySound: (cb: (type: string) => void) => ipcRenderer.on('play-sound', (_e, type) => cb(type)),
   onMinimize: (cb: () => void) => ipcRenderer.on('win:minimized', () => cb()),
   onMaximizedState: (cb: (maximized: boolean) => void) => ipcRenderer.on('win:maximized-state', (_e, maximized) => cb(maximized)),

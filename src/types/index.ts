@@ -135,6 +135,7 @@ export interface AdminStats {
 }
 
 export interface PinStatus {
+  ok: boolean;
   enabled: boolean;
   allowAlpha: boolean;
 }

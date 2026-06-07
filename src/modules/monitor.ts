@@ -5,10 +5,10 @@ import type { DbStats, AdminStats, LogEntry, Session, VaultUser } from '../types
 
 import type Electron from 'electron';
 type Logger = {
-  db: (ctx: string, msg: string, data?: unknown) => void;
+  dbLog: (ctx: string, msg: string, data?: unknown) => void;
   error: (ctx: string, msg: string, data?: unknown) => void;
   success: (ctx: string, msg: string, data?: unknown) => void;
-  ipc: (ctx: string, msg: string, data?: unknown) => void;
+  ipcLog: (ctx: string, msg: string, data?: unknown) => void;
   warn: (ctx: string, msg: string, data?: unknown) => void;
   readLog?: (level: string, maxLines: number) => string;
   clearAllLogs?: () => void;
@@ -27,7 +27,7 @@ function register(
   LOG_PATH: string,
 ) {
   async function dbGetStats(userId: string): Promise<DbStats> {
-    logger.db('dbGetStats', 'Getting stats', { userId });
+    logger.dbLog('dbGetStats', 'Getting stats', { userId });
     const [items, jobs, jobTrash, itemTrash] = await Promise.all([
       supabase.from('vault_items').select('id', { count: 'exact' }).eq('user_id', userId).is('deleted_at', null),
       supabase.from('vault_jobs').select('id', { count: 'exact' }).eq('user_id', userId).is('deleted_at', null),
@@ -48,12 +48,12 @@ function register(
       logSize,
       dbSizeBytes,
     };
-    logger.db('dbGetStats', 'Stats retrieved', stats);
+    logger.dbLog('dbGetStats', 'Stats retrieved', stats);
     return stats;
   }
 
   ipcMain.handle('monitor:stats', requireAdminNoArgs(async () => {
-    logger.ipc('monitor:stats', 'Loading monitor stats');
+    logger.ipcLog('monitor:stats', 'Loading monitor stats');
     try {
       const session = getSession();
       if (!session) throw new Error('No session');
@@ -64,7 +64,7 @@ function register(
   }));
 
   ipcMain.handle('log:read', requireAdminNoArgs(async () => {
-    logger.ipc('log:read', 'Reading logs');
+    logger.ipcLog('log:read', 'Reading logs');
     try {
       const levels = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'AUTH', 'DB', 'IPC', 'SUCCESS'];
       const allEntries: LogEntry[] = [];
@@ -91,7 +91,7 @@ function register(
   }));
 
   ipcMain.handle('log:clear', requireAdminNoArgs(async () => {
-    logger.ipc('log:clear', 'Clearing log');
+    logger.ipcLog('log:clear', 'Clearing log');
     try {
       if (logger.clearAllLogs) logger.clearAllLogs();
       logger.success('log:clear', 'All logs cleared');
@@ -100,7 +100,7 @@ function register(
   }));
 
   ipcMain.handle('admin:users', requireAdminNoArgs(async () => {
-    logger.ipc('admin:users', 'Admin listing all users');
+    logger.ipcLog('admin:users', 'Admin listing all users');
     try {
       const { data: users, error } = await supabase.from('vault_users')
         .select('id,name,email,avatar_url,created_at,last_seen')
@@ -112,7 +112,7 @@ function register(
   }));
 
   ipcMain.handle('admin:stats', requireAdminNoArgs(async () => {
-    logger.ipc('admin:stats', 'Admin fetching global stats');
+    logger.ipcLog('admin:stats', 'Admin fetching global stats');
     try {
       const [users, items, jobs, totp] = await Promise.all([
         supabase.from('vault_users').select('id', { count: 'exact', head: true }),

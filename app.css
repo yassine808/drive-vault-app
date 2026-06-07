@@ -249,6 +249,14 @@ html, body {
   margin-top: 10px; padding-top: 12px;
   border-top: 1px solid var(--border);
 }
+.pin-indicator {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 10px; border-radius: var(--r-sm);
+  background: var(--accent-dim);
+  border: 1px solid oklch(0.65 0.22 290 / 0.1);
+  color: var(--accent); font-size: 10px; font-family: var(--mono);
+  animation: fadeUp var(--t-base) ease;
+}
 .lock-row {
   display: flex; align-items: center; gap: 7px;
   padding: 7px 10px; border-radius: var(--r-sm);
@@ -336,6 +344,13 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   font-size: 13px; font-weight: 600; color: var(--accent);
   font-family: var(--mono);
+  overflow: hidden;
+}
+.pw-icon img {
+  width: 22px; height: 22px;
+  border-radius: 4px;
+  object-fit: contain;
+  display: block;
 }
 .pw-info{flex:1;overflow:hidden;min-width:0}
 .pw-site {
@@ -963,6 +978,185 @@ html, body {
 .totp-foot{display:flex;align-items:center;gap:8px}
 .totp-bar-wrap{flex:1;height:3px;background:var(--bg-raised);border-radius:2px;overflow:hidden}
 .totp-bar{height:100%;background:var(--accent);border-radius:2px;transition:width 1s linear}
+
+/* ═══════════════════════════════════════════════════════════════
+   PIN SAVED ACCOUNTS
+   ═══════════════════════════════════════════════════════════════ */
+.pin-accounts {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.pin-accounts-list {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+.pin-account-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: var(--r-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all var(--t-base);
+  animation: fadeUp var(--t-base) ease;
+  min-width: 80px;
+}
+.pin-account-item:hover {
+  background: var(--bg-raised);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  transform: translateY(-2px);
+}
+.pin-account-item:active {
+  transform: none;
+}
+.pin-account-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-raised);
+  border: 2px solid var(--border);
+}
+.pin-account-avatar-fb {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  border: 2px solid oklch(0.65 0.22 290 / 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.pin-account-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--txt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+  text-align: center;
+}
+.pin-account-email {
+  font-size: 9px;
+  color: var(--txt-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+  text-align: center;
+}
+.pin-accounts-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  color: var(--txt-dim);
+  font-size: 10px;
+}
+.pin-accounts-divider::before,
+.pin-accounts-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.pin-selected-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 4px;
+  animation: fadeUp var(--t-base) ease;
+}
+.pin-selected-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+.pin-selected-avatar-fb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  border: 1px solid oklch(0.65 0.22 290 / 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.pin-selected-info {
+  flex: 1;
+  overflow: hidden;
+}
+.pin-selected-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--txt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pin-selected-email {
+  font-size: 10px;
+  color: var(--txt-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pin-account-back {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--txt-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--t-fast);
+  flex-shrink: 0;
+}
+.pin-account-back:hover {
+  background: var(--bg-raised);
+  color: var(--txt);
+  border-color: var(--border-h);
+}
+.pin-input {
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 0.3em;
+  font-family: var(--mono);
+  width: 100%;
+  margin-top: 4px;
+}
+.btn-pin-unlock {
+  width: 100%;
+  justify-content: center;
+  margin-top: 10px;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    SETTINGS

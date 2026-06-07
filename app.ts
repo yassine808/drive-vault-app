@@ -51,6 +51,7 @@ const S: AppState = {
     sound_login_tone: 'chime', sound_exit_tone: 'chime', sound_hover_tone: 'click',
     gen_length: 20, gen_symbols: true, gen_numbers: true, gen_ambiguous: false, gen_copy: true,
     toast_duration: 2400,
+    pin_login_enabled: false, pin_allow_alpha: false,
   },
 };
 
@@ -332,6 +333,91 @@ function doLock(): void {
 });
 
 // ═══ PIN UNLOCK ═══════════════════════════════════════════════════════════════
+let _selectedAccount: { googleId: string; email: string; name: string; avatar: string | null } | null = null;
+
+function showPinAccounts() {
+  _selectedAccount = null;
+  hide('pin-selected-account');
+  show('pin-user-label');
+  show('pin-accounts');
+  (document.getElementById('pin-code') as HTMLInputElement).value = '';
+  (document.getElementById('pin-err') as HTMLElement).hidden = true;
+}
+
+function selectPinAccount(account: { googleId: string; email: string; name: string; avatar: string | null }) {
+  _selectedAccount = account;
+  hide('pin-accounts');
+  hide('pin-user-label');
+  show('pin-selected-account');
+
+  const avatarEl = document.getElementById('pin-selected-avatar') as HTMLElement;
+  avatarEl.innerHTML = '';
+  avatarEl.className = '';
+  if (account.avatar && account.avatar.startsWith('https://')) {
+    const img = document.createElement('img');
+    img.className = 'pin-selected-avatar';
+    img.src = account.avatar;
+    img.addEventListener('error', () => { img.remove(); avatarEl.className = 'pin-selected-avatar-fb'; avatarEl.textContent = (account.name || '?')[0].toUpperCase(); });
+    avatarEl.appendChild(img);
+  } else {
+    avatarEl.className = 'pin-selected-avatar-fb';
+    avatarEl.textContent = (account.name || account.email || '?')[0].toUpperCase();
+  }
+
+  (document.getElementById('pin-selected-name') as HTMLElement).textContent = account.name || account.email;
+  (document.getElementById('pin-selected-email') as HTMLElement).textContent = account.email;
+  (document.getElementById('pin-code') as HTMLInputElement).value = '';
+  (document.getElementById('pin-err') as HTMLElement).hidden = true;
+  setTimeout(() => (document.getElementById('pin-code') as HTMLInputElement).focus(), 60);
+}
+
+async function loadPinAccounts() {
+  try {
+    const r = await api.accounts.list();
+    if (!r.ok || !r.accounts.length) {
+      showPinAccounts();
+      return;
+    }
+    const list = document.getElementById('pin-accounts-list') as HTMLElement;
+    list.innerHTML = '';
+    for (const acct of r.accounts) {
+      const item = document.createElement('div');
+      item.className = 'pin-account-item';
+      const init = (acct.name || acct.email || '?')[0].toUpperCase();
+      if (acct.avatar && acct.avatar.startsWith('https://')) {
+        const img = document.createElement('img');
+        img.className = 'pin-account-avatar';
+        img.src = acct.avatar;
+        img.addEventListener('error', () => {
+          img.remove();
+          const fb = document.createElement('div');
+          fb.className = 'pin-account-avatar-fb';
+          fb.textContent = init;
+          item.insertBefore(fb, item.firstChild);
+        });
+        item.appendChild(img);
+      } else {
+        const fb = document.createElement('div');
+        fb.className = 'pin-account-avatar-fb';
+        fb.textContent = init;
+        item.appendChild(fb);
+      }
+      const nameEl = document.createElement('div');
+      nameEl.className = 'pin-account-name';
+      nameEl.textContent = acct.name || acct.email;
+      item.appendChild(nameEl);
+      const emailEl = document.createElement('div');
+      emailEl.className = 'pin-account-email';
+      emailEl.textContent = acct.email;
+      item.appendChild(emailEl);
+      item.addEventListener('click', () => selectPinAccount(acct));
+      list.appendChild(item);
+    }
+    const accountsWrap = document.getElementById('pin-accounts') as HTMLElement;
+    accountsWrap.hidden = false;
+  } catch { /* noop */ }
+}
+
 (document.getElementById('btn-pin-unlock') as HTMLButtonElement).addEventListener('click', async () => {
   const pin = (document.getElementById('pin-code') as HTMLInputElement).value;
   logInfo('auth', 'PIN unlock attempt');
@@ -343,6 +429,10 @@ function doLock(): void {
     return;
   }
   logOk('auth', 'PIN verified, completing login', { email: r.email });
+  // Update lastUsed for the account
+  if (r.googleId) {
+    api.accounts.touch(r.googleId).catch(() => {});
+  }
   const r2 = await api.loginWithPin(r.googleId!, r.email!);
   if (!r2.ok) {
     (document.getElementById('pin-err') as HTMLElement).hidden = false;
@@ -362,6 +452,11 @@ function doLock(): void {
   clearAllInputs();
   (document.getElementById('pin-err') as HTMLElement).hidden = true;
   screen('s-login');
+});
+const _pinBackBtn = document.getElementById('pin-account-back') as HTMLButtonElement;
+if (_pinBackBtn) _pinBackBtn.addEventListener('click', () => {
+  showPinAccounts();
+  loadPinAccounts();
 });
 
 async function doLogout(): Promise<void> {
@@ -395,6 +490,9 @@ async function loadSettings(): Promise<void> {
   document.body.classList.toggle('compact', !!S.settings.compact);
   document.body.style.setProperty('--transition', S.settings.animations ? '' : '0s');
   window.__soundsEnabled = S.settings.sounds !== false;
+  // Show PIN indicator in sidebar when PIN login is enabled
+  const pinIndicator = document.getElementById('pin-indicator') as HTMLElement;
+  if (pinIndicator) pinIndicator.hidden = !S.settings.pin_login_enabled;
   logInfo('settings', 'settings loaded', S.settings);
 }
 function isAdmin(): boolean { return S.user?.isAdmin === true; }
@@ -405,6 +503,8 @@ function enterApp(): void {
   document.querySelectorAll('.admin-only-nav').forEach((el) => { (el as HTMLElement).hidden = !showAdmin; });
   if (!showAdmin && (document.querySelector('.nav-btn.active') as HTMLElement)?.dataset.tab === 'monitor') switchTab('passwords');
   switchTab('passwords'); armLock();
+  // Save account for quick PIN login
+  api.accounts.save().catch(() => {});
 }
 function renderUserChip(): void {
   const u = S.user!; const init = (u.name || u.email || '?')[0].toUpperCase();
@@ -544,9 +644,15 @@ function renderPasswords(): void {
       const el = document.getElementById(iconId) as HTMLElement;
       if (!el) return;
       el.innerHTML = '';
-      const img = document.createElement('img'); img.width = 22; img.height = 22;
-      img.style.borderRadius = '4px'; img.style.objectFit = 'contain'; img.src = url;
-      img.addEventListener('error', () => { img.remove(); });
+      const img = document.createElement('img');
+      img.width = 22; img.height = 22;
+      img.style.borderRadius = '4px'; img.style.objectFit = 'contain'; img.style.display = 'block';
+      img.src = url;
+      img.addEventListener('error', () => {
+        // Fallback to initial letter on error
+        el.innerHTML = '';
+        el.textContent = initial;
+      });
       el.appendChild(img);
     });
     checkBreach(pw.password || '').then((breached) => {
@@ -1413,13 +1519,22 @@ async function loadSettingsTab(): Promise<void> {
   bind('s-pin-alpha', 'pin_allow_alpha', 'toggle');
 
   // PIN settings UI logic
-  const pinEnabled = S.settings.pin_login_enabled;
   const pinSetupRow = document.getElementById('pin-setup-row') as HTMLElement;
   const pinChangeRow = document.getElementById('pin-change-row') as HTMLElement;
   const pinDisableRow = document.getElementById('pin-disable-row') as HTMLElement;
-  if (pinSetupRow) pinSetupRow.hidden = pinEnabled;
-  if (pinChangeRow) pinChangeRow.hidden = !pinEnabled;
-  if (pinDisableRow) pinDisableRow.hidden = !pinEnabled;
+
+  // Check if a PIN file already exists to decide which row to show
+  let _pinFileExists = false;
+  const pinStatusR = await api.pin.status();
+  _pinFileExists = pinStatusR.ok && pinStatusR.enabled;
+
+  const pinEnabled = S.settings.pin_login_enabled;
+  // If PIN is enabled and file exists → show change + disable rows
+  // If PIN is enabled but no file → show setup row (first time)
+  // If PIN is disabled → hide all
+  if (pinSetupRow) pinSetupRow.hidden = !pinEnabled || _pinFileExists;
+  if (pinChangeRow) pinChangeRow.hidden = !pinEnabled || !_pinFileExists;
+  if (pinDisableRow) pinDisableRow.hidden = !pinEnabled || !_pinFileExists;
 
   // PIN enable toggle handler
   const pinEnabledEl = document.getElementById('s-pin-enabled') as HTMLInputElement;
@@ -1427,9 +1542,18 @@ async function loadSettingsTab(): Promise<void> {
     pinEnabledEl.addEventListener('change', () => {
       const enabled = pinEnabledEl.checked;
       S.settings.pin_login_enabled = enabled;
-      if (pinSetupRow) pinSetupRow.hidden = enabled;
-      if (pinChangeRow) pinChangeRow.hidden = !enabled;
-      if (pinDisableRow) pinDisableRow.hidden = !enabled;
+      if (enabled) {
+        // When enabling, always show setup first (no "Current PIN" field)
+        if (pinSetupRow) pinSetupRow.hidden = false;
+        if (pinChangeRow) pinChangeRow.hidden = true;
+        if (pinDisableRow) pinDisableRow.hidden = true;
+        _pinFileExists = false;
+      } else {
+        // When disabling, hide all PIN rows
+        if (pinSetupRow) pinSetupRow.hidden = true;
+        if (pinChangeRow) pinChangeRow.hidden = true;
+        if (pinDisableRow) pinDisableRow.hidden = true;
+      }
       __saveSettings();
       toast(enabled ? 'PIN login enabled — set your PIN below' : 'PIN login disabled', 1500);
       logInfo('settings', 'PIN login toggled', { enabled });
@@ -1461,11 +1585,13 @@ async function loadSettingsTab(): Promise<void> {
     logOk('pin', 'PIN set');
     (document.getElementById('s-pin-value') as HTMLInputElement).value = '';
     // Switch to change/disable view
+    _pinFileExists = true;
     S.settings.pin_login_enabled = true;
     if (pinSetupRow) pinSetupRow.hidden = true;
     if (pinChangeRow) pinChangeRow.hidden = false;
     if (pinDisableRow) pinDisableRow.hidden = false;
     if (pinEnabledEl) pinEnabledEl.checked = true;
+    __saveSettings();
   });
 
   // Change PIN button
@@ -1496,11 +1622,13 @@ async function loadSettingsTab(): Promise<void> {
     }
     toast('PIN login disabled');
     logOk('pin', 'PIN disabled');
+    _pinFileExists = false;
     S.settings.pin_login_enabled = false;
     if (pinSetupRow) pinSetupRow.hidden = false;
     if (pinChangeRow) pinChangeRow.hidden = true;
     if (pinDisableRow) pinDisableRow.hidden = true;
     if (pinEnabledEl) pinEnabledEl.checked = false;
+    __saveSettings();
   });
 
   document.querySelectorAll('.accent-swatch').forEach((s) => {
@@ -1696,6 +1824,7 @@ document.addEventListener('mouseover', (e: MouseEvent) => {
     const pr = await api.pin.status();
     if (pr.ok && pr.enabled) {
       screen('s-pin');
+      await loadPinAccounts();
       logInfo('app', 'PIN login available, showing PIN entry screen');
       return;
     }

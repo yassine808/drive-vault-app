@@ -3,10 +3,10 @@ import type { Settings, Session } from '../types';
 
 import type Electron from 'electron';
 type Logger = {
-  db: (ctx: string, msg: string, data?: unknown) => void;
+  dbLog: (ctx: string, msg: string, data?: unknown) => void;
   success: (ctx: string, msg: string, data?: unknown) => void;
   warn: (ctx: string, msg: string, data?: unknown) => void;
-  ipc: (ctx: string, msg: string, data?: unknown) => void;
+  ipcLog: (ctx: string, msg: string, data?: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
 type IpcHandler = (...args: any[]) => any;
@@ -99,18 +99,18 @@ function register(
   logError: LogError,
 ) {
   async function dbLoadSettings(userId: string): Promise<Partial<Settings>> {
-    logger.db('dbLoadSettings', 'Loading settings', { userId });
+    logger.dbLog('dbLoadSettings', 'Loading settings', { userId });
     const { data, error } = await supabase.from('vault_settings')
       .select('user_id,lock_timeout,lock_action,lock_countdown,lock_on_minimize,pin_login_enabled,pin_allow_alpha,compact,animations,accent,gen_length,gen_symbols,gen_numbers,gen_ambiguous,gen_copy,sounds,sound_login,sound_exit,sound_hover,sound_login_tone,sound_exit_tone,sound_hover_tone,toast_duration')
       .eq('user_id', userId).maybeSingle();
     if (error) { logger.warn('dbLoadSettings', 'Failed', { error: error.message }); throw new Error('Failed to load settings'); }
     const result = data || {};
-    logger.db('dbLoadSettings', 'Settings loaded', result);
+    logger.dbLog('dbLoadSettings', 'Settings loaded', result);
     return result as Partial<Settings>;
   }
 
   async function dbSaveSettings(userId: string, settings: Settings): Promise<void> {
-    logger.db('dbSaveSettings', 'Saving settings', { userId });
+    logger.dbLog('dbSaveSettings', 'Saving settings', { userId });
     const safeSettings = {
       lock_timeout: settings.lock_timeout,
       lock_action: settings.lock_action,
@@ -136,13 +136,13 @@ function register(
       toast_duration: settings.toast_duration,
     };
     await supabase.from('vault_settings').upsert({ user_id: userId, ...safeSettings });
-    logger.db('dbSaveSettings', 'Success');
+    logger.dbLog('dbSaveSettings', 'Success');
   }
 
   ipcMain.handle('settings:load', requireAuthNoArgs(async () => {
     const session = getSession();
     if (!session) throw new Error('No session');
-    logger.ipc('settings:load', 'Loading settings');
+    logger.ipcLog('settings:load', 'Loading settings');
     try {
       const settings = await dbLoadSettings(session.userId);
       logger.success('settings:load', 'Settings loaded', settings);
@@ -156,7 +156,7 @@ function register(
   ipcMain.handle('settings:save', requireAuth(async (_e, { settings }: { settings: Record<string, unknown> }) => {
     const session = getSession();
     if (!session) throw new Error('No session');
-    logger.ipc('settings:save', 'Saving settings', settings);
+    logger.ipcLog('settings:save', 'Saving settings', settings);
     try {
       const validation = validateSettings(settings, logger);
       if (!validation.ok) {

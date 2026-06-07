@@ -4,11 +4,11 @@ import { sanitizeStr, validEmail, MAX_NOTES_LEN } from './validation';
 
 import type Electron from 'electron';
 type Logger = {
-  db: (ctx: string, msg: string, data?: unknown) => void;
+  dbLog: (ctx: string, msg: string, data?: unknown) => void;
   error: (ctx: string, msg: string, data?: unknown) => void;
   success: (ctx: string, msg: string, data?: unknown) => void;
   warn: (ctx: string, msg: string, data?: unknown) => void;
-  ipc: (ctx: string, msg: string, data?: unknown) => void;
+  ipcLog: (ctx: string, msg: string, data?: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
 type IpcHandler = (...args: any[]) => any;
@@ -27,18 +27,18 @@ function register(
   logError: LogError,
 ) {
   async function dbLoadJobs(userId: string): Promise<Job[]> {
-    logger.db('dbLoadJobs', 'Loading jobs', { userId });
+    logger.dbLog('dbLoadJobs', 'Loading jobs', { userId });
     const { data, error } = await supabase.from('vault_jobs')
       .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at')
       .eq('user_id', userId).is('deleted_at', null)
       .order('sort_order', { ascending: true }).order('created_at', { ascending: false });
     if (error) { logger.error('dbLoadJobs', 'Failed', error.message); throw new Error('Failed to load jobs'); }
-    logger.db('dbLoadJobs', 'Jobs loaded', { count: data.length });
+    logger.dbLog('dbLoadJobs', 'Jobs loaded', { count: data.length });
     return data as unknown as Job[];
   }
 
   async function dbSaveJob(userId: string, job: Job): Promise<number> {
-    logger.db('dbSaveJob', 'Saving job', { userId, jobId: job?.id, company: job?.company });
+    logger.dbLog('dbSaveJob', 'Saving job', { userId, jobId: job?.id, company: job?.company });
     const { id, ...payload } = job;
     const safePayload = {
       company: payload.company,
@@ -53,41 +53,41 @@ function register(
       const { error } = await supabase.from('vault_jobs')
         .update({ ...safePayload, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
       if (error) { logger.error('dbSaveJob', 'Update failed', error.message); throw new Error('Failed to save job'); }
-      logger.db('dbSaveJob', 'Job updated', { jobId: id });
+      logger.dbLog('dbSaveJob', 'Job updated', { jobId: id });
       return id;
     }
     const { data, error } = await supabase.from('vault_jobs')
       .insert({ user_id: userId, ...safePayload }).select('id').single();
     if (error) { logger.error('dbSaveJob', 'Insert failed', error.message); throw new Error('Failed to save job'); }
-    logger.db('dbSaveJob', 'Job inserted', { jobId: data.id });
+    logger.dbLog('dbSaveJob', 'Job inserted', { jobId: data.id });
     return data.id;
   }
 
   async function dbDeleteJob(id: number, userId: string): Promise<void> {
-    logger.db('dbDeleteJob', 'Soft-deleting job', { jobId: id, userId });
+    logger.dbLog('dbDeleteJob', 'Soft-deleting job', { jobId: id, userId });
     const { error } = await supabase.from('vault_jobs')
       .update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
     if (error) { logger.error('dbDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
-    logger.db('dbDeleteJob', 'Success', { jobId: id });
+    logger.dbLog('dbDeleteJob', 'Success', { jobId: id });
   }
 
   async function dbRestoreJob(id: number, userId: string): Promise<void> {
-    logger.db('dbRestoreJob', 'Restoring job', { jobId: id, userId });
+    logger.dbLog('dbRestoreJob', 'Restoring job', { jobId: id, userId });
     const { error } = await supabase.from('vault_jobs')
       .update({ deleted_at: null }).eq('id', id).eq('user_id', userId);
     if (error) { logger.error('dbRestoreJob', 'Failed', error.message); throw new Error('Failed to restore job'); }
-    logger.db('dbRestoreJob', 'Success', { jobId: id });
+    logger.dbLog('dbRestoreJob', 'Success', { jobId: id });
   }
 
   async function dbPermDeleteJob(id: number, userId: string): Promise<void> {
-    logger.db('dbPermDeleteJob', 'Permanently deleting job', { jobId: id, userId });
+    logger.dbLog('dbPermDeleteJob', 'Permanently deleting job', { jobId: id, userId });
     const { error } = await supabase.from('vault_jobs').delete().eq('id', id).eq('user_id', userId);
     if (error) { logger.error('dbPermDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
-    logger.db('dbPermDeleteJob', 'Success', { jobId: id });
+    logger.dbLog('dbPermDeleteJob', 'Success', { jobId: id });
   }
 
   async function dbLoadJobTrash(userId: string): Promise<Job[]> {
-    logger.db('dbLoadJobTrash', 'Loading job trash', { userId });
+    logger.dbLog('dbLoadJobTrash', 'Loading job trash', { userId });
     try {
       await supabase.from('vault_jobs').delete().eq('user_id', userId)
         .not('deleted_at', 'is', null).lt('deleted_at', new Date(Date.now() - 30 * 86400000).toISOString());
@@ -96,20 +96,20 @@ function register(
       .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at,deleted_at')
       .eq('user_id', userId).not('deleted_at', 'is', null).order('deleted_at', { ascending: false });
     if (error) { logger.error('dbLoadJobTrash', 'Failed', error.message); throw new Error('Failed to load job trash'); }
-    logger.db('dbLoadJobTrash', 'Job trash loaded', { count: data.length });
+    logger.dbLog('dbLoadJobTrash', 'Job trash loaded', { count: data.length });
     return data as unknown as Job[];
   }
 
   async function dbUpdateJobOrder(jobs: Array<{ id?: number }>, userId: string): Promise<void> {
-    logger.db('dbUpdateJobOrder', 'Updating job order', { userId, count: jobs?.length });
+    logger.dbLog('dbUpdateJobOrder', 'Updating job order', { userId, count: jobs?.length });
     await Promise.all(jobs.map((j, i) =>
       j.id ? supabase.from('vault_jobs').update({ sort_order: i }).eq('id', j.id).eq('user_id', userId) : Promise.resolve()
     ));
-    logger.db('dbUpdateJobOrder', 'Success');
+    logger.dbLog('dbUpdateJobOrder', 'Success');
   }
 
   ipcMain.handle('jobs:load', requireAuthNoArgs(async () => {
-    logger.ipc('jobs:load', 'Loading jobs');
+    logger.ipcLog('jobs:load', 'Loading jobs');
     try {
       const session = getSession();
       if (!session) throw new Error('No session');
@@ -120,7 +120,7 @@ function register(
   }));
 
   ipcMain.handle('jobs:save', requireAuth(async (_e, { job }: { job: Job }) => {
-    logger.ipc('jobs:save', 'Saving job', { jobId: job?.id, company: job?.company });
+    logger.ipcLog('jobs:save', 'Saving job', { jobId: job?.id, company: job?.company });
     try {
       if (!job || typeof job !== 'object') { logger.warn('jobs:save', 'Invalid job data'); return { ok: false, error: 'Invalid job data' }; }
       job.company = sanitizeStr(job.company);
@@ -146,7 +146,7 @@ function register(
   }));
 
   ipcMain.handle('jobs:delete', requireAuth(async (_e, { id }: { id: number }) => {
-    logger.ipc('jobs:delete', 'Deleting job', { jobId: id });
+    logger.ipcLog('jobs:delete', 'Deleting job', { jobId: id });
     try {
       const session = getSession();
       if (!session) throw new Error('No session');
@@ -157,7 +157,7 @@ function register(
   }));
 
   ipcMain.handle('jobs:reorder', requireAuth(async (_e, { jobs }: { jobs: Array<{ id?: number }> }) => {
-    logger.ipc('jobs:reorder', 'Reordering jobs', { count: jobs?.length });
+    logger.ipcLog('jobs:reorder', 'Reordering jobs', { count: jobs?.length });
     try {
       const session = getSession();
       if (!session) throw new Error('No session');
@@ -168,7 +168,7 @@ function register(
   }));
 
   ipcMain.handle('jobs:trash:load', requireAuthNoArgs(async () => {
-    logger.ipc('jobs:trash:load', 'Loading job trash');
+    logger.ipcLog('jobs:trash:load', 'Loading job trash');
     try {
       const session = getSession();
       if (!session) throw new Error('No session');
@@ -179,7 +179,7 @@ function register(
   }));
 
   ipcMain.handle('jobs:trash:restore', requireAuth(async (_e, { id }: { id: number }) => {
-    logger.ipc('jobs:trash:restore', 'Restoring job', { jobId: id });
+    logger.ipcLog('jobs:trash:restore', 'Restoring job', { jobId: id });
     try {
       const session = getSession();
       if (!session) throw new Error('No session');
@@ -190,7 +190,7 @@ function register(
   }));
 
   ipcMain.handle('jobs:trash:purge', requireAuth(async (_e, { id }: { id: number }) => {
-    logger.ipc('jobs:trash:purge', 'Purging job', { jobId: id });
+    logger.ipcLog('jobs:trash:purge', 'Purging job', { jobId: id });
     try {
       const session = getSession();
       if (!session) throw new Error('No session');

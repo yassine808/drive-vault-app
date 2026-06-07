@@ -2,15 +2,16 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import type Electron from 'electron';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { enc, dec, derivePinKey } from './crypto';
 import type { Session } from '../types';
 
 type Logger = {
-  db: (ctx: string, msg: string, data?: unknown) => void;
+  dbLog: (ctx: string, msg: string, data?: unknown) => void;
   success: (ctx: string, msg: string, data?: unknown) => void;
   warn: (ctx: string, msg: string, data?: unknown) => void;
-  ipc: (ctx: string, msg: string, data?: unknown) => void;
-  auth: (ctx: string, msg: string, data?: unknown) => void;
+  ipcLog: (ctx: string, msg: string, data?: unknown) => void;
+  authLog: (ctx: string, msg: string, data?: unknown) => void;
   error: (ctx: string, msg: string, data?: unknown) => void;
   debug: (ctx: string, msg: string, data?: unknown) => void;
 };
@@ -18,6 +19,12 @@ type LogError = (ctx: string, err: unknown) => void;
 type IpcHandler = (...args: any[]) => any;
 type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 type GetSession = () => Session | null;
+
+let _userDataPath: string = '';
+
+function setUserDataPath(p: string): void {
+  _userDataPath = p;
+}
 
 // ── PIN rate limiter (5 attempts per 15-min window, 15-min lockout) ──
 const pinRateLimit = {
@@ -54,7 +61,8 @@ function resetPinRateLimit(): void {
 
 // ── File path for encrypted user key ──
 function getKeyfilePath(): string {
-  const userData = process.env.APPDATA
+  const userData = _userDataPath
+    || process.env.APPDATA
     || (process.platform === 'darwin'
       ? path.join(process.env.HOME || '', 'Library', 'Application Support')
       : path.join(process.env.HOME || '', '.config'));
@@ -84,11 +92,12 @@ function register(
   getSession: GetSession,
   logger: Logger,
   logError: LogError,
+  supabase?: SupabaseClient,
 ) {
   // ── pin:setup ──
   // Requires active session. Creates the encrypted user key file.
   ipcMain.handle('pin:setup', requireAuth(async (_e: Electron.IpcMainInvokeEvent, { pin, allowAlpha }: { pin: string; allowAlpha: boolean }) => {
-    logger.ipc('pin:setup', 'PIN setup requested');
+    logger.ipcLog('pin:setup', 'PIN setup requested');
     try {
       const session = getSession();
       if (!session) {
@@ -117,7 +126,20 @@ function register(
       const fileData = JSON.stringify({ version: 1, salt: salt.toString('base64'), data: encrypted });
       fs.writeFileSync(getKeyfilePath(), fileData);
 
-      logger.auth('pin:setup', 'PIN configured successfully', { email: session.email });
+      // Sync PIN settings to vault_settings
+      if (supabase) {
+        try {
+          await supabase.from('vault_settings').upsert(
+            { user_id: session.userId, pin_login_enabled: true, pin_allow_alpha: allowAlpha },
+            { onConflict: 'user_id' }
+          );
+          logger.dbLog('pin:setup', 'PIN settings synced to vault_settings');
+        } catch (syncErr) {
+          logger.warn('pin:setup', 'Failed to sync PIN settings to vault_settings', { error: syncErr instanceof Error ? syncErr.message : String(syncErr) });
+        }
+      }
+
+      logger.authLog('pin:setup', 'PIN configured successfully', { email: session.email });
       logger.success('pin:setup', 'User key file created');
       return { ok: true };
     } catch (e: unknown) {
@@ -132,7 +154,7 @@ function register(
   // NO auth required — this is how the user gets a session via PIN
   // Rate limited: 5 attempts per 15-min window, 15-min lockout
   ipcMain.handle('pin:verify', async (_e: Electron.IpcMainInvokeEvent, { pin }: { pin: string }) => {
-    logger.ipc('pin:verify', 'PIN verification attempt');
+    logger.ipcLog('pin:verify', 'PIN verification attempt');
     try {
       if (isPinRateLimited()) {
         logger.warn('pin:verify', 'PIN verification rate limited');
@@ -161,7 +183,7 @@ function register(
         || typeof payload.userKey.googleId !== 'string' || !payload.userKey.googleId
         || typeof payload.userKey.email !== 'string') {
         recordPinFailedAttempt();
-        logger.auth('pin:verify', 'PIN verification failed — decryption or validation failed');
+        logger.authLog('pin:verify', 'PIN verification failed — decryption or validation failed');
         logger.warn('pin:verify', 'Incorrect PIN attempt');
         return { ok: false, error: 'Invalid PIN' };
       }
@@ -170,14 +192,14 @@ function register(
       const computedHash = crypto.pbkdf2Sync(pin, salt, 600000, 32, 'sha256').toString('hex');
       if (computedHash !== payload.pinHash) {
         recordPinFailedAttempt();
-        logger.auth('pin:verify', 'PIN verification failed — hash mismatch');
+        logger.authLog('pin:verify', 'PIN verification failed — hash mismatch');
         logger.warn('pin:verify', 'Incorrect PIN attempt');
         return { ok: false, error: 'Invalid PIN' };
       }
 
       resetPinRateLimit();
       const { googleId, email } = payload.userKey;
-      logger.auth('pin:verify', 'PIN verified successfully', { email });
+      logger.authLog('pin:verify', 'PIN verified successfully', { email });
       logger.debug('pin:verify', 'Deriving encryption key', { googleId: googleId.slice(0, 8) + '...' });
 
       // Return googleId and email so the renderer can call auth:loginWithPin
@@ -195,7 +217,7 @@ function register(
   // ── pin:change ──
   // Requires active session. Verifies old PIN, writes new file.
   ipcMain.handle('pin:change', requireAuth(async (_e: Electron.IpcMainInvokeEvent, { oldPin, newPin, allowAlpha }: { oldPin: string; newPin: string; allowAlpha: boolean }) => {
-    logger.ipc('pin:change', 'PIN change requested');
+    logger.ipcLog('pin:change', 'PIN change requested');
     try {
       const session = getSession();
       if (!session) {
@@ -234,7 +256,7 @@ function register(
       const newFileData = JSON.stringify({ version: 1, salt: newSalt.toString('base64'), data: newEncrypted });
       fs.writeFileSync(getKeyfilePath(), newFileData);
 
-      logger.auth('pin:change', 'PIN changed successfully', { email: session.email });
+      logger.authLog('pin:change', 'PIN changed successfully', { email: session.email });
       logger.success('pin:change', 'User key file updated');
       return { ok: true };
     } catch (e: unknown) {
@@ -248,16 +270,30 @@ function register(
   // ── pin:disable ──
   // Requires active session. Deletes the user key file.
   ipcMain.handle('pin:disable', requireAuthNoArgs(async () => {
-    logger.ipc('pin:disable', 'PIN disable requested');
+    logger.ipcLog('pin:disable', 'PIN disable requested');
     try {
       const session = getSession();
       if (fileExists()) {
         fs.unlinkSync(getKeyfilePath());
-        logger.auth('pin:disable', 'PIN disabled', { email: session?.email });
+        logger.authLog('pin:disable', 'PIN disabled', { email: session?.email });
         logger.success('pin:disable', 'User key file deleted');
       } else {
         logger.warn('pin:disable', 'No user key file to delete');
       }
+
+      // Sync PIN settings to vault_settings
+      if (supabase && session) {
+        try {
+          await supabase.from('vault_settings').upsert(
+            { user_id: session.userId, pin_login_enabled: false },
+            { onConflict: 'user_id' }
+          );
+          logger.dbLog('pin:disable', 'PIN disabled in vault_settings');
+        } catch (syncErr) {
+          logger.warn('pin:disable', 'Failed to sync PIN settings to vault_settings', { error: syncErr instanceof Error ? syncErr.message : String(syncErr) });
+        }
+      }
+
       return { ok: true };
     } catch (e: unknown) {
       const err = e as Error;
@@ -268,14 +304,25 @@ function register(
   }));
 
   // ── pin:status ──
-  // No auth required — only checks if the key file exists (no sensitive data).
+  // No auth required — checks if the key file exists and reads allowAlpha from vault_settings.
   // Used by the renderer on startup to decide which screen to show.
   ipcMain.handle('pin:status', async () => {
-    logger.ipc('pin:status', 'PIN status check');
+    logger.ipcLog('pin:status', 'PIN status check');
     const enabled = fileExists();
-    logger.debug('pin:status', 'Status', { enabled });
-    return { ok: true, enabled };
+    let allowAlpha = false;
+    if (enabled && supabase) {
+      try {
+        // Look up any user's vault_settings that has pin enabled to get allowAlpha
+        const { data } = await supabase.from('vault_settings')
+          .select('pin_allow_alpha')
+          .eq('pin_login_enabled', true)
+          .maybeSingle();
+        if (data) allowAlpha = !!data.pin_allow_alpha;
+      } catch { /* noop */ }
+    }
+    logger.debug('pin:status', 'Status', { enabled, allowAlpha });
+    return { ok: true, enabled, allowAlpha };
   });
 }
 
-export { register, fileExists };
+export { register, fileExists, setUserDataPath };

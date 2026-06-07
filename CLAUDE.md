@@ -38,7 +38,8 @@ No tests, linting, or formatting tools exist.
 | `src/modules/settings.ts` | Settings load/save with validation — registered via `register()` pattern. |
 | `src/modules/monitor.ts` | DB stats, log read/clear, admin user listing — registered via `register()`. All handlers use `requireAdminNoArgs`. |
 | `src/modules/logo.ts` | Favicon fetching + caching as data URLs — registered via `register()` pattern. |
-| `src/modules/pin.ts` | PIN-based authentication — setup, verify, change, disable, status. All local (no DB). Rate limited. |
+| `src/modules/pin.ts` | PIN-based authentication — setup, verify, change, disable, status. Local file storage + syncs `pin_login_enabled`/`pin_allow_alpha` to Supabase `vault_settings`. Rate limited. |
+| `src/modules/accounts.ts` | Saved accounts for quick PIN login — list, save, remove, touch. Stores account info (googleId, email, name, avatar) locally in `vault_accounts` file. Max 10 accounts, sorted by lastUsed. |
 | `src/types/index.ts` | Shared TypeScript interfaces (Session, VaultItem, Job, TotpItem, Settings, etc.) |
 | `src/logger.ts` | Structured logging to per-level files in `Logs/` directory. |
 | `preload.ts` | Context bridge — session token in closure, auto-prepended to sensitive IPC calls. |
@@ -62,9 +63,9 @@ Main Process (src/main.ts)
 
 ### Module Registration Pattern
 
-`main.ts` is the entry point (~1400 lines). Domain modules (`jobs.ts`, `totp.ts`, `settings.ts`, `monitor.ts`, `logo.ts`, `pin.ts`) export a `register()` function called inside `app.whenReady()`. Each `register()` receives `ipcMain`, auth wrappers, `supabase`, `validation`, `getSession`, `logger`, and `logError` — then calls `ipcMain.handle()` directly. This avoids passing `supabase` as a constructor parameter before it's initialized.
+`main.ts` is the entry point (~1400 lines). Domain modules (`jobs.ts`, `totp.ts`, `settings.ts`, `monitor.ts`, `logo.ts`, `pin.ts`, `accounts.ts`) export a `register()` function called inside `app.whenReady()`. Each `register()` receives `ipcMain`, auth wrappers, `supabase`, `validation`, `getSession`, `logger`, and `logError` — then calls `ipcMain.handle()` directly. This avoids passing `supabase` as a constructor parameter before it's initialized.
 
-Some modules with encrypted data (totp, settings, pin) also receive `enc`/`dec` crypto functions directly in their `register()` signature. The `pin.ts` module is unique: it operates entirely locally (no Supabase) and receives only `ipcMain`, auth wrappers, `getSession`, `logger`, and `logError`.
+Some modules with encrypted data (totp, settings, pin) also receive `enc`/`dec` crypto functions directly in their `register()` signature. The `pin.ts` module uses local file storage but also receives `supabase` to sync `pin_login_enabled`/`pin_allow_alpha` to `vault_settings`. The `accounts.ts` module stores saved accounts locally (no Supabase). Both `pin.ts` and `accounts.ts` receive `app.getPath('userData')` via a `setUserDataPath()` initializer.
 
 ### IPC Channels
 
@@ -84,7 +85,8 @@ All async handlers use `ipcMain.handle`. Channels are namespaced:
 | `logo:` | Yes | Favicon fetching & caching |
 | `log:` | Admin | Error log access |
 | `win:` | Yes | Window minimize/maximize/close |
-| `pin:` | Mixed | PIN auth: `verify` is public; `setup`, `change`, `disable` require auth; `status` is public |
+| `pin:` | Mixed | PIN auth: `verify` is public; `setup`, `change`, `disable` require auth; `status` is public. `status` returns `{ ok, enabled, allowAlpha }`. `setup`/`disable` sync `pin_login_enabled`/`pin_allow_alpha` to Supabase `vault_settings`. |
+| `accounts:` | Mixed | Saved accounts: `list` and `touch` are public; `save` and `remove` require auth. Used for quick PIN login screen. |
 
 All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and returned as `{ ok: false, error: string }` — raw Supabase errors are never leaked to the renderer.
 
@@ -117,8 +119,26 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
   - `pin:verify` (public): rate-limited, decrypts file, returns googleId + email
   - `pin:change` (auth): verifies old PIN, writes new file with new salt/key
   - `pin:disable` (auth): deletes user key file
-  - `pin:status` (public): returns `{ enabled: boolean }` based on file existence
+  - `pin:status` (public): returns `{ ok, enabled, allowAlpha }` — `allowAlpha` read from `vault_settings`
 - **Settings columns**: `pin_login_enabled` and `pin_allow_alpha` in `vault_settings` table (require DB migration if not already applied).
+- **Settings sync**: `pin:setup` auto-sets `pin_login_enabled=true` and `pin_allow_alpha` in `vault_settings`; `pin:disable` auto-sets `pin_login_enabled=false`.
+
+### Saved Accounts
+
+- **Purpose**: Show previously logged-in accounts on the PIN screen for quick switching. Users click an account avatar and enter their PIN.
+- **Storage**: Local file only — `%APPDATA%/Vault/vault_accounts` (or platform equivalent via `app.getPath('userData')`). Never sent to Supabase.
+- **File format**: JSON array of `{ googleId, email, name, avatar, lastUsed }`. Max 10 accounts, sorted by `lastUsed` descending.
+- **Flow**:
+  1. On successful login (Google or PIN), `accounts:save` is called to upsert the account
+  2. On PIN screen load, `accounts:list` returns saved accounts
+  3. User clicks an account → account info shown → PIN input focused
+  4. On successful PIN verify, `accounts:touch` updates `lastUsed` for the account
+- **IPC handlers**:
+  - `accounts:list` (public): returns `{ ok, accounts[] }`
+  - `accounts:save` (auth): upserts current session's account
+  - `accounts:remove` (auth): removes current session's account
+  - `accounts:touch` (public): updates `lastUsed` timestamp for a given googleId
+- **UI**: Account avatars shown in a row above the PIN input. Selected account shown with back button to return to account list.
 
 ### Encryption
 

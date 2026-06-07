@@ -65,6 +65,13 @@ export interface PreloadApi {
     stats(): Promise<{ ok: boolean; stats: AdminStats; error?: string }>;
   };
 
+  accounts: {
+    list(): Promise<{ ok: boolean; accounts: Array<{ googleId: string; email: string; name: string; avatar: string | null; lastUsed: number }> }>;
+    save(): Promise<{ ok: boolean; error?: string }>;
+    remove(): Promise<{ ok: boolean; error?: string }>;
+    touch(googleId: string): Promise<{ ok: boolean }>;
+  };
+
   onPlaySound(cb: (type: string) => void): void;
   onMinimize(cb: () => void): void;
   onMaximizedState(cb: (maximized: boolean) => void): void;

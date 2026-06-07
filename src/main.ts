@@ -63,6 +63,7 @@ let oauthServer: http.Server | null = null;
 import * as authModule from './modules/auth';
 import { deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
 import * as validation from './modules/validation';
+import type { Session } from './types';
 
 const {
   genSessionToken, clearSession, setSession, getSession,
@@ -304,7 +305,8 @@ import { register as registerTotp } from './modules/totp';
 import { register as registerSettings } from './modules/settings';
 import { register as registerLogo } from './modules/logo';
 import { register as registerMonitor } from './modules/monitor';
-import { register as registerPin } from './modules/pin';
+import { register as registerPin, setUserDataPath } from './modules/pin';
+import { register as registerAccounts, setUserDataPathAccounts } from './modules/accounts';
 
 const getSessionFn = getSession;
 
@@ -438,7 +440,7 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { go
     const userId = await dbUpsertUser({ googleId, email, name: email.split('@')[0], avatar: null });
     const encKey = deriveKey(googleId);
     const vault = await dbLoadItems(userId, encKey);
-    const sess = { googleId, email, name: email.split('@')[0], avatar: null, userId, encKey, pending2fa: false };
+    const sess: Session = { googleId, email, name: email.split('@')[0], avatar: null as string | null, userId, encKey, pending2fa: false };
     setSession(sess);
     const token = genSessionToken();
     playSound('login');
@@ -673,7 +675,10 @@ app.whenReady().then(() => {
   registerSettings(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as any, logError);
   registerLogo(ipcMain, requireAuth, supabase, logger as any, getSessionFn, logError);
   registerMonitor(ipcMain, requireAdminNoArgs, supabase, logger as any, getSessionFn, LOG_PATH);
-  registerPin(ipcMain, requireAuth, requireAuthNoArgs, getSessionFn, logger as any, logError);
+  setUserDataPath(app.getPath('userData'));
+  setUserDataPathAccounts(app.getPath('userData'));
+  registerPin(ipcMain, requireAuth, requireAuthNoArgs, getSessionFn, logger as any, logError, supabase);
+  registerAccounts(ipcMain, requireAuthNoArgs, getSessionFn, logger as any, logError);
   createWindow();
 });
 

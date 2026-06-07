@@ -6,10 +6,11 @@ import { validDomain } from './validation';
 
 import type Electron from 'electron';
 type Logger = {
-  db: (ctx: string, msg: string, data?: unknown) => void;
+  dbLog: (ctx: string, msg: string, data?: unknown) => void;
   error: (ctx: string, msg: string, data?: unknown) => void;
   success: (ctx: string, msg: string, data?: unknown) => void;
   warn: (ctx: string, msg: string, data?: unknown) => void;
+  ipcLog: (ctx: string, msg: string, data?: unknown) => void;
   ipc: (ctx: string, msg: string, data?: unknown) => void;
 };
 type LogError = (ctx: string, err: unknown) => void;
@@ -17,7 +18,7 @@ type IpcHandler = (...args: any[]) => any;
 type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 
 async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger): Promise<string | null> {
-  logger.db('fetchLogo', 'Fetching logo', { site });
+  logger.dbLog('fetchLogo', 'Fetching logo', { site });
   try {
     if (typeof site !== 'string' || site.length > 2048) return null;
     let domain = site.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase().trim();
@@ -50,7 +51,7 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
     const { data, error } = await supabase.from('vault_logos').select('url').eq('domain', domain).maybeSingle();
     if (error) throw error;
     if (data?.url && data.url.startsWith('data:')) {
-      logger.db('fetchLogo', 'Logo from cache', { domain });
+      logger.dbLog('fetchLogo', 'Logo from cache', { domain });
       return data.url;
     }
 
@@ -95,7 +96,7 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
     const dataUrl = `data:${mime};base64,${imgData.toString('base64')}`;
 
     await supabase.from('vault_logos').upsert({ domain, url: dataUrl, cached_at: new Date().toISOString() });
-    logger.db('fetchLogo', 'Logo fetched and cached as data URL', { domain, mime, size: imgData.length });
+    logger.dbLog('fetchLogo', 'Logo fetched and cached as data URL', { domain, mime, size: imgData.length });
     return dataUrl;
   } catch (e: unknown) { logger.warn('fetchLogo', 'Failed to fetch logo', { site, error: e instanceof Error ? e.message : String(e) }); return null; }
 }
@@ -109,7 +110,7 @@ function register(
   logError: LogError,
 ) {
   ipcMain.handle('logo:fetch', requireAuth(async (_e, { site }: { site: string }) => {
-    logger.ipc('logo:fetch', 'Fetching logo', { site });
+    logger.ipcLog('logo:fetch', 'Fetching logo', { site });
     if (typeof site !== 'string' || !site.trim()) return { ok: false, error: 'Invalid site' };
     try {
       const logoUrl = await fetchLogo(site, supabase, logger);
