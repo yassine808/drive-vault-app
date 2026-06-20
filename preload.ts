@@ -20,9 +20,9 @@ contextBridge.exposeInMainWorld('api', {
     bridgeLog('call', 'auth:login', true);
     return ipcRenderer.invoke('auth:login');
   },
-  loginWithPin: (googleId: string, email: string) => {
+  loginWithPin: (verifyId: string) => {
     bridgeLog('call', 'auth:loginWithPin', true);
-    return ipcRenderer.invoke('auth:loginWithPin', { googleId, email });
+    return ipcRenderer.invoke('auth:loginWithPin', { verifyId });
   },
   logout: () => {
     bridgeLog('call', 'auth:logout', true);

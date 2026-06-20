@@ -430,10 +430,10 @@ async function loadPinAccounts() {
   }
   logOk('auth', 'PIN verified, completing login', { email: r.email });
   // Update lastUsed for the account
-  if (r.googleId) {
-    api.accounts.touch(r.googleId).catch(() => {});
+  if (_selectedAccount?.googleId) {
+    api.accounts.touch(_selectedAccount.googleId).catch(() => {});
   }
-  const r2 = await api.loginWithPin(r.googleId!, r.email!, r.token!);
+  const r2 = await api.loginWithPin(r.verifyId!);
   if (!r2.ok) {
     (document.getElementById('pin-err') as HTMLElement).hidden = false;
     (document.getElementById('pin-err') as HTMLElement).textContent = r2.error ?? 'Login failed';

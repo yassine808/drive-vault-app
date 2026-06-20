@@ -2,11 +2,16 @@ import type { ItemType } from '../types';
 
 const MAX_FIELD_LEN = 500;
 const MAX_NOTES_LEN = 5000;
-const VALID_ITEM_TYPES: readonly ItemType[] = ['password', 'note'];
+const VALID_ITEM_TYPES: readonly ItemType[] = ['password', 'note', 'job', 'totp'];
 
 function sanitizeStr(s: string | null | undefined, max: number = MAX_FIELD_LEN): string {
   if (s === null || s === undefined || typeof s !== 'string') return '';
-  return s.trim().slice(0, max);
+  return s.trim().slice(0, max)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
 }
 
 function validType(t: string): t is ItemType {

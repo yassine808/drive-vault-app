@@ -59,7 +59,7 @@ function loadAccounts(): SavedAccount[] {
 
 function writeAccounts(accounts: SavedAccount[]): void {
   try {
-    fs.writeFileSync(getAccountsFilePath(), JSON.stringify(accounts, null, 2));
+    fs.writeFileSync(getAccountsFilePath(), JSON.stringify(accounts));
   } catch { /* noop */ }
 }
 
@@ -156,7 +156,7 @@ function register(
   ipcMain.handle('accounts:touch', async (_e: Electron.IpcMainInvokeEvent, { googleId }: { googleId: string }) => {
     logger.ipcLog('accounts:touch', 'Touching account', { googleId: googleId?.slice(0, 8) });
     try {
-      if (typeof googleId !== 'string' || !googleId) return { ok: false };
+      if (typeof googleId !== 'string' || !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)) return { ok: false };
       const accounts = loadAccounts();
       const idx = accounts.findIndex(a => a.googleId === googleId);
       if (idx >= 0) {

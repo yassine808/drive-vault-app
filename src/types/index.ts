@@ -44,7 +44,7 @@ export interface VaultItem {
 
 export type TrashItem = (VaultItem & { _type: string; _deletedAt: string }) | (Job & { _type: string; _deletedAt: string });
 
-export type ItemType = 'password' | 'note';
+export type ItemType = 'password' | 'note' | 'job' | 'totp';
 
 export type JobStatus = 'wait' | 'accepted' | 'rejected';
 
@@ -131,15 +131,13 @@ export interface LogEntry {
 export interface PinStatus {
   ok: boolean;
   enabled: boolean;
-  allowAlpha: boolean;
 }
 
 export interface PinVerifyResult {
   ok: boolean;
   error?: string;
-  googleId?: string;
+  verifyId?: string;
   email?: string;
-  token?: string;
 }
 
 // ── Renderer-specific types ──

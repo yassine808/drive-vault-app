@@ -5,7 +5,35 @@ import type Electron from 'electron';
 import type { DriveClient } from './drive';
 import { enc, dec, derivePinKey } from './crypto';
 import type { Session } from '../types';
-import { storeToken } from './pintoken';
+import { storeToken, consumeToken } from './pintoken';
+
+// ── PIN verify store: holds verified credentials between pin:verify and pin:completeLogin ──
+// This prevents the token from traveling through the renderer process.
+interface PinVerifyEntry {
+  googleId: string;
+  email: string;
+  expiresAt: number;
+}
+const pinVerifyStore = new Map<string, PinVerifyEntry>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of pinVerifyStore) {
+    if (val.expiresAt < now) pinVerifyStore.delete(key);
+  }
+}, 60_000);
+
+function storePinVerify(googleId: string, email: string): string {
+  const id = crypto.randomBytes(16).toString('hex');
+  pinVerifyStore.set(id, { googleId, email, expiresAt: Date.now() + 30_000 });
+  return id;
+}
+function consumePinVerify(id: string): { googleId: string; email: string } | null {
+  const entry = pinVerifyStore.get(id);
+  if (!entry) return null;
+  pinVerifyStore.delete(id);
+  if (entry.expiresAt < Date.now()) return null;
+  return { googleId: entry.googleId, email: entry.email };
+}
 
 type Logger = {
   dbLog: (ctx: string, msg: string, data?: unknown) => void;
@@ -85,14 +113,11 @@ function validatePin(pin: string, allowAlpha: boolean): string | null {
   return null;
 }
 
-// ── Get PIN settings from local PIN file ──
+// ── Get PIN allowAlpha setting ──
+// allowAlpha is now stored inside the encrypted PIN payload, so it can't be
+// read without the PIN. The renderer reads it from vault_settings instead.
 function getPinAllowAlpha(): boolean {
-  try {
-    if (!fileExists()) return false;
-    const fileContent = fs.readFileSync(getKeyfilePath(), 'utf8');
-    const fileData = JSON.parse(fileContent);
-    return !!fileData.allowAlpha;
-  } catch { return false; }
+  return false;
 }
 
 // ── Register IPC handlers ──
@@ -186,9 +211,11 @@ function register(
         return { ok: false, error: 'Invalid PIN' };
       }
 
-      // Verify the pinHash matches
+      // Verify the pinHash matches — constant-time to prevent timing attacks
       const computedHash = crypto.pbkdf2Sync(pin, salt, 600000, 32, 'sha256').toString('hex');
-      if (computedHash !== payload.pinHash) {
+      const computedBuf = Buffer.from(computedHash, 'hex');
+      const storedBuf = Buffer.from(payload.pinHash, 'hex');
+      if (computedBuf.length !== storedBuf.length || !crypto.timingSafeEqual(computedBuf, storedBuf)) {
         recordPinFailedAttempt();
         logger.authLog('pin:verify', 'PIN verification failed — hash mismatch');
         logger.warn('pin:verify', 'Incorrect PIN attempt');
@@ -200,11 +227,12 @@ function register(
       logger.authLog('pin:verify', 'PIN verified successfully', { email });
       logger.debug('pin:verify', 'Deriving encryption key', { googleId: googleId.slice(0, 8) + '...' });
 
-      // Generate a short-lived token that auth:loginWithPin requires
-      const token = storeToken(googleId, email);
+      // Store verified credentials in-memory; renderer gets a verifyId (not the token)
+      const verifyId = storePinVerify(googleId, email);
 
       logger.success('pin:verify', 'PIN verified', { email });
-      return { ok: true, googleId, email, token };
+      // Return email for display/logging, but NOT googleId or token
+      return { ok: true, verifyId, email };
     } catch (e: unknown) {
       const err = e as Error;
       logger.error('pin:verify', 'Error', err.message);
@@ -229,13 +257,20 @@ function register(
         return { ok: false, error: 'No PIN is currently set' };
       }
 
+      // Rate limit old PIN verification (same limits as pin:verify)
+      if (isPinRateLimited()) {
+        logger.warn('pin:change', 'PIN change rate limited');
+        return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' };
+      }
+
       // Verify old PIN first
       const fileContent = fs.readFileSync(getKeyfilePath(), 'utf8');
       const fileData = JSON.parse(fileContent);
       const salt = Buffer.from(fileData.salt, 'base64');
       const oldPinKey = derivePinKey(oldPin, salt);
-      const payload = dec(fileData.data, oldPinKey) as { pinHash: string; userKey: { googleId: string; email: string } } | null;
+      const payload = dec(fileData.data, oldPinKey) as { pinHash: string; userKey: { googleId: string; email: string }; allowAlpha?: boolean } | null;
       if (!payload) {
+        recordPinFailedAttempt();
         logger.warn('pin:change', 'Old PIN verification failed');
         return { ok: false, error: 'Current PIN is incorrect' };
       }
@@ -246,7 +281,7 @@ function register(
         return { ok: false, error: pinErr };
       }
 
-      // Write new file with new PIN
+      // Write new file with new PIN — allowAlpha stored inside encrypted payload
       const newSalt = crypto.randomBytes(32);
       const newPinKey = derivePinKey(newPin, newSalt);
       const newPinHash = crypto.pbkdf2Sync(newPin, newSalt, 600000, 32, 'sha256').toString('hex');
@@ -254,6 +289,7 @@ function register(
       const newEncrypted = enc(newPayload, newPinKey);
       const newFileData = JSON.stringify({ version: 1, salt: newSalt.toString('base64'), data: newEncrypted });
       fs.writeFileSync(getKeyfilePath(), newFileData);
+      resetPinRateLimit();
 
       logger.authLog('pin:change', 'PIN changed successfully', { email: session.email });
       logger.success('pin:change', 'User key file updated');
@@ -290,16 +326,17 @@ function register(
   }));
 
   // ── pin:status ──
-  // No auth required — checks if the key file exists and reads allowAlpha from the file.
+  // No auth required — checks if the key file exists.
   // Used by the renderer on startup to decide which screen to show.
+  // Note: allowAlpha is no longer returned here since it's stored inside the
+  // encrypted PIN payload. The renderer reads it from vault_settings instead.
   ipcMain.handle('pin:status', async () => {
     logger.ipcLog('pin:status', 'PIN status check');
     const enabled = fileExists();
-    const allowAlpha = enabled ? getPinAllowAlpha() : false;
-    logger.debug('pin:status', 'Status', { enabled, allowAlpha });
-    return { ok: true, enabled, allowAlpha };
+    logger.debug('pin:status', 'Status', { enabled });
+    return { ok: true, enabled };
   });
 
 }
 
-export { register, fileExists, setUserDataPath };
+export { register, fileExists, setUserDataPath, consumePinVerify };

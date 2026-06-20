@@ -11,7 +11,7 @@ export type { ConfirmOpts, TotpConfig, AuthResult, PreloadApi };
 
 export interface PreloadApi {
   login(): Promise<AuthResult>;
-  loginWithPin(googleId: string, email: string, token: string): Promise<AuthResult>;
+  loginWithPin(verifyId: string): Promise<AuthResult>;
   logout(): Promise<void>;
   lock(): Promise<void>;
   reauth(): Promise<AuthResult>;

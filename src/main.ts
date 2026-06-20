@@ -64,8 +64,8 @@ let oauthInProgress = false;
 let oauthServer: http.Server | null = null;
 let oauth2Client: any = null;
 
-// PIN verify token store (shared with pin.ts via pintoken module)
-import { consumeToken } from './modules/pintoken';
+// PIN verify store (shared with pin.ts — avoids token traveling through renderer)
+import { consumePinVerify } from './modules/pin';
 
 import * as authModule from './modules/auth';
 import { deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
@@ -215,11 +215,16 @@ async function googleOAuth(): Promise<GoogleProfile> {
       if (parsed.pathname !== '/oauth2callback') return;
 
       const origin = req.headers['origin'] || req.headers['referer'];
-      const isValidOrigin = (o: string | undefined): boolean => {
-        if (!o) return false;
+      if (!origin) {
+        logger.authLog('oauth', 'Rejected OAuth callback — missing Origin and Referer');
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+      }
+      const isValidOrigin = (o: string): boolean => {
         try { const u = new URL(o); return u.protocol === 'http:' && (u.host === 'localhost:42813' || u.host === '127.0.0.1:42813'); } catch { return false; }
       };
-      if (origin && !isValidOrigin(origin)) {
+      if (!isValidOrigin(origin)) {
         logger.authLog('oauth', 'Rejected OAuth callback — bad origin', { origin });
         res.writeHead(403, { 'Content-Type': 'text/plain' });
         res.end('Forbidden');
@@ -342,7 +347,7 @@ ipcMain.handle('auth:login', async () => {
     const sess = { ...profile, userId: profile.googleId, encKey, pending2fa: false };
     setSession(sess);
     playSound('login');
-    logger.authLog('auth:login', 'Login success', { email: profile.email, passwords: vault.passwords.length, notes: vault.notes.length });
+    logger.authLog('auth:login', 'Login success', { email: profile.email });
     const isAdmin = profile.email === authModule.ADMIN_EMAIL;
     return { ok: true, needs2fa: false, user: { name: profile.name, email: profile.email, avatar: profile.avatar, isAdmin }, token, vault };
   } catch (e: unknown) {
@@ -387,7 +392,7 @@ ipcMain.handle('auth:verify2fa', requireAuth(async (_e: electron.IpcMainInvokeEv
     const vault = await driveLoadItems(s.encKey);
     playSound('login');
     const isAdmin = s.email === authModule.ADMIN_EMAIL;
-    logger.authLog('auth:verify2fa', '2FA verified successfully', { userId: s.userId });
+    logger.authLog('auth:verify2fa', '2FA verified successfully', { email: s.email });
     return { ok: true, token: newToken, vault, user: { name: s.name, email: s.email, avatar: s.avatar, isAdmin } };
   } catch (e: unknown) {
     const err = e as Error;
@@ -458,15 +463,18 @@ ipcMain.handle('auth:reauth', async () => {
   }
 });
 
-ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { googleId, email, token: pinToken }: { googleId: string; email: string; token: string }) => {
-  logger.ipcLog('auth:loginWithPin', 'PIN login attempt', { email });
+ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { verifyId }: { verifyId: string }) => {
+  logger.ipcLog('auth:loginWithPin', 'PIN login attempt');
   try {
-    // Validate the PIN verify token — proves pin:verify was just called successfully
-    const verified = consumeToken(pinToken);
-    if (!verified || verified.googleId !== googleId || verified.email !== email) {
-      logger.warn('auth:loginWithPin', 'Invalid or expired PIN verify token', { email });
+    // Consume the PIN verify entry — proves pin:verify was just called successfully
+    // This is done entirely in the main process; no token travels through the renderer
+    const verified = consumePinVerify(verifyId);
+    if (!verified) {
+      logger.warn('auth:loginWithPin', 'Invalid or expired PIN verify ID');
       return { ok: false, error: 'PIN verification expired. Please enter your PIN again.' };
     }
+
+    const { googleId, email } = verified;
 
     // Input validation
     if (typeof googleId !== 'string' || !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)) {
@@ -500,11 +508,11 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { go
     const token = genSessionToken();
     playSound('login');
     const isAdmin = email === authModule.ADMIN_EMAIL;
-    logger.authLog('auth:loginWithPin', 'PIN login success', { email, passwords: vault.passwords.length, notes: vault.notes.length });
+    logger.authLog('auth:loginWithPin', 'PIN login success', { email });
     return { ok: true, user: { name: sess.name, email, avatar: null, isAdmin }, token, vault };
   } catch (e: unknown) {
     const err = e as Error;
-    logger.authLog('auth:loginWithPin', 'PIN login failed', { email, message: err.message });
+    logger.authLog('auth:loginWithPin', 'PIN login failed', { message: err.message });
     logError('auth:loginWithPin', err);
     return { ok: false, error: 'Login failed. Please try again or sign in with Google.' };
   }
