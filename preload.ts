@@ -172,7 +172,7 @@ contextBridge.exposeInMainWorld('api', {
       return ipcRenderer.invoke('settings:load', sessionToken);
     },
     save: (s: Record<string, unknown>) => {
-      bridgeLog('call', 'settings:save', true, s);
+      bridgeLog('call', 'settings:save', true, { keys: Object.keys(s) });
       return ipcRenderer.invoke('settings:save', sessionToken, { settings: s });
     },
   },

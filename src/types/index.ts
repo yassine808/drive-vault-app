@@ -139,6 +139,7 @@ export interface PinVerifyResult {
   error?: string;
   googleId?: string;
   email?: string;
+  token?: string;
 }
 
 // ── Renderer-specific types ──

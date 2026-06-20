@@ -24,14 +24,19 @@ function register(
   _validation: { sanitizeStr: typeof sanitizeStr; validEmail: typeof validEmail; MAX_NOTES_LEN: number },
   getSession: () => Session | null,
   logger: Logger,
+  enc: (data: object, key: string) => string,
+  dec: (data: string, key: string) => object | null,
   logError: LogError,
 ) {
   function dbLoadJobs(): Job[] {
     logger.dbLog('dbLoadJobs', 'Loading jobs from cache');
     if (!driveClient) return [];
+    const session = getSession();
+    if (!session) return [];
+    const encKey = session.encKey;
     const items = driveClient.loadItems('job');
     const jobs: Job[] = items.map(item => {
-      const decrypted = JSON.parse(Buffer.from(item.encryptedData, 'base64').toString('utf8')) as Record<string, unknown>;
+      const decrypted = dec(item.encryptedData, encKey) as Record<string, unknown>;
       return {
         id: item.id,
         company: decrypted.company as string || '',
@@ -60,10 +65,9 @@ function register(
       status: job.status,
       notes: job.notes,
     };
-    const encrypted = Buffer.from(JSON.stringify(payload)).toString('base64');
-    // We store the encrypted blob as-is; DriveClient handles encryption at rest
-    // Actually, we need to use the same encryption as the rest of the vault
-    // The item is already encrypted by the caller, so we store it directly
+    const session = getSession();
+    if (!session) throw new Error('No active session');
+    const encrypted = enc(payload, session.encKey);
     const id = driveClient.saveItem('job', encrypted, job.id, job.sort_order);
     logger.dbLog('dbSaveJob', 'Job saved', { jobId: id });
     return id;
@@ -93,9 +97,12 @@ function register(
   function dbLoadJobTrash(): Job[] {
     logger.dbLog('dbLoadJobTrash', 'Loading job trash');
     if (!driveClient) return [];
+    const session = getSession();
+    if (!session) return [];
+    const encKey = session.encKey;
     const items = driveClient.loadTrash('job');
     const jobs: Job[] = items.map(item => {
-      const decrypted = JSON.parse(Buffer.from(item.encryptedData, 'base64').toString('utf8')) as Record<string, unknown>;
+      const decrypted = dec(item.encryptedData, encKey) as Record<string, unknown>;
       return {
         id: item.id,
         company: decrypted.company as string || '',

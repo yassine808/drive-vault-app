@@ -64,6 +64,9 @@ let oauthInProgress = false;
 let oauthServer: http.Server | null = null;
 let oauth2Client: any = null;
 
+// PIN verify token store (shared with pin.ts via pintoken module)
+import { consumeToken } from './modules/pintoken';
+
 import * as authModule from './modules/auth';
 import { deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
 import * as validation from './modules/validation';
@@ -213,7 +216,7 @@ async function googleOAuth(): Promise<GoogleProfile> {
 
       const origin = req.headers['origin'] || req.headers['referer'];
       const isValidOrigin = (o: string | undefined): boolean => {
-        if (!o) return true;
+        if (!o) return false;
         try { const u = new URL(o); return u.protocol === 'http:' && (u.host === 'localhost:42813' || u.host === '127.0.0.1:42813'); } catch { return false; }
       };
       if (origin && !isValidOrigin(origin)) {
@@ -455,9 +458,24 @@ ipcMain.handle('auth:reauth', async () => {
   }
 });
 
-ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { googleId, email }: { googleId: string; email: string }) => {
+ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { googleId, email, token: pinToken }: { googleId: string; email: string; token: string }) => {
   logger.ipcLog('auth:loginWithPin', 'PIN login attempt', { email });
   try {
+    // Validate the PIN verify token — proves pin:verify was just called successfully
+    const verified = consumeToken(pinToken);
+    if (!verified || verified.googleId !== googleId || verified.email !== email) {
+      logger.warn('auth:loginWithPin', 'Invalid or expired PIN verify token', { email });
+      return { ok: false, error: 'PIN verification expired. Please enter your PIN again.' };
+    }
+
+    // Input validation
+    if (typeof googleId !== 'string' || !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)) {
+      return { ok: false, error: 'Invalid session' };
+    }
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false, error: 'Invalid session' };
+    }
+
     const encKey = deriveKey(googleId);
 
     // Try to initialize Drive client if we have OAuth tokens
@@ -712,7 +730,7 @@ app.whenReady().then(() => {
   logger.success('app', 'Dependencies loaded (CryptoJS, speakeasy)');
 
   // Register modules — pass driveClient (will be null until login, modules handle this)
-  registerJobs(ipcMain, requireAuth, requireAuthNoArgs, driveClient, validation, getSessionFn, logger as any, logError);
+  registerJobs(ipcMain, requireAuth, requireAuthNoArgs, driveClient, validation, getSessionFn, logger as any, enc, dec, logError);
   registerTotp(ipcMain, requireAuth, requireAuthNoArgs, driveClient, getSessionFn, logger as any, enc, dec, logError);
   registerSettings(ipcMain, requireAuth, requireAuthNoArgs, driveClient, getSessionFn, logger as any, logError);
   registerLogo(ipcMain, requireAuth, driveClient, logger as any, getSessionFn, logError);

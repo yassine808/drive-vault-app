@@ -199,8 +199,12 @@ function register(
       logger.authLog('pin:verify', 'PIN verified successfully', { email });
       logger.debug('pin:verify', 'Deriving encryption key', { googleId: googleId.slice(0, 8) + '...' });
 
+      // Generate a short-lived token that auth:loginWithPin requires
+      const { storeToken } = require('./pintoken');
+      const token = storeToken(googleId, email);
+
       logger.success('pin:verify', 'PIN verified', { email });
-      return { ok: true, googleId, email };
+      return { ok: true, googleId, email, token };
     } catch (e: unknown) {
       const err = e as Error;
       logger.error('pin:verify', 'Error', err.message);
@@ -295,6 +299,7 @@ function register(
     logger.debug('pin:status', 'Status', { enabled, allowAlpha });
     return { ok: true, enabled, allowAlpha };
   });
+
 }
 
 export { register, fileExists, setUserDataPath };

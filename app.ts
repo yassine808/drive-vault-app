@@ -433,7 +433,7 @@ async function loadPinAccounts() {
   if (r.googleId) {
     api.accounts.touch(r.googleId).catch(() => {});
   }
-  const r2 = await api.loginWithPin(r.googleId!, r.email!);
+  const r2 = await api.loginWithPin(r.googleId!, r.email!, r.token!);
   if (!r2.ok) {
     (document.getElementById('pin-err') as HTMLElement).hidden = false;
     (document.getElementById('pin-err') as HTMLElement).textContent = r2.error ?? 'Login failed';
