@@ -564,7 +564,7 @@ function updateCounts(): void {
   logInfo('vault', 'Sync triggered');
   const btn = document.getElementById('btn-sync') as HTMLButtonElement;
   btn.style.opacity = '.5'; btn.style.pointerEvents = 'none';
-  const r = await api.sync();
+  const r = await api.vaultSync();
   btn.style.opacity = ''; btn.style.pointerEvents = '';
   if (r.ok) { loadVault(r.vault); switchTab('passwords'); toast('Synced ✓'); logOk('vault', 'Sync successful'); }
   else { toast('Sync error: ' + r.error); logErr('vault', 'Sync failed', r.error); }

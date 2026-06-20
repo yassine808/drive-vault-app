@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('api', {
     bridgeLog('call', 'vault:delete', true, { id, type });
     return ipcRenderer.invoke('vault:delete', sessionToken, { id, type });
   },
-  sync: () => {
+  vaultSync: () => {
     bridgeLog('call', 'vault:sync', true);
     return ipcRenderer.invoke('vault:sync', sessionToken);
   },

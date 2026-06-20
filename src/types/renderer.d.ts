@@ -20,7 +20,7 @@ export interface PreloadApi {
 
   save(type: string, item: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }>;
   delete(id: string, type: string): Promise<{ ok: boolean; error?: string }>;
-  sync(): Promise<{ ok: boolean; vault?: VaultData; error?: string }>;
+  vaultSync(): Promise<{ ok: boolean; vault?: VaultData; error?: string }>;
   reorder(type: string, items: unknown[]): Promise<{ ok: boolean }>;
 
   trashLoad(): Promise<{ ok: boolean; items: Array<VaultItem & { _type: string; _deletedAt: string }>; error?: string }>;
