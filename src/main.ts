@@ -214,21 +214,19 @@ async function googleOAuth(): Promise<GoogleProfile> {
       const parsed = url.parse(req.url || '', true);
       if (parsed.pathname !== '/oauth2callback') return;
 
+      // Origin validation: the state parameter already provides CSRF protection.
+      // We log mismatches for auditing but don't block — browsers may strip
+      // Origin/Referer on cross-origin redirects (Google OAuth → localhost).
       const origin = req.headers['origin'] || req.headers['referer'];
-      if (!origin) {
-        logger.authLog('oauth', 'Rejected OAuth callback — missing Origin and Referer');
-        res.writeHead(403, { 'Content-Type': 'text/plain' });
-        res.end('Forbidden');
-        return;
-      }
-      const isValidOrigin = (o: string): boolean => {
-        try { const u = new URL(o); return u.protocol === 'http:' && (u.host === 'localhost:42813' || u.host === '127.0.0.1:42813'); } catch { return false; }
-      };
-      if (!isValidOrigin(origin)) {
-        logger.authLog('oauth', 'Rejected OAuth callback — bad origin', { origin });
-        res.writeHead(403, { 'Content-Type': 'text/plain' });
-        res.end('Forbidden');
-        return;
+      if (origin) {
+        const isValidOrigin = (o: string): boolean => {
+          try { const u = new URL(o); return u.protocol === 'http:' && (u.host === 'localhost:42813' || u.host === '127.0.0.1:42813'); } catch { return false; }
+        };
+        if (!isValidOrigin(origin)) {
+          logger.authLog('oauth', 'OAuth callback origin mismatch (allowed — state provides CSRF protection)', { origin });
+        }
+      } else {
+        logger.authLog('oauth', 'OAuth callback received without Origin/Referer (allowed — state provides CSRF protection)');
       }
       if (!oauthInProgress) {
         logger.authLog('oauth', 'Rejected OAuth callback — no active flow');

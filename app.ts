@@ -340,6 +340,7 @@ function showPinAccounts() {
   hide('pin-selected-account');
   show('pin-user-label');
   show('pin-accounts');
+  hide('pin-input-area');
   (document.getElementById('pin-code') as HTMLInputElement).value = '';
   (document.getElementById('pin-err') as HTMLElement).hidden = true;
 }
@@ -368,6 +369,7 @@ function selectPinAccount(account: { googleId: string; email: string; name: stri
   (document.getElementById('pin-selected-email') as HTMLElement).textContent = account.email;
   (document.getElementById('pin-code') as HTMLInputElement).value = '';
   (document.getElementById('pin-err') as HTMLElement).hidden = true;
+  show('pin-input-area');
   setTimeout(() => (document.getElementById('pin-code') as HTMLInputElement).focus(), 60);
 }
 
@@ -375,7 +377,15 @@ async function loadPinAccounts() {
   try {
     const r = await api.accounts.list();
     if (!r.ok || !r.accounts.length) {
-      showPinAccounts();
+      // No saved accounts — show PIN input directly
+      _selectedAccount = null;
+      hide('pin-selected-account');
+      hide('pin-accounts');
+      show('pin-user-label');
+      show('pin-input-area');
+      (document.getElementById('pin-code') as HTMLInputElement).value = '';
+      (document.getElementById('pin-err') as HTMLElement).hidden = true;
+      setTimeout(() => (document.getElementById('pin-code') as HTMLInputElement).focus(), 60);
       return;
     }
     const list = document.getElementById('pin-accounts-list') as HTMLElement;
@@ -1362,7 +1372,8 @@ async function loadSettingsTab(): Promise<void> {
   // PIN settings UI logic
   const pinSetupRow = document.getElementById('pin-setup-row') as HTMLElement;
   const pinChangeRow = document.getElementById('pin-change-row') as HTMLElement;
-  const pinDisableRow = document.getElementById('pin-disable-row') as HTMLElement;
+  const pinDeleteRow = document.getElementById('pin-delete-row') as HTMLElement;
+  const pinDeleteDivider = document.getElementById('pin-delete-divider') as HTMLElement;
 
   // Check if a PIN file already exists to decide which row to show
   let _pinFileExists = false;
@@ -1375,7 +1386,8 @@ async function loadSettingsTab(): Promise<void> {
   // If PIN is disabled → hide all
   if (pinSetupRow) pinSetupRow.hidden = !pinEnabled || _pinFileExists;
   if (pinChangeRow) pinChangeRow.hidden = !pinEnabled || !_pinFileExists;
-  if (pinDisableRow) pinDisableRow.hidden = !pinEnabled || !_pinFileExists;
+  if (pinDeleteRow) pinDeleteRow.hidden = !pinEnabled || !_pinFileExists;
+  if (pinDeleteDivider) pinDeleteDivider.hidden = !pinEnabled || !_pinFileExists;
 
   // PIN enable toggle handler
   const pinEnabledEl = document.getElementById('s-pin-enabled') as HTMLInputElement;
@@ -1387,13 +1399,15 @@ async function loadSettingsTab(): Promise<void> {
         // When enabling, always show setup first (no "Current PIN" field)
         if (pinSetupRow) pinSetupRow.hidden = false;
         if (pinChangeRow) pinChangeRow.hidden = true;
-        if (pinDisableRow) pinDisableRow.hidden = true;
+        if (pinDeleteRow) pinDeleteRow.hidden = true;
+        if (pinDeleteDivider) pinDeleteDivider.hidden = true;
         _pinFileExists = false;
       } else {
         // When disabling, hide all PIN rows
         if (pinSetupRow) pinSetupRow.hidden = true;
         if (pinChangeRow) pinChangeRow.hidden = true;
-        if (pinDisableRow) pinDisableRow.hidden = true;
+        if (pinDeleteRow) pinDeleteRow.hidden = true;
+        if (pinDeleteDivider) pinDeleteDivider.hidden = true;
       }
       __saveSettings();
       toast(enabled ? 'PIN login enabled — set your PIN below' : 'PIN login disabled', 1500);
@@ -1430,7 +1444,8 @@ async function loadSettingsTab(): Promise<void> {
     S.settings.pin_login_enabled = true;
     if (pinSetupRow) pinSetupRow.hidden = true;
     if (pinChangeRow) pinChangeRow.hidden = false;
-    if (pinDisableRow) pinDisableRow.hidden = false;
+    if (pinDeleteRow) pinDeleteRow.hidden = false;
+    if (pinDeleteDivider) pinDeleteDivider.hidden = false;
     if (pinEnabledEl) pinEnabledEl.checked = true;
     __saveSettings();
   });
@@ -1452,23 +1467,44 @@ async function loadSettingsTab(): Promise<void> {
     (document.getElementById('s-pin-new') as HTMLInputElement).value = '';
   });
 
-  // Disable PIN button
-  document.getElementById('s-pin-disable')?.addEventListener('click', async () => {
-    logInfo('pin', 'Disable PIN clicked');
+  // Delete PIN button — requires confirmation
+  document.getElementById('s-pin-delete')?.addEventListener('click', async () => {
+    // Use the app's built-in confirm dialog
+    const confirmed = await new Promise<boolean>((resolve) => {
+      const overlay = document.getElementById('confirm-overlay') as HTMLElement;
+      const title = document.getElementById('confirm-title') as HTMLElement;
+      const msg = document.getElementById('confirm-msg') as HTMLElement;
+      const cancelBtn = document.getElementById('confirm-cancel') as HTMLButtonElement;
+      const okBtn = document.getElementById('confirm-ok') as HTMLButtonElement;
+      title.textContent = 'Delete PIN?';
+      msg.textContent = 'This will permanently delete your PIN. You can set a new one anytime from settings.';
+      overlay.hidden = false;
+      const cleanup = () => {
+        overlay.hidden = true;
+        cancelBtn.removeEventListener('click', onCancel);
+        okBtn.removeEventListener('click', onOk);
+      };
+      const onCancel = () => { cleanup(); resolve(false); };
+      const onOk = () => { cleanup(); resolve(true); };
+      cancelBtn.addEventListener('click', onCancel);
+      okBtn.addEventListener('click', onOk);
+    });
+    if (!confirmed) return;
+    logInfo('pin', 'Delete PIN confirmed');
     const r = await api.pin.disable();
     if (!r.ok) {
-      toast(r.error || 'Failed to disable PIN');
-      logWarn('pin', 'Disable PIN failed', r.error);
+      toast(r.error || 'Failed to delete PIN');
+      logWarn('pin', 'Delete PIN failed', r.error);
       return;
     }
-    toast('PIN login disabled');
-    logOk('pin', 'PIN disabled');
+    toast('PIN deleted');
+    logOk('pin', 'PIN deleted');
     _pinFileExists = false;
-    S.settings.pin_login_enabled = false;
+    // Keep PIN login enabled — user can set a new one
     if (pinSetupRow) pinSetupRow.hidden = false;
     if (pinChangeRow) pinChangeRow.hidden = true;
-    if (pinDisableRow) pinDisableRow.hidden = true;
-    if (pinEnabledEl) pinEnabledEl.checked = false;
+    if (pinDeleteRow) pinDeleteRow.hidden = true;
+    if (pinDeleteDivider) pinDeleteDivider.hidden = true;
     __saveSettings();
   });
 
