@@ -346,6 +346,9 @@ ipcMain.handle('auth:login', async () => {
     const err = e as Error;
     logger.authLog('auth:login', 'Login failed', { message: err.message });
     logError('auth:login', err);
+    if (err.message.includes('Google Drive API has not been used') || err.message.includes('SERVICE_DISABLED')) {
+      return { ok: false, error: 'Google Drive API is not enabled for this project. Please ask the admin to enable it in Google Cloud Console → APIs & Services → Google Drive API.' };
+    }
     return { ok: false, error: 'Authentication failed. Please try again.' };
   }
 });
@@ -445,6 +448,9 @@ ipcMain.handle('auth:reauth', async () => {
     const err = e as Error;
     logger.authLog('auth:reauth', 'Re-authentication failed', { message: err.message });
     logError('auth:reauth', err);
+    if (err.message.includes('Google Drive API has not been used') || err.message.includes('SERVICE_DISABLED')) {
+      return { ok: false, error: 'Google Drive API is not enabled for this project. Please ask the admin to enable it in Google Cloud Console → APIs & Services → Google Drive API.' };
+    }
     return { ok: false, error: 'Re-authentication failed. Please try again.' };
   }
 });

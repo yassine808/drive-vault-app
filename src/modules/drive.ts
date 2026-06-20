@@ -20,6 +20,16 @@ const SETTINGS_FILE_NAME = 'vault_settings';
 const TWOFA_FILE_NAME = 'vault_2fa';
 const LOGOS_FILE_NAME = 'vault_logos';
 
+const SUBFOLDERS = {
+  password: 'passwords',
+  note: 'notes',
+  job: 'jobs',
+  totp: 'totp',
+  settings: 'settings',
+} as const;
+
+type SubfolderType = keyof typeof SUBFOLDERS;
+
 /**
  * DriveClient — replaces SupabaseClient for all storage operations.
  * Each item (password, note, job, TOTP) is stored as a separate encrypted file.
@@ -33,6 +43,7 @@ export class DriveClient {
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncInProgress = false;
   private vaultFolderId: string | null = null;
+  private subfolderIds: Record<string, string> = {};
   private fileIdCache: Map<string, string> = new Map(); // name -> fileId
   private logger: Logger;
   private googleId: string;
@@ -62,6 +73,12 @@ export class DriveClient {
 
     // Ensure the Vault folder exists on Drive
     await this.ensureVaultFolder();
+
+    // Ensure subfolders exist (created once)
+    await this.ensureSubfolders();
+
+    // Migrate any flat files from old structure to subfolders
+    await this.migrateFlatFiles();
 
     // Load file ID index from Drive
     await this.buildFileIdCache();
@@ -158,11 +175,12 @@ export class DriveClient {
           });
           this.fileIdCache.set(fileName, item.driveFileId);
         } else {
-          // Create new file
+          // Create new file in the correct subfolder
+          const subfolderId = await this.ensureSubfolder(SUBFOLDERS[item.type as SubfolderType]);
           const created = await this.drive.files.create({
             requestBody: {
               name: fileName,
-              parents: [this.vaultFolderId!],
+              parents: [subfolderId],
               mimeType: 'application/octet-stream',
               appProperties: { itemId: item.id, itemType: item.type },
             },
@@ -239,30 +257,145 @@ export class DriveClient {
     }
   }
 
+  private async ensureSubfolder(name: string): Promise<string> {
+    if (this.subfolderIds[name]) return this.subfolderIds[name];
+    const res = await this.drive!.files.list({
+      q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
+      spaces: 'drive',
+      fields: 'files(id, name)',
+    });
+    if (res.data.files && res.data.files.length > 0) {
+      this.subfolderIds[name] = res.data.files[0].id!;
+      this.logger.dbLog('drive:folder', `Found existing subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+    } else {
+      const created = await this.drive!.files.create({
+        requestBody: {
+          name,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [this.vaultFolderId!],
+        },
+        fields: 'id',
+      });
+      this.subfolderIds[name] = created.data.id!;
+      this.logger.dbLog('drive:folder', `Created subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+    }
+    return this.subfolderIds[name];
+  }
+
+  private async ensureSubfolders(): Promise<void> {
+    for (const name of Object.values(SUBFOLDERS)) {
+      if (this.subfolderIds[name]) continue;
+      const res = await this.drive!.files.list({
+        q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
+        spaces: 'drive',
+        fields: 'files(id, name)',
+      });
+      if (res.data.files && res.data.files.length > 0) {
+        this.subfolderIds[name] = res.data.files[0].id!;
+        this.logger.dbLog('drive:folder', `Found existing subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+      } else {
+        const created = await this.drive!.files.create({
+          requestBody: {
+            name,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [this.vaultFolderId!],
+          },
+          fields: 'id',
+        });
+        this.subfolderIds[name] = created.data.id!;
+        this.logger.dbLog('drive:folder', `Created subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+      }
+    }
+  }
+
+  /**
+   * One-time migration: move files from flat Vault/ root into subfolders.
+   * Handles users who had the old flat structure before subfolders were introduced.
+   */
+  private async migrateFlatFiles(): Promise<void> {
+    if (!this.drive || !this.vaultFolderId) return;
+
+    const res = await this.drive.files.list({
+      q: `'${this.vaultFolderId}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`,
+      spaces: 'drive',
+      fields: 'files(id, name)',
+    });
+
+    const files = res.data.files || [];
+    if (files.length === 0) return;
+
+    for (const f of files) {
+      const name = f.name || '';
+      // Check if it's an item file (password/note/job/totp)
+      const parsed = this.parseItemFileName(name);
+      if (parsed) {
+        const subfolderName = SUBFOLDERS[parsed.type as SubfolderType];
+        const subfolderId = this.subfolderIds[subfolderName];
+        if (!subfolderId) continue;
+        await this.drive.files.update({
+          fileId: f.id!,
+          addParents: subfolderId,
+          removeParents: this.vaultFolderId!,
+          fields: 'id, parents',
+        });
+        this.logger.dbLog('drive:migrate', `Moved ${name} → ${subfolderName}/`);
+        continue;
+      }
+      // Check if it's a settings/2fa file
+      if (name === SETTINGS_FILE_NAME || name === TWOFA_FILE_NAME) {
+        const subfolderId = this.subfolderIds[SUBFOLDERS.settings];
+        if (!subfolderId) continue;
+        await this.drive.files.update({
+          fileId: f.id!,
+          addParents: subfolderId,
+          removeParents: this.vaultFolderId!,
+          fields: 'id, parents',
+        });
+        this.logger.dbLog('drive:migrate', `Moved ${name} → settings/`);
+        continue;
+      }
+      // Check if it's a legacy subfolder (already migrated)
+      if (Object.values(SUBFOLDERS).includes(name as any)) {
+        this.logger.dbLog('drive:migrate', `Skipping existing subfolder: ${name}`);
+        continue;
+      }
+      // Unknown file — log but don't move
+      this.logger.dbLog('drive:migrate', `Unknown file in Vault root, leaving in place: ${name}`);
+    }
+
+    // Flush any dirty items generated by the cache after migration
+    if (this.cache.dirtyQueue.length > 0) {
+      await this.syncToDrive();
+    }
+  }
+
   private async buildFileIdCache(): Promise<void> {
     if (!this.drive || !this.vaultFolderId) return;
 
-    let pageToken: string | undefined;
-    do {
-      const res = await this.drive.files.list({
-        q: `'${this.vaultFolderId}' in parents and trashed=false`,
-        spaces: 'drive',
-        fields: 'nextPageToken, files(id, name, modifiedTime, appProperties)',
-        pageSize: 1000,
-        pageToken,
-      });
+    // Iterate each subfolder to collect all item files
+    for (const [name, subfolderId] of Object.entries(this.subfolderIds)) {
+      let pageToken: string | undefined;
+      do {
+        const res = await this.drive.files.list({
+          q: `'${subfolderId}' in parents and trashed=false`,
+          spaces: 'drive',
+          fields: 'nextPageToken, files(id, name, modifiedTime, appProperties)',
+          pageSize: 1000,
+          pageToken,
+        });
 
-      for (const f of (res.data.files || [])) {
-        if (f.name && f.id) {
-          this.fileIdCache.set(f.name, f.id);
-          // Store ETag for conflict resolution
-          if (f.modifiedTime) {
-            this.cache.etags[f.id] = f.modifiedTime;
+        for (const f of (res.data.files || [])) {
+          if (f.name && f.id) {
+            this.fileIdCache.set(f.name, f.id);
+            // Store ETag for conflict resolution
+            if (f.modifiedTime) {
+              this.cache.etags[f.id] = f.modifiedTime;
+            }
           }
         }
-      }
-      pageToken = res.data.nextPageToken || undefined;
-    } while (pageToken);
+        pageToken = res.data.nextPageToken || undefined;
+      } while (pageToken);
+    }
 
     this.logger.dbLog('drive:cache', 'File ID cache built', { count: this.fileIdCache.size });
   }
@@ -526,10 +659,11 @@ export class DriveClient {
         media: { mimeType: 'application/json', body: content },
       });
     } else {
+      const subfolderId = await this.ensureSubfolder(SUBFOLDERS.settings);
       const created = await this.drive.files.create({
         requestBody: {
           name: SETTINGS_FILE_NAME,
-          parents: [this.vaultFolderId!],
+          parents: [subfolderId],
           mimeType: 'application/json',
         },
         media: { mimeType: 'application/json', body: content },
@@ -578,10 +712,11 @@ export class DriveClient {
         media: { mimeType: 'application/json', body: content },
       });
     } else {
+      const subfolderId = await this.ensureSubfolder(SUBFOLDERS.settings);
       const created = await this.drive.files.create({
         requestBody: {
           name: TWOFA_FILE_NAME,
-          parents: [this.vaultFolderId!],
+          parents: [subfolderId],
           mimeType: 'application/json',
         },
         media: { mimeType: 'application/json', body: content },
