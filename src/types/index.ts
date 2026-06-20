@@ -10,6 +10,14 @@ export interface VaultUser {
   last_seen?: string;
 }
 
+export interface DriveStats {
+  items: number;
+  jobs: number;
+  trash: number;
+  logSize: number;
+  cacheSizeBytes: number;
+}
+
 export interface Session {
   googleId: string;
   email: string;
@@ -21,9 +29,9 @@ export interface Session {
 }
 
 export interface VaultItem {
-  _dbId?: number;
+  _localId?: string;
   _sort?: number;
-  id?: number | string;
+  id?: string;
   site?: string;
   username?: string;
   password?: string;
@@ -41,7 +49,7 @@ export type ItemType = 'password' | 'note';
 export type JobStatus = 'wait' | 'accepted' | 'rejected';
 
 export interface Job {
-  id?: number;
+  id?: string;
   company: string;
   role: string;
   email: string;
@@ -55,7 +63,7 @@ export interface Job {
 }
 
 export interface TotpItem {
-  id?: number;
+  id?: string;
   name: string;
   issuer: string;
   secret: string;
@@ -119,20 +127,6 @@ export interface LogEntry {
   text: string;
 }
 
-export interface DbStats {
-  items: number;
-  jobs: number;
-  trash: number;
-  logSize: number;
-  dbSizeBytes: number;
-}
-
-export interface AdminStats {
-  totalUsers: number;
-  totalItems: number;
-  totalJobs: number;
-  totalTotp: number;
-}
 
 export interface PinStatus {
   ok: boolean;

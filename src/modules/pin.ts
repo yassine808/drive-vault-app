@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import type Electron from 'electron';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { DriveClient } from './drive';
 import { enc, dec, derivePinKey } from './crypto';
 import type { Session } from '../types';
 
@@ -84,6 +84,16 @@ function validatePin(pin: string, allowAlpha: boolean): string | null {
   return null;
 }
 
+// ── Get PIN settings from local PIN file ──
+function getPinAllowAlpha(): boolean {
+  try {
+    if (!fileExists()) return false;
+    const fileContent = fs.readFileSync(getKeyfilePath(), 'utf8');
+    const fileData = JSON.parse(fileContent);
+    return !!fileData.allowAlpha;
+  } catch { return false; }
+}
+
 // ── Register IPC handlers ──
 function register(
   ipcMain: Electron.IpcMain,
@@ -92,7 +102,7 @@ function register(
   getSession: GetSession,
   logger: Logger,
   logError: LogError,
-  supabase?: SupabaseClient,
+  _driveClient?: DriveClient | null,
 ) {
   // ── pin:setup ──
   // Requires active session. Creates the encrypted user key file.
@@ -120,24 +130,11 @@ function register(
       const pinKey = derivePinKey(pin, salt);
       const pinHash = crypto.pbkdf2Sync(pin, salt, 600000, 32, 'sha256').toString('hex');
 
-      const payload = { pinHash, userKey: { googleId: session.googleId, email: session.email } };
+      const payload = { pinHash, userKey: { googleId: session.googleId, email: session.email }, allowAlpha };
       const encrypted = enc(payload, pinKey);
 
       const fileData = JSON.stringify({ version: 1, salt: salt.toString('base64'), data: encrypted });
       fs.writeFileSync(getKeyfilePath(), fileData);
-
-      // Sync PIN settings to vault_settings
-      if (supabase) {
-        try {
-          await supabase.from('vault_settings').upsert(
-            { user_id: session.userId, pin_login_enabled: true, pin_allow_alpha: allowAlpha },
-            { onConflict: 'user_id' }
-          );
-          logger.dbLog('pin:setup', 'PIN settings synced to vault_settings');
-        } catch (syncErr) {
-          logger.warn('pin:setup', 'Failed to sync PIN settings to vault_settings', { error: syncErr instanceof Error ? syncErr.message : String(syncErr) });
-        }
-      }
 
       logger.authLog('pin:setup', 'PIN configured successfully', { email: session.email });
       logger.success('pin:setup', 'User key file created');
@@ -202,8 +199,6 @@ function register(
       logger.authLog('pin:verify', 'PIN verified successfully', { email });
       logger.debug('pin:verify', 'Deriving encryption key', { googleId: googleId.slice(0, 8) + '...' });
 
-      // Return googleId and email so the renderer can call auth:loginWithPin
-      // to complete session creation in main.ts (which has access to supabase, deriveKey, etc.)
       logger.success('pin:verify', 'PIN verified', { email });
       return { ok: true, googleId, email };
     } catch (e: unknown) {
@@ -241,7 +236,7 @@ function register(
         return { ok: false, error: 'Current PIN is incorrect' };
       }
 
-            const pinErr = validatePin(newPin, allowAlpha);
+      const pinErr = validatePin(newPin, allowAlpha);
       if (pinErr) {
         logger.warn('pin:change', 'Invalid new PIN format', { error: pinErr });
         return { ok: false, error: pinErr };
@@ -251,7 +246,7 @@ function register(
       const newSalt = crypto.randomBytes(32);
       const newPinKey = derivePinKey(newPin, newSalt);
       const newPinHash = crypto.pbkdf2Sync(newPin, newSalt, 600000, 32, 'sha256').toString('hex');
-      const newPayload = { pinHash: newPinHash, userKey: payload.userKey };
+      const newPayload = { pinHash: newPinHash, userKey: payload.userKey, allowAlpha };
       const newEncrypted = enc(newPayload, newPinKey);
       const newFileData = JSON.stringify({ version: 1, salt: newSalt.toString('base64'), data: newEncrypted });
       fs.writeFileSync(getKeyfilePath(), newFileData);
@@ -281,19 +276,6 @@ function register(
         logger.warn('pin:disable', 'No user key file to delete');
       }
 
-      // Sync PIN settings to vault_settings
-      if (supabase && session) {
-        try {
-          await supabase.from('vault_settings').upsert(
-            { user_id: session.userId, pin_login_enabled: false },
-            { onConflict: 'user_id' }
-          );
-          logger.dbLog('pin:disable', 'PIN disabled in vault_settings');
-        } catch (syncErr) {
-          logger.warn('pin:disable', 'Failed to sync PIN settings to vault_settings', { error: syncErr instanceof Error ? syncErr.message : String(syncErr) });
-        }
-      }
-
       return { ok: true };
     } catch (e: unknown) {
       const err = e as Error;
@@ -304,22 +286,12 @@ function register(
   }));
 
   // ── pin:status ──
-  // No auth required — checks if the key file exists and reads allowAlpha from vault_settings.
+  // No auth required — checks if the key file exists and reads allowAlpha from the file.
   // Used by the renderer on startup to decide which screen to show.
   ipcMain.handle('pin:status', async () => {
     logger.ipcLog('pin:status', 'PIN status check');
     const enabled = fileExists();
-    let allowAlpha = false;
-    if (enabled && supabase) {
-      try {
-        // Look up any user's vault_settings that has pin enabled to get allowAlpha
-        const { data } = await supabase.from('vault_settings')
-          .select('pin_allow_alpha')
-          .eq('pin_login_enabled', true)
-          .maybeSingle();
-        if (data) allowAlpha = !!data.pin_allow_alpha;
-      } catch { /* noop */ }
-    }
+    const allowAlpha = enabled ? getPinAllowAlpha() : false;
     logger.debug('pin:status', 'Status', { enabled, allowAlpha });
     return { ok: true, enabled, allowAlpha };
   });

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { DriveClient } from './drive';
 import type { Settings, Session } from '../types';
 
 import type Electron from 'electron';
@@ -93,49 +93,24 @@ function register(
   ipcMain: Electron.IpcMain,
   requireAuth: AuthWrapper,
   requireAuthNoArgs: AuthWrapper,
-  supabase: SupabaseClient,
+  driveClient: DriveClient | null,
   getSession: () => Session | null,
   logger: Logger,
   logError: LogError,
 ) {
-  async function dbLoadSettings(userId: string): Promise<Partial<Settings>> {
-    logger.dbLog('dbLoadSettings', 'Loading settings', { userId });
-    const { data, error } = await supabase.from('vault_settings')
-      .select('user_id,lock_timeout,lock_action,lock_countdown,lock_on_minimize,pin_login_enabled,pin_allow_alpha,compact,animations,accent,gen_length,gen_symbols,gen_numbers,gen_ambiguous,gen_copy,sounds,sound_login,sound_exit,sound_hover,sound_login_tone,sound_exit_tone,sound_hover_tone,toast_duration')
-      .eq('user_id', userId).maybeSingle();
-    if (error) { logger.warn('dbLoadSettings', 'Failed', { error: error.message }); throw new Error('Failed to load settings'); }
-    const result = data || {};
-    logger.dbLog('dbLoadSettings', 'Settings loaded', result);
-    return result as Partial<Settings>;
+  async function dbLoadSettings(): Promise<Partial<Settings>> {
+    logger.dbLog('dbLoadSettings', 'Loading settings');
+    if (!driveClient) return {};
+    const data = await driveClient.loadSettings();
+    if (!data) return {};
+    logger.dbLog('dbLoadSettings', 'Settings loaded', data);
+    return data as Partial<Settings>;
   }
 
-  async function dbSaveSettings(userId: string, settings: Settings): Promise<void> {
-    logger.dbLog('dbSaveSettings', 'Saving settings', { userId });
-    const safeSettings = {
-      lock_timeout: settings.lock_timeout,
-      lock_action: settings.lock_action,
-      lock_countdown: settings.lock_countdown,
-      lock_on_minimize: settings.lock_on_minimize,
-      pin_login_enabled: settings.pin_login_enabled,
-      pin_allow_alpha: settings.pin_allow_alpha,
-      compact: settings.compact,
-      animations: settings.animations,
-      accent: settings.accent,
-      gen_length: settings.gen_length,
-      gen_symbols: settings.gen_symbols,
-      gen_numbers: settings.gen_numbers,
-      gen_ambiguous: settings.gen_ambiguous,
-      gen_copy: settings.gen_copy,
-      sounds: settings.sounds,
-      sound_login: settings.sound_login,
-      sound_exit: settings.sound_exit,
-      sound_hover: settings.sound_hover,
-      sound_login_tone: settings.sound_login_tone,
-      sound_exit_tone: settings.sound_exit_tone,
-      sound_hover_tone: settings.sound_hover_tone,
-      toast_duration: settings.toast_duration,
-    };
-    await supabase.from('vault_settings').upsert({ user_id: userId, ...safeSettings });
+  async function dbSaveSettings(settings: Settings): Promise<void> {
+    logger.dbLog('dbSaveSettings', 'Saving settings');
+    if (!driveClient) throw new Error('Drive not initialized');
+    await driveClient.saveSettings(settings as unknown as Record<string, unknown>);
     logger.dbLog('dbSaveSettings', 'Success');
   }
 
@@ -144,7 +119,7 @@ function register(
     if (!session) throw new Error('No session');
     logger.ipcLog('settings:load', 'Loading settings');
     try {
-      const settings = await dbLoadSettings(session.userId);
+      const settings = await dbLoadSettings();
       logger.success('settings:load', 'Settings loaded', settings);
       return { ok: true, settings };
     } catch (e: unknown) {
@@ -163,7 +138,7 @@ function register(
         logger.warn('settings:save', (validation as any).error, { lock_timeout: settings?.lock_timeout, lock_action: settings?.lock_action });
         return validation;
       }
-      await dbSaveSettings(session.userId, validation.settings);
+      await dbSaveSettings(validation.settings);
       logger.success('settings:save', 'Settings saved');
       return { ok: true };
     } catch (e: unknown) { const err = e as Error; logError('settings:save', err); return { ok: false, error: 'Failed to save settings' }; }

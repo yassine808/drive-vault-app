@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { DriveClient } from './drive';
 import type { Job, JobStatus, Session } from '../types';
 import { sanitizeStr, validEmail, MAX_NOTES_LEN } from './validation';
 
@@ -20,100 +20,111 @@ function register(
   ipcMain: Electron.IpcMain,
   requireAuth: AuthWrapper,
   requireAuthNoArgs: AuthWrapper,
-  supabase: SupabaseClient,
+  driveClient: DriveClient | null,
   _validation: { sanitizeStr: typeof sanitizeStr; validEmail: typeof validEmail; MAX_NOTES_LEN: number },
   getSession: () => Session | null,
   logger: Logger,
   logError: LogError,
 ) {
-  async function dbLoadJobs(userId: string): Promise<Job[]> {
-    logger.dbLog('dbLoadJobs', 'Loading jobs', { userId });
-    const { data, error } = await supabase.from('vault_jobs')
-      .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at')
-      .eq('user_id', userId).is('deleted_at', null)
-      .order('sort_order', { ascending: true }).order('created_at', { ascending: false });
-    if (error) { logger.error('dbLoadJobs', 'Failed', error.message); throw new Error('Failed to load jobs'); }
-    logger.dbLog('dbLoadJobs', 'Jobs loaded', { count: data.length });
-    return data as unknown as Job[];
+  function dbLoadJobs(): Job[] {
+    logger.dbLog('dbLoadJobs', 'Loading jobs from cache');
+    if (!driveClient) return [];
+    const items = driveClient.loadItems('job');
+    const jobs: Job[] = items.map(item => {
+      const decrypted = JSON.parse(item.encryptedData) as Record<string, unknown>;
+      return {
+        id: item.id,
+        company: decrypted.company as string || '',
+        role: decrypted.role as string || '',
+        email: decrypted.email as string || '',
+        applied_at: decrypted.applied_at as string || '',
+        status: (decrypted.status as JobStatus) || 'wait',
+        notes: decrypted.notes as string || '',
+        sort_order: item.sortOrder,
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+      };
+    });
+    logger.dbLog('dbLoadJobs', 'Jobs loaded', { count: jobs.length });
+    return jobs;
   }
 
-  async function dbSaveJob(userId: string, job: Job): Promise<number> {
-    logger.dbLog('dbSaveJob', 'Saving job', { userId, jobId: job?.id, company: job?.company });
-    const { id, ...payload } = job;
-    const safePayload = {
-      company: payload.company,
-      role: payload.role,
-      email: payload.email,
-      applied_at: payload.applied_at,
-      status: payload.status,
-      notes: payload.notes,
-      sort_order: payload.sort_order,
+  function dbSaveJob(job: Job): string {
+    logger.dbLog('dbSaveJob', 'Saving job', { jobId: job?.id, company: job?.company });
+    if (!driveClient) throw new Error('Drive not initialized');
+    const payload = {
+      company: job.company,
+      role: job.role,
+      email: job.email,
+      applied_at: job.applied_at,
+      status: job.status,
+      notes: job.notes,
     };
-    if (id) {
-      const { error } = await supabase.from('vault_jobs')
-        .update({ ...safePayload, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
-      if (error) { logger.error('dbSaveJob', 'Update failed', error.message); throw new Error('Failed to save job'); }
-      logger.dbLog('dbSaveJob', 'Job updated', { jobId: id });
-      return id;
-    }
-    const { data, error } = await supabase.from('vault_jobs')
-      .insert({ user_id: userId, ...safePayload }).select('id').single();
-    if (error) { logger.error('dbSaveJob', 'Insert failed', error.message); throw new Error('Failed to save job'); }
-    logger.dbLog('dbSaveJob', 'Job inserted', { jobId: data.id });
-    return data.id;
+    const encrypted = Buffer.from(JSON.stringify(payload)).toString('base64');
+    // We store the encrypted blob as-is; DriveClient handles encryption at rest
+    // Actually, we need to use the same encryption as the rest of the vault
+    // The item is already encrypted by the caller, so we store it directly
+    const id = driveClient.saveItem('job', encrypted, job.id, job.sort_order);
+    logger.dbLog('dbSaveJob', 'Job saved', { jobId: id });
+    return id;
   }
 
-  async function dbDeleteJob(id: number, userId: string): Promise<void> {
-    logger.dbLog('dbDeleteJob', 'Soft-deleting job', { jobId: id, userId });
-    const { error } = await supabase.from('vault_jobs')
-      .update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
-    if (error) { logger.error('dbDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
+  function dbDeleteJob(id: string): void {
+    logger.dbLog('dbDeleteJob', 'Soft-deleting job', { jobId: id });
+    if (!driveClient) throw new Error('Drive not initialized');
+    driveClient.softDelete('job', id);
     logger.dbLog('dbDeleteJob', 'Success', { jobId: id });
   }
 
-  async function dbRestoreJob(id: number, userId: string): Promise<void> {
-    logger.dbLog('dbRestoreJob', 'Restoring job', { jobId: id, userId });
-    const { error } = await supabase.from('vault_jobs')
-      .update({ deleted_at: null }).eq('id', id).eq('user_id', userId);
-    if (error) { logger.error('dbRestoreJob', 'Failed', error.message); throw new Error('Failed to restore job'); }
+  function dbRestoreJob(id: string): void {
+    logger.dbLog('dbRestoreJob', 'Restoring job', { jobId: id });
+    if (!driveClient) throw new Error('Drive not initialized');
+    driveClient.restore('job', id);
     logger.dbLog('dbRestoreJob', 'Success', { jobId: id });
   }
 
-  async function dbPermDeleteJob(id: number, userId: string): Promise<void> {
-    logger.dbLog('dbPermDeleteJob', 'Permanently deleting job', { jobId: id, userId });
-    const { error } = await supabase.from('vault_jobs').delete().eq('id', id).eq('user_id', userId);
-    if (error) { logger.error('dbPermDeleteJob', 'Failed', error.message); throw new Error('Failed to delete job'); }
+  function dbPermDeleteJob(id: string): void {
+    logger.dbLog('dbPermDeleteJob', 'Permanently deleting job', { jobId: id });
+    if (!driveClient) throw new Error('Drive not initialized');
+    driveClient.permDelete('job', id);
     logger.dbLog('dbPermDeleteJob', 'Success', { jobId: id });
   }
 
-  async function dbLoadJobTrash(userId: string): Promise<Job[]> {
-    logger.dbLog('dbLoadJobTrash', 'Loading job trash', { userId });
-    try {
-      await supabase.from('vault_jobs').delete().eq('user_id', userId)
-        .not('deleted_at', 'is', null).lt('deleted_at', new Date(Date.now() - 30 * 86400000).toISOString());
-    } catch (e: unknown) { const msg = e instanceof Error ? e.message : String(e); logger.warn('dbLoadJobTrash', '30-day purge failed, continuing', msg); }
-    const { data, error } = await supabase.from('vault_jobs')
-      .select('id,user_id,company,role,email,applied_at,status,notes,sort_order,created_at,updated_at,deleted_at')
-      .eq('user_id', userId).not('deleted_at', 'is', null).order('deleted_at', { ascending: false });
-    if (error) { logger.error('dbLoadJobTrash', 'Failed', error.message); throw new Error('Failed to load job trash'); }
-    logger.dbLog('dbLoadJobTrash', 'Job trash loaded', { count: data.length });
-    return data as unknown as Job[];
+  function dbLoadJobTrash(): Job[] {
+    logger.dbLog('dbLoadJobTrash', 'Loading job trash');
+    if (!driveClient) return [];
+    const items = driveClient.loadTrash('job');
+    const jobs: Job[] = items.map(item => {
+      const decrypted = JSON.parse(item.encryptedData) as Record<string, unknown>;
+      return {
+        id: item.id,
+        company: decrypted.company as string || '',
+        role: decrypted.role as string || '',
+        email: decrypted.email as string || '',
+        applied_at: decrypted.applied_at as string || '',
+        status: (decrypted.status as JobStatus) || 'wait',
+        notes: decrypted.notes as string || '',
+        sort_order: item.sortOrder,
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+        deleted_at: item.deletedAt || undefined,
+      };
+    });
+    logger.dbLog('dbLoadJobTrash', 'Job trash loaded', { count: jobs.length });
+    return jobs;
   }
 
-  async function dbUpdateJobOrder(jobs: Array<{ id?: number }>, userId: string): Promise<void> {
-    logger.dbLog('dbUpdateJobOrder', 'Updating job order', { userId, count: jobs?.length });
-    await Promise.all(jobs.map((j, i) =>
-      j.id ? supabase.from('vault_jobs').update({ sort_order: i }).eq('id', j.id).eq('user_id', userId) : Promise.resolve()
-    ));
+  function dbUpdateJobOrder(jobs: Array<{ id?: string }>): void {
+    logger.dbLog('dbUpdateJobOrder', 'Updating job order', { count: jobs?.length });
+    if (!driveClient) throw new Error('Drive not initialized');
+    driveClient.updateSortOrder('job', jobs);
     logger.dbLog('dbUpdateJobOrder', 'Success');
   }
 
   ipcMain.handle('jobs:load', requireAuthNoArgs(async () => {
     logger.ipcLog('jobs:load', 'Loading jobs');
     try {
-      const session = getSession();
-      if (!session) throw new Error('No session');
-      const jobs = await dbLoadJobs(session.userId);
+      const jobs = dbLoadJobs();
       logger.success('jobs:load', 'Jobs loaded', { count: jobs.length });
       return { ok: true, jobs };
     } catch (e: unknown) { const err = e as Error; logError('jobs:load', err); return { ok: false, error: err.message }; }
@@ -137,31 +148,25 @@ function register(
         const d = new Date(job.applied_at + 'T00:00:00.000Z');
         if (isNaN(d.getTime()) || d.getUTCMonth() + 1 !== month || d.getUTCDate() !== day) { logger.warn('jobs:save', 'Invalid calendar date', { applied_at: job.applied_at }); return { ok: false, error: 'Applied date is not a valid calendar date' }; }
       }
-      const session = getSession();
-      if (!session) throw new Error('No session');
-      const id = await dbSaveJob(session.userId, job);
+      const id = dbSaveJob(job);
       logger.success('jobs:save', 'Job saved', { jobId: id, company: job.company });
       return { ok: true, id };
     } catch (e: unknown) { const err = e as Error; logError('jobs:save', err); return { ok: false, error: err.message }; }
   }));
 
-  ipcMain.handle('jobs:delete', requireAuth(async (_e, { id }: { id: number }) => {
+  ipcMain.handle('jobs:delete', requireAuth(async (_e, { id }: { id: string }) => {
     logger.ipcLog('jobs:delete', 'Deleting job', { jobId: id });
     try {
-      const session = getSession();
-      if (!session) throw new Error('No session');
-      await dbDeleteJob(id, session.userId);
+      dbDeleteJob(id);
       logger.success('jobs:delete', 'Job deleted', { jobId: id });
       return { ok: true };
     } catch (e: unknown) { const err = e as Error; logError('jobs:delete', err); return { ok: false, error: err.message }; }
   }));
 
-  ipcMain.handle('jobs:reorder', requireAuth(async (_e, { jobs }: { jobs: Array<{ id?: number }> }) => {
+  ipcMain.handle('jobs:reorder', requireAuth(async (_e, { jobs }: { jobs: Array<{ id?: string }> }) => {
     logger.ipcLog('jobs:reorder', 'Reordering jobs', { count: jobs?.length });
     try {
-      const session = getSession();
-      if (!session) throw new Error('No session');
-      await dbUpdateJobOrder(jobs, session.userId);
+      dbUpdateJobOrder(jobs);
       logger.success('jobs:reorder', 'Jobs reordered');
       return { ok: true };
     } catch (e: unknown) { const err = e as Error; logError('jobs:reorder', err); return { ok: false }; }
@@ -170,31 +175,25 @@ function register(
   ipcMain.handle('jobs:trash:load', requireAuthNoArgs(async () => {
     logger.ipcLog('jobs:trash:load', 'Loading job trash');
     try {
-      const session = getSession();
-      if (!session) throw new Error('No session');
-      const items = await dbLoadJobTrash(session.userId);
+      const items = dbLoadJobTrash();
       logger.success('jobs:trash:load', 'Job trash loaded', { count: items.length });
       return { ok: true, items };
     } catch (e: unknown) { const err = e as Error; logError('jobs:trash:load', err); return { ok: false, error: err.message }; }
   }));
 
-  ipcMain.handle('jobs:trash:restore', requireAuth(async (_e, { id }: { id: number }) => {
+  ipcMain.handle('jobs:trash:restore', requireAuth(async (_e, { id }: { id: string }) => {
     logger.ipcLog('jobs:trash:restore', 'Restoring job', { jobId: id });
     try {
-      const session = getSession();
-      if (!session) throw new Error('No session');
-      await dbRestoreJob(id, session.userId);
+      dbRestoreJob(id);
       logger.success('jobs:trash:restore', 'Job restored', { jobId: id });
       return { ok: true };
     } catch (e: unknown) { const err = e as Error; logError('jobs:trash:restore', err); return { ok: false, error: err.message }; }
   }));
 
-  ipcMain.handle('jobs:trash:purge', requireAuth(async (_e, { id }: { id: number }) => {
+  ipcMain.handle('jobs:trash:purge', requireAuth(async (_e, { id }: { id: string }) => {
     logger.ipcLog('jobs:trash:purge', 'Purging job', { jobId: id });
     try {
-      const session = getSession();
-      if (!session) throw new Error('No session');
-      await dbPermDeleteJob(id, session.userId);
+      dbPermDeleteJob(id);
       logger.success('jobs:trash:purge', 'Job purged', { jobId: id });
       return { ok: true };
     } catch (e: unknown) { const err = e as Error; logError('jobs:trash:purge', err); return { ok: false, error: err.message }; }

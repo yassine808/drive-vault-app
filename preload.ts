@@ -46,12 +46,12 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   save: (type: string, item: Record<string, unknown>) => {
-    bridgeLog('call', 'vault:save', true, { type, dbId: item?._dbId as number });
+    bridgeLog('call', 'vault:save', true, { type, localId: item?._localId as string });
     return ipcRenderer.invoke('vault:save', sessionToken, { type, item });
   },
-  delete: (dbId: number) => {
-    bridgeLog('call', 'vault:delete', true, { dbId });
-    return ipcRenderer.invoke('vault:delete', sessionToken, { dbId });
+  delete: (id: string) => {
+    bridgeLog('call', 'vault:delete', true, { id });
+    return ipcRenderer.invoke('vault:delete', sessionToken, { id });
   },
   sync: () => {
     bridgeLog('call', 'vault:sync', true);
@@ -66,13 +66,13 @@ contextBridge.exposeInMainWorld('api', {
     bridgeLog('call', 'trash:load', true);
     return ipcRenderer.invoke('trash:load', sessionToken);
   },
-  trashRestore: (dbId: number) => {
-    bridgeLog('call', 'trash:restore', true, { dbId });
-    return ipcRenderer.invoke('trash:restore', sessionToken, { dbId });
+  trashRestore: (id: string) => {
+    bridgeLog('call', 'trash:restore', true, { id });
+    return ipcRenderer.invoke('trash:restore', sessionToken, { id });
   },
-  trashPurge: (dbId: number) => {
-    bridgeLog('call', 'trash:purge', true, { dbId });
-    return ipcRenderer.invoke('trash:purge', sessionToken, { dbId });
+  trashPurge: (id: string) => {
+    bridgeLog('call', 'trash:purge', true, { id });
+    return ipcRenderer.invoke('trash:purge', sessionToken, { id });
   },
 
   logoFetch: (site: string) => {
@@ -85,10 +85,10 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke('jobs:load', sessionToken);
   },
   jobsSave: (job: Record<string, unknown>) => {
-    bridgeLog('call', 'jobs:save', true, { jobId: job?.id as number, company: job?.company as string });
+    bridgeLog('call', 'jobs:save', true, { jobId: job?.id as string, company: job?.company as string });
     return ipcRenderer.invoke('jobs:save', sessionToken, { job });
   },
-  jobsDelete: (id: number) => {
+  jobsDelete: (id: string) => {
     bridgeLog('call', 'jobs:delete', true, { jobId: id });
     return ipcRenderer.invoke('jobs:delete', sessionToken, { id });
   },
@@ -101,11 +101,11 @@ contextBridge.exposeInMainWorld('api', {
       bridgeLog('call', 'jobs:trash:load', true);
       return ipcRenderer.invoke('jobs:trash:load', sessionToken);
     },
-    restore: (id: number) => {
+    restore: (id: string) => {
       bridgeLog('call', 'jobs:trash:restore', true, { jobId: id });
       return ipcRenderer.invoke('jobs:trash:restore', sessionToken, { id });
     },
-    purge: (id: number) => {
+    purge: (id: string) => {
       bridgeLog('call', 'jobs:trash:purge', true, { jobId: id });
       return ipcRenderer.invoke('jobs:trash:purge', sessionToken, { id });
     },
@@ -116,10 +116,10 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke('totp:load', sessionToken);
   },
   totpSave: (item: Record<string, unknown>) => {
-    bridgeLog('call', 'totp:save', true, { itemId: item?.id as number, name: item?.name as string });
+    bridgeLog('call', 'totp:save', true, { itemId: item?.id as string, name: item?.name as string });
     return ipcRenderer.invoke('totp:save', sessionToken, { item });
   },
-  totpDelete: (id: number) => {
+  totpDelete: (id: string) => {
     bridgeLog('call', 'totp:delete', true, { itemId: id });
     return ipcRenderer.invoke('totp:delete', sessionToken, { id });
   },
@@ -174,32 +174,6 @@ contextBridge.exposeInMainWorld('api', {
     save: (s: Record<string, unknown>) => {
       bridgeLog('call', 'settings:save', true, s);
       return ipcRenderer.invoke('settings:save', sessionToken, { settings: s });
-    },
-  },
-
-  monitor: {
-    stats: () => {
-      bridgeLog('call', 'monitor:stats', true);
-      return ipcRenderer.invoke('monitor:stats', sessionToken);
-    },
-    readLog: () => {
-      bridgeLog('call', 'log:read', true);
-      return ipcRenderer.invoke('log:read', sessionToken);
-    },
-    clearLog: () => {
-      bridgeLog('call', 'log:clear', true);
-      return ipcRenderer.invoke('log:clear', sessionToken);
-    },
-  },
-
-  admin: {
-    users: () => {
-      bridgeLog('call', 'admin:users', true);
-      return ipcRenderer.invoke('admin:users', sessionToken);
-    },
-    stats: () => {
-      bridgeLog('call', 'admin:stats', true);
-      return ipcRenderer.invoke('admin:stats', sessionToken);
     },
   },
 

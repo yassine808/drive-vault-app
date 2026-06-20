@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Vault** is an Electron desktop app for secure storage of passwords, notes, job applications, and TOTP authenticator secrets. All sensitive data is AES-256 encrypted client-side before being stored in Supabase (PostgreSQL). Authentication is via Google OAuth 2.0 with optional TOTP-based 2FA.
+**Vault** is an Electron desktop app for secure storage of passwords, notes, job applications, and TOTP authenticator secrets. All sensitive data is AES-256 encrypted client-side and stored in the user's Google Drive. Authentication is via Google OAuth 2.0 with optional TOTP-based 2FA.
 
 No frontend framework. TypeScript throughout: main process uses `tsc` + `tsx`, renderer uses Vite/esbuild bundling.
 
@@ -29,16 +29,17 @@ No tests, linting, or formatting tools exist.
 
 | File | Role |
 |---|---|
-| `src/main.ts` | Electron main process — entry point. Loads config, creates window, registers IPC, contains OAuth flow, DB helpers, session management. |
+| `src/main.ts` | Electron main process — entry point. Loads config, creates window, registers IPC, contains OAuth flow, Drive-backed data helpers, session management. |
 | `src/modules/auth.ts` | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` / `requireAdminNoArgs()` IPC guards, 2FA rate limiter. |
 | `src/modules/crypto.ts` | Key derivation (`SHA-256("vault:" + googleId)`), AES-256-CBC + HMAC-SHA256 encrypt-then-MAC, backward-compatible CryptoJS legacy decryption. |
 | `src/modules/validation.ts` | Shared validators: `sanitizeStr`, `validType`, `validEmail`, `validTotpSecret`, `validDomain`. |
 | `src/modules/jobs.ts` | Job tracker CRUD — registered via `register()` pattern. Jobs stored as plaintext columns. |
 | `src/modules/totp.ts` | TOTP secret management (encrypted) — registered via `register()` pattern. |
 | `src/modules/settings.ts` | Settings load/save with validation — registered via `register()` pattern. |
-| `src/modules/monitor.ts` | DB stats, log read/clear, admin user listing — registered via `register()`. All handlers use `requireAdminNoArgs`. |
+| `src/modules/cache.ts` | Local file-based cache for all vault data. Stores encrypted items as JSON on disk. Provides offline support and dirty tracking for Drive sync. |
 | `src/modules/logo.ts` | Favicon fetching + caching as data URLs — registered via `register()` pattern. |
-| `src/modules/pin.ts` | PIN-based authentication — setup, verify, change, disable, status. Local file storage + syncs `pin_login_enabled`/`pin_allow_alpha` to Supabase `vault_settings`. Rate limited. |
+| `src/modules/drive.ts` | Google Drive storage client — per-item encrypted file CRUD, local cache, debounce sync, ETag-based conflict resolution, offline support. |
+| `src/modules/pin.ts` | PIN-based authentication — setup, verify, change, disable, status. Local file storage only. Rate limited. |
 | `src/modules/accounts.ts` | Saved accounts for quick PIN login — list, save, remove, touch. Stores account info (googleId, email, name, avatar) locally in `vault_accounts` file. Max 10 accounts, sorted by lastUsed. |
 | `src/types/index.ts` | Shared TypeScript interfaces (Session, VaultItem, Job, TotpItem, Settings, etc.) |
 | `src/logger.ts` | Structured logging to per-level files in `Logs/` directory. |
@@ -58,7 +59,8 @@ Renderer (app.ts + index.html)
 Main Process (src/main.ts)
     ├── OAuth local HTTP server (127.0.0.1:42813)
     ├── Crypto (AES-256-CBC + HMAC-SHA256)
-    └── Supabase (PostgreSQL)
+    ├── Google Drive (per-item encrypted files)
+    └── Local cache (offline support)
 ```
 
 ### Module Registration Pattern
@@ -80,15 +82,12 @@ All async handlers use `ipcMain.handle`. Channels are namespaced:
 | `totp:` | Yes | TOTP secret management |
 | `2fa:` | Yes | 2FA setup/enable/disable |
 | `settings:` | Yes | Settings read/write |
-| `monitor:` | Admin | DB stats & log viewing |
-| `admin:` | Admin | User listing & global stats |
 | `logo:` | Yes | Favicon fetching & caching |
-| `log:` | Admin | Error log access |
 | `win:` | Yes | Window minimize/maximize/close |
-| `pin:` | Mixed | PIN auth: `verify` is public; `setup`, `change`, `disable` require auth; `status` is public. `status` returns `{ ok, enabled, allowAlpha }`. `setup`/`disable` sync `pin_login_enabled`/`pin_allow_alpha` to Supabase `vault_settings`. |
+| `pin:` | Mixed | PIN auth: `verify` is public; `setup`, `change`, `disable` require auth; `status` is public. `status` returns `{ ok, enabled, allowAlpha }`. PIN settings stored locally only. |
 | `accounts:` | Mixed | Saved accounts: `list` and `touch` are public; `save` and `remove` require auth. Used for quick PIN login screen. |
 
-All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and returned as `{ ok: false, error: string }` — raw Supabase errors are never leaked to the renderer.
+All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and returned as `{ ok: false, error: string }` — raw errors are never leaked to the renderer.
 
 ### Session & Auth
 
@@ -101,7 +100,7 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
 ### PIN Authentication
 
 - **Purpose**: Skip Google OAuth on subsequent logins. Users first sign in with Google, then enable PIN in settings.
-- **Storage**: All PIN data is local only — never sent to Supabase. Stored in `%APPDATA%/Vault/vault_user_key` (or `~/Library/Application Support/Vault/` on macOS, `~/.config/Vault/` on Linux).
+- **Storage**: All PIN data is local only — never sent to any remote server. Stored in `%APPDATA%/Vault/vault_user_key` (or `~/Library/Application Support/Vault/` on macOS, `~/.config/Vault/` on Linux).
 - **File format**: `JSON.stringify({ version: 1, salt: base64, data: enc({ pinHash, userKey: { googleId, email } }, derivePinKey(pin, salt)) })`
 - **Key derivation**: `derivePinKey(pin, salt)` — PBKDF2-SHA256, 600k iterations → 32-byte hex string.
 - **PIN hash**: Separate PBKDF2-SHA256 (600k iterations) stored inside the encrypted payload for verification.
@@ -145,23 +144,20 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
 - **New format**: AES-256-CBC + HMAC-SHA256 encrypt-then-MAC. Output: `base64(HMAC(32) || IV(16) || ciphertext)`.
 - **Key derivation**: `SHA-256("vault:" + googleId)` → 32 hex chars. Separate enc/MAC keys via `SHA-256(key)` / `SHA-256(key + "mac")`.
 - **Legacy fallback**: Old CryptoJS ciphertext (starts with `U2FsdGVk`) auto-detected and decrypted via CryptoJS.
-- **What's encrypted**: Passwords, notes, TOTP secrets, 2FA secrets. Jobs are plaintext.
+- **What's encrypted**: All data types — passwords, notes, TOTP secrets, 2FA secrets, jobs — are encrypted before storage.
 
-### Database Tables
+### Google Drive Storage
 
-All tables are scoped by `vault_users.id` via `user_id` foreign key. Soft deletes use `deleted_at` with 30-day auto-purge.
+All user data is stored in the user's Google Drive inside a `Vault` folder. Each item (password, note, job, TOTP) is a separate encrypted file. Settings, 2FA config, and logo cache are stored as single JSON files.
 
-| Table | Purpose |
-|---|---|
-| `vault_users` | User profiles (google_id, email, name, avatar_url, last_seen) |
-| `vault_items` | Encrypted passwords & notes (`type`, `encrypted_data`, `deleted_at`) |
-| `vault_jobs` | Plaintext job applications (company, role, email, status, notes) |
-| `vault_totp` | Encrypted TOTP secrets (name, issuer, secret, icon) |
-| `vault_2fa` | User's own 2FA config (secret, enabled) |
-| `vault_settings` | UI preferences (lock_timeout, accent, sounds, generator defaults, pin_login_enabled, pin_allow_alpha, etc.) |
-| `vault_logos` | Favicon cache (domain → data URL) |
-
-Explicit column lists are used on all Supabase queries (never `SELECT *`).
+- **Folder**: `Vault` (created automatically in Drive root)
+- **Per-item files**: `vault_{type}_{uuid}` — each contains AES-256-CBC + HMAC encrypted JSON
+- **Settings file**: `vault_settings` — JSON with UI preferences
+- **2FA file**: `vault_2fa` — JSON with secret and enabled flag
+- **Logos file**: `vault_logos` — JSON array of cached favicon data URLs
+- **Local cache**: `%APPDATA%/Vault/Cache/vault_cache.json` — full offline copy of all data
+- **Sync**: Event-driven debounce (2s) with dirty queue retry on failure. ETag-based conflict resolution on startup.
+- **Offline**: Full offline support via local cache. Dirty queue flushes when connectivity returns.
 
 ### Security Measures
 
@@ -184,7 +180,7 @@ Explicit column lists are used on all Supabase queries (never `SELECT *`).
 
 ### Renderer
 
-- **Tabs**: Passwords, Notes, Job Tracker, Authenticator, Trash, Generator, Monitor, Settings.
+- **Tabs**: Passwords, Notes, Job Tracker, Authenticator, Trash, Generator, Settings.
 - **State**: In-memory JS objects, no state management library.
 - **Sounds**: Web Audio API with configurable tones (chime, ding, soft, bright, click, tap, pop).
 - **Accent colors**: 13 options applied via CSS custom properties on `:root`.
@@ -193,8 +189,6 @@ Explicit column lists are used on all Supabase queries (never `SELECT *`).
 ### Environment Variables
 
 Required in `.env` (gitignored):
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_KEY`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `REDIRECT_URI` (optional, defaults to `http://localhost:42813/oauth2callback`)

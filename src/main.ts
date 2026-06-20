@@ -30,14 +30,17 @@ function requireEnv(name: string): string {
   return v;
 }
 
-const SUPABASE_URL = requireEnv('SUPABASE_URL');
-const SUPABASE_SERVICE_KEY = requireEnv('SUPABASE_SERVICE_KEY');
 const GOOGLE_CLIENT_ID = requireEnv('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = requireEnv('GOOGLE_CLIENT_SECRET');
 const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:42813/oauth2callback';
-const SCOPES = ['openid', 'email', 'profile'];
+const SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/drive.file',
+];
 
-logger.info('config', 'Environment loaded', { supabaseUrl: SUPABASE_URL, redirectUri: REDIRECT_URI });
+logger.info('config', 'Environment loaded', { redirectUri: REDIRECT_URI });
 
 const LOG_PATH = path.join(
   process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath) || app.getPath('userData'),
@@ -53,12 +56,13 @@ process.on('unhandledRejection', (e: unknown) => { const msg = e instanceof Erro
 logger.info('main', 'Global error handlers registered');
 
 let win: electron.BrowserWindow | null = null;
-let supabase: any = null;
+let driveClient: import('./modules/drive').DriveClient | null = null;
 let CryptoJS: any = null;
 let speakeasy: any = null;
 let tray: electron.Tray | null = null;
 let oauthInProgress = false;
 let oauthServer: http.Server | null = null;
+let oauth2Client: any = null;
 
 import * as authModule from './modules/auth';
 import { deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
@@ -83,111 +87,106 @@ type GoogleProfile = {
   avatar: string | null;
 };
 
-async function dbUpsertUser(profile: GoogleProfile): Promise<string> {
-  logger.db('dbUpsertUser', 'Upserting user', { googleId: profile.googleId, email: profile.email });
-  const { data, error } = await supabase!.from('vault_users')
-    .upsert({ google_id: profile.googleId, email: profile.email, name: profile.name, avatar: profile.avatar, last_seen: new Date().toISOString() }, { onConflict: 'google_id' })
-    .select('id').single();
-  if (error) { logger.error('dbUpsertUser', 'Supabase error', JSON.stringify(error)); throw new Error('dbUpsertUser failed'); }
-  logger.db('dbUpsertUser', 'User upserted', { userId: data.id });
-  return data.id;
-}
+// ── Drive-backed data operations (replaces Supabase db helpers) ──
 
-async function dbLoadItems(userId: string, encKey: string): Promise<{ passwords: Record<string, unknown>[]; notes: Record<string, unknown>[] }> {
-  logger.db('dbLoadItems', 'Loading vault items', { userId });
-  const { data, error } = await supabase!.from('vault_items')
-    .select('id,type,encrypted_data,sort_order,created_at')
-    .eq('user_id', userId).is('deleted_at', null)
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: false });
-  if (error) { logger.error('dbLoadItems', 'Failed to load items', error.message); throw new Error('Failed to load vault items'); }
+async function driveLoadItems(encKey: string): Promise<{ passwords: Record<string, unknown>[]; notes: Record<string, unknown>[] }> {
+  logger.db('driveLoadItems', 'Loading vault items from cache');
+  if (!driveClient) throw new Error('Drive not initialized');
+
+  // Force-flush any pending changes first
+  await driveClient.syncToDrive();
+
   const passwords: Record<string, unknown>[] = [], notes: Record<string, unknown>[] = [];
-  for (const row of (data || [])) {
-    const item = dec(row.encrypted_data, encKey);
-    if (!item) { logger.warn('dbLoadItems', 'Failed to decrypt item', { id: row.id }); continue };
-    (item as Record<string, unknown>)._dbId = row.id;
-    (item as Record<string, unknown>)._sort = row.sort_order;
-    (item as Record<string, unknown>).id = row.id;
-    (row.type === 'password' ? passwords : notes).push(item as Record<string, unknown>);
+
+  for (const item of driveClient.loadItems('password')) {
+    const decrypted = dec(item.encryptedData, encKey);
+    if (!decrypted) { logger.warn('driveLoadItems', 'Failed to decrypt password', { id: item.id }); continue; }
+    (decrypted as Record<string, unknown>)._localId = item.id;
+    (decrypted as Record<string, unknown>)._sort = item.sortOrder;
+    passwords.push(decrypted as Record<string, unknown>);
   }
-  logger.db('dbLoadItems', 'Items loaded', { passwords: passwords.length, notes: notes.length });
+  for (const item of driveClient.loadItems('note')) {
+    const decrypted = dec(item.encryptedData, encKey);
+    if (!decrypted) { logger.warn('driveLoadItems', 'Failed to decrypt note', { id: item.id }); continue; }
+    (decrypted as Record<string, unknown>)._localId = item.id;
+    (decrypted as Record<string, unknown>)._sort = item.sortOrder;
+    notes.push(decrypted as Record<string, unknown>);
+  }
+
+  logger.db('driveLoadItems', 'Items loaded', { passwords: passwords.length, notes: notes.length });
   return { passwords, notes };
 }
 
-async function dbLoadTrash(userId: string, encKey: string): Promise<Record<string, unknown>[]> {
-  logger.db('dbLoadTrash', 'Loading trash', { userId });
-  try {
-    await supabase!.from('vault_items').delete().eq('user_id', userId)
-      .not('deleted_at', 'is', null).lt('deleted_at', new Date(Date.now() - 30 * 86400000).toISOString());
-  } catch (e: unknown) { const msg = e instanceof Error ? e.message : String(e); logger.warn('dbLoadTrash', '30-day purge failed, continuing', msg); }
-  const { data, error } = await supabase!.from('vault_items')
-    .select('id,type,encrypted_data,deleted_at')
-    .eq('user_id', userId).not('deleted_at', 'is', null).order('deleted_at', { ascending: false });
-  if (error) { logger.error('dbLoadTrash', 'Failed to load trash', error.message); throw new Error('Failed to load trash'); }
-  logger.db('dbLoadTrash', 'Trash loaded', { count: data.length });
-  return data.map((row: Record<string, unknown>) => {
-    const item = (dec(row.encrypted_data as string, encKey) || {}) as Record<string, unknown>;
-    return { ...item, _dbId: row.id, _type: row.type, _deletedAt: row.deleted_at };
-  });
-}
+async function driveLoadTrash(encKey: string): Promise<Record<string, unknown>[]> {
+  logger.db('driveLoadTrash', 'Loading trash from cache');
+  if (!driveClient) throw new Error('Drive not initialized');
 
-async function dbSaveItem(userId: string, type: string, item: Record<string, unknown>, encKey: string): Promise<number> {
-  logger.db('dbSaveItem', 'Saving item', { userId, type, dbId: item?._dbId });
-  const { _dbId, _sort, ...payload } = item;
-  const encrypted_data = enc(payload as object, encKey);
-  if (_dbId) {
-    const { error } = await supabase!.from('vault_items').update({ encrypted_data }).eq('id', _dbId as number).eq('user_id', userId);
-    if (error) { logger.error('dbSaveItem', 'Update failed', error.message); throw new Error('Failed to save item'); }
-    logger.db('dbSaveItem', 'Item updated', { dbId: _dbId as number });
-    return _dbId as number;
+  const items: Record<string, unknown>[] = [];
+  for (const type of ['password', 'note'] as const) {
+    for (const item of driveClient.loadTrash(type)) {
+      const decrypted = dec(item.encryptedData, encKey);
+      if (!decrypted) continue;
+      items.push({ ...decrypted, _localId: item.id, _type: type, _deletedAt: item.deletedAt });
+    }
   }
-  const { data, error } = await supabase!.from('vault_items')
-    .insert({ user_id: userId, type, encrypted_data }).select('id').single();
-  if (error) { logger.error('dbSaveItem', 'Insert failed', error.message); throw new Error('Failed to save item'); }
-  logger.db('dbSaveItem', 'Item inserted', { dbId: data.id });
-  return data.id;
+  logger.db('driveLoadTrash', 'Trash loaded', { count: items.length });
+  return items;
 }
 
-async function dbSoftDelete(dbId: number, userId: string): Promise<void> {
-  logger.db('dbSoftDelete', 'Soft-deleting item', { dbId, userId });
-  const { error } = await supabase!.from('vault_items').update({ deleted_at: new Date().toISOString() }).eq('id', dbId).eq('user_id', userId);
-  if (error) { logger.error('dbSoftDelete', 'Failed', error.message); throw new Error('Failed to delete item'); }
-  logger.db('dbSoftDelete', 'Success', { dbId });
+async function driveSaveItem(type: string, item: Record<string, unknown>, encKey: string): Promise<string> {
+  logger.db('driveSaveItem', 'Saving item', { type, localId: item?._localId });
+  if (!driveClient) throw new Error('Drive not initialized');
+
+  const { _localId, _sort, ...payload } = item;
+  const encryptedData = enc(payload as object, encKey);
+  const id = driveClient.saveItem(
+    type as 'password' | 'note' | 'job' | 'totp',
+    encryptedData,
+    _localId as string | undefined,
+    _sort as number | undefined,
+  );
+  logger.db('driveSaveItem', 'Item saved', { type, id });
+  return id;
 }
 
-async function dbRestore(dbId: number, userId: string): Promise<void> {
-  logger.db('dbRestore', 'Restoring item', { dbId, userId });
-  const { error } = await supabase!.from('vault_items').update({ deleted_at: null }).eq('id', dbId).eq('user_id', userId);
-  if (error) { logger.error('dbRestore', 'Failed', error.message); throw new Error('Failed to restore item'); }
-  logger.db('dbRestore', 'Success', { dbId });
+async function driveSoftDelete(localId: string, type: string): Promise<void> {
+  logger.db('driveSoftDelete', 'Soft-deleting item', { localId, type });
+  if (!driveClient) throw new Error('Drive not initialized');
+  driveClient.softDelete(type as 'password' | 'note' | 'job', localId);
+  logger.db('driveSoftDelete', 'Success', { localId });
 }
 
-async function dbPermDelete(dbId: number, userId: string): Promise<void> {
-  logger.db('dbPermDelete', 'Permanently deleting item', { dbId, userId });
-  const { error } = await supabase!.from('vault_items').delete().eq('id', dbId).eq('user_id', userId);
-  if (error) { logger.error('dbPermDelete', 'Failed', error.message); throw new Error('Failed to delete item'); }
-  logger.db('dbPermDelete', 'Success', { dbId });
+async function driveRestore(localId: string, type: string): Promise<void> {
+  logger.db('driveRestore', 'Restoring item', { localId, type });
+  if (!driveClient) throw new Error('Drive not initialized');
+  driveClient.restore(type as 'password' | 'note' | 'job', localId);
+  logger.db('driveRestore', 'Success', { localId });
 }
 
-async function dbUpdateSortOrder(items: Array<{ _dbId?: number }>, userId: string): Promise<void> {
-  logger.db('dbUpdateSortOrder', 'Updating sort order', { userId, count: items?.length });
-  await Promise.all(items.map((item, i) =>
-    item._dbId ? supabase!.from('vault_items').update({ sort_order: i }).eq('id', item._dbId).eq('user_id', userId) : Promise.resolve()
-  ));
-  logger.db('dbUpdateSortOrder', 'Success');
+async function drivePermDelete(localId: string, type: string): Promise<void> {
+  logger.db('drivePermDelete', 'Permanently deleting item', { localId, type });
+  if (!driveClient) throw new Error('Drive not initialized');
+  driveClient.permDelete(type as 'password' | 'note' | 'job', localId);
+  logger.db('drivePermDelete', 'Success', { localId });
 }
 
-async function db2faGet(userId: string): Promise<{ user_id: string; secret: string; enabled: boolean } | null> {
-  logger.db('db2faGet', 'Getting 2FA record', { userId });
-  const { data, error } = await supabase!.from('vault_2fa').select('user_id,secret,enabled').eq('user_id', userId).maybeSingle();
-  if (error) { logger.error('db2faGet', 'Failed', error.message); throw new Error('Failed to get 2FA record'); }
-  return data as { user_id: string; secret: string; enabled: boolean } | null;
+async function driveUpdateSortOrder(items: Array<{ _localId?: string }>, type: string): Promise<void> {
+  logger.db('driveUpdateSortOrder', 'Updating sort order', { count: items?.length });
+  if (!driveClient) throw new Error('Drive not initialized');
+  driveClient.updateSortOrder(type as 'password' | 'note' | 'job', items.map(i => ({ id: i._localId || '' })));
+  logger.db('driveUpdateSortOrder', 'Success');
 }
 
-async function db2faSave(userId: string, secret: string, enabled: boolean): Promise<void> {
-  logger.db('db2faSave', 'Saving 2FA record', { userId, enabled });
-  const { error } = await supabase!.from('vault_2fa').upsert({ user_id: userId, secret, enabled });
-  if (error) { logger.error('db2faSave', 'Failed', error.message); throw new Error('Failed to save 2FA record'); }
+async function drive2faGet(): Promise<{ secret: string; enabled: boolean } | null> {
+  logger.db('drive2faGet', 'Getting 2FA record');
+  if (!driveClient) throw new Error('Drive not initialized');
+  return driveClient.load2fa();
+}
+
+async function drive2faSave(secret: string, enabled: boolean): Promise<void> {
+  logger.db('drive2faSave', 'Saving 2FA record', { enabled });
+  if (!driveClient) throw new Error('Drive not initialized');
+  await driveClient.save2fa(secret, enabled);
 }
 
 function verify2fa(secret: string, token: string): boolean {
@@ -200,10 +199,10 @@ async function googleOAuth(): Promise<GoogleProfile> {
   if (oauthInProgress) { oauthInProgress = false; }
 
   const google = await import('googleapis');
-  const client = new google.google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
+  oauth2Client = new google.google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
   const state = crypto.randomBytes(16).toString('hex');
   const stateCreatedAt = Date.now();
-  const authUrl = client.generateAuthUrl({ access_type: 'offline', scope: SCOPES, state, prompt: 'select_account' });
+  const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', scope: SCOPES, state, prompt: 'select_account' });
   logger.authLog('oauth', 'OAuth URL generated', { state: state.slice(0, 8) + '...' });
 
   return new Promise((resolve, reject) => {
@@ -245,14 +244,16 @@ async function googleOAuth(): Promise<GoogleProfile> {
       res.end(`<!DOCTYPE html><html><head><title>Vault — Authenticated</title>
 <style nonce="${nonce}">
   *{margin:0;padding:0;box-sizing:border-box}
-  /* success page — styles omitted for brevity, identical to original */
+  body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+  .card{background:rgba(30,30,50,.8);border:1px solid rgba(139,92,246,.3);border-radius:16px;padding:40px;text-align:center;max-width:400px}
+  h2{color:#a78bfa;margin-bottom:8px}
+  p{color:#94a3b8;font-size:14px}
 </style>
-</head><body><canvas id="c"></canvas>
-<div class="card"><h2>Authenticated!</h2>
+</head><body><div class="card"><h2>Authenticated!</h2><p>You can close this window.</p>
 <script nonce="${nonce}">
 setTimeout(()=>window.close(),5000);
 </script>
-</body></html>`);
+</div></body></html>`);
 
       oauthServer!.close();
       oauthServer = null;
@@ -266,9 +267,9 @@ setTimeout(()=>window.close(),5000);
       }
       logger.authLog('oauth', 'OAuth callback received, exchanging code for tokens');
       try {
-        const { tokens } = await client.getToken(parsed.query.code as string);
-        client.setCredentials(tokens);
-        const people = google.google.people({ version: 'v1', auth: client });
+        const { tokens } = await oauth2Client.getToken(parsed.query.code as string);
+        oauth2Client.setCredentials(tokens);
+        const people = google.google.people({ version: 'v1', auth: oauth2Client });
         const me = await people.people.get({ resourceName: 'people/me', personFields: 'emailAddresses,names,photos,metadata' });
         const profile: GoogleProfile = {
           googleId: (me.data.metadata?.sources?.[0]?.id as string) || crypto.randomBytes(8).toString('hex'),
@@ -304,9 +305,10 @@ import { register as registerJobs } from './modules/jobs';
 import { register as registerTotp } from './modules/totp';
 import { register as registerSettings } from './modules/settings';
 import { register as registerLogo } from './modules/logo';
-import { register as registerMonitor } from './modules/monitor';
 import { register as registerPin, setUserDataPath } from './modules/pin';
 import { register as registerAccounts, setUserDataPathAccounts } from './modules/accounts';
+import { DriveClient } from './modules/drive';
+import * as cache from './modules/cache';
 
 const getSessionFn = getSession;
 
@@ -319,21 +321,25 @@ ipcMain.handle('auth:login', async () => {
   }
   try {
     const profile = await googleOAuth();
-    const userId = await dbUpsertUser(profile);
     const encKey = deriveKey(profile.googleId);
-    const twofa = await db2faGet(userId);
+
+    // Initialize Drive client with the OAuth2 credentials
+    driveClient = new DriveClient(profile.googleId, encKey, logger as any);
+    await driveClient.init(oauth2Client);
+
+    const twofa = await drive2faGet();
     if (twofa?.enabled) {
-      const sess = { ...profile, userId, encKey, pending2fa: true };
+      const sess = { ...profile, userId: profile.googleId, encKey, pending2fa: true };
       setSession(sess);
-      logger.authLog('auth:login', 'Login success — 2FA required', { email: profile.email, userId });
+      logger.authLog('auth:login', 'Login success — 2FA required', { email: profile.email });
       return { ok: true, needs2fa: true, user: { name: profile.name, email: profile.email, avatar: profile.avatar } };
     }
     const token = genSessionToken();
-    const vault = await dbLoadItems(userId, encKey);
-    const sess = { ...profile, userId, encKey, pending2fa: false };
+    const vault = await driveLoadItems(encKey);
+    const sess = { ...profile, userId: profile.googleId, encKey, pending2fa: false };
     setSession(sess);
     playSound('login');
-    logger.authLog('auth:login', 'Login success', { email: profile.email, userId, passwords: vault.passwords.length, notes: vault.notes.length });
+    logger.authLog('auth:login', 'Login success', { email: profile.email, passwords: vault.passwords.length, notes: vault.notes.length });
     const isAdmin = profile.email === authModule.ADMIN_EMAIL;
     return { ok: true, needs2fa: false, user: { name: profile.name, email: profile.email, avatar: profile.avatar, isAdmin }, token, vault };
   } catch (e: unknown) {
@@ -362,7 +368,7 @@ ipcMain.handle('auth:verify2fa', requireAuth(async (_e: electron.IpcMainInvokeEv
       logger.warn('auth:verify2fa', '2FA rejected — no pending 2FA session');
       return { ok: false, error: 'No pending 2FA' };
     }
-    const twofa = await db2faGet(s.userId);
+    const twofa = await drive2faGet();
     if (!verify2fa(twofa!.secret, token)) {
       recordFailedAttempt();
       logger.warn('auth:verify2fa', '2FA rejected — invalid code');
@@ -372,7 +378,7 @@ ipcMain.handle('auth:verify2fa', requireAuth(async (_e: electron.IpcMainInvokeEv
     s.pending2fa = false;
     setSession(s);
     const newToken = genSessionToken();
-    const vault = await dbLoadItems(s.userId, s.encKey);
+    const vault = await driveLoadItems(s.encKey);
     playSound('login');
     const isAdmin = s.email === authModule.ADMIN_EMAIL;
     logger.authLog('auth:verify2fa', '2FA verified successfully', { userId: s.userId });
@@ -389,6 +395,11 @@ ipcMain.handle('auth:logout', requireAuthNoArgs(async () => {
   const s = getSession();
   logger.ipcLog('auth:logout', 'Logout', { user: s?.email });
   playSound('logout');
+  // Flush Drive sync before clearing session
+  if (driveClient) {
+    try { await driveClient.close(); } catch { /* noop */ }
+    driveClient = null;
+  }
   clearSession();
   logger.authLog('auth:logout', 'Session cleared');
   return { ok: true };
@@ -416,15 +427,19 @@ ipcMain.handle('auth:reauth', async () => {
       logger.warn('auth:reauth', 'Reauth rejected — different account', { expected: prevSession.googleId, got: profile.googleId });
       return { ok: false, error: 'Different account' };
     }
-    const userId = await dbUpsertUser(profile);
     const encKey = deriveKey(profile.googleId);
-    const vault = await dbLoadItems(userId, encKey);
-    const sess = { ...profile, userId, encKey, pending2fa: false };
+
+    // Re-init Drive client
+    driveClient = new DriveClient(profile.googleId, encKey, logger as any);
+    await driveClient.init(oauth2Client);
+
+    const vault = await driveLoadItems(encKey);
+    const sess = { ...profile, userId: profile.googleId, encKey, pending2fa: false };
     setSession(sess);
     const token = genSessionToken();
     playSound('login');
     const isAdmin = profile.email === authModule.ADMIN_EMAIL;
-    logger.authLog('auth:reauth', 'Re-authentication success', { email: profile.email, userId });
+    logger.authLog('auth:reauth', 'Re-authentication success', { email: profile.email });
     return { ok: true, user: { name: profile.name, email: profile.email, avatar: profile.avatar, isAdmin }, token, vault };
   } catch (e: unknown) {
     const err = e as Error;
@@ -437,15 +452,23 @@ ipcMain.handle('auth:reauth', async () => {
 ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { googleId, email }: { googleId: string; email: string }) => {
   logger.ipcLog('auth:loginWithPin', 'PIN login attempt', { email });
   try {
-    const userId = await dbUpsertUser({ googleId, email, name: email.split('@')[0], avatar: null });
     const encKey = deriveKey(googleId);
-    const vault = await dbLoadItems(userId, encKey);
-    const sess: Session = { googleId, email, name: email.split('@')[0], avatar: null as string | null, userId, encKey, pending2fa: false };
+
+    // For PIN login, we need to initialize Drive client but we don't have OAuth tokens.
+    // The user will need to do a full Google login first to set up Drive.
+    // For now, load from local cache only.
+    if (oauth2Client) {
+      driveClient = new DriveClient(googleId, encKey, logger as any);
+      await driveClient.init(oauth2Client);
+    }
+
+    const vault = await driveLoadItems(encKey);
+    const sess: Session = { googleId, email, name: email.split('@')[0], avatar: null as string | null, userId: googleId, encKey, pending2fa: false };
     setSession(sess);
     const token = genSessionToken();
     playSound('login');
     const isAdmin = email === authModule.ADMIN_EMAIL;
-    logger.authLog('auth:loginWithPin', 'PIN login success', { email, userId, passwords: vault.passwords.length, notes: vault.notes.length });
+    logger.authLog('auth:loginWithPin', 'PIN login success', { email, passwords: vault.passwords.length, notes: vault.notes.length });
     return { ok: true, user: { name: sess.name, email, avatar: null, isAdmin }, token, vault };
   } catch (e: unknown) {
     const err = e as Error;
@@ -457,7 +480,7 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { go
 
 ipcMain.handle('vault:save', requireAuth(async (_e: electron.IpcMainInvokeEvent, { type, item }: { type: string; item: Record<string, unknown> }) => {
   const s = getSession()!;
-  logger.ipcLog('vault:save', 'Save vault item', { type, dbId: item?._dbId });
+  logger.ipcLog('vault:save', 'Save vault item', { type, localId: item?._localId });
   try {
     if (!validType(type)) { logger.warn('vault:save', 'Invalid type', { type }); return { ok: false, error: 'Invalid item type' }; }
     if (!item || typeof item !== 'object') { logger.warn('vault:save', 'Invalid item'); return { ok: false, error: 'Invalid item' }; }
@@ -465,65 +488,75 @@ ipcMain.handle('vault:save', requireAuth(async (_e: electron.IpcMainInvokeEvent,
     item.username = sanitizeStr(item.username as string);
     item.password = sanitizeStr(item.password as string, MAX_NOTES_LEN);
     item.notes = sanitizeStr(item.notes as string, MAX_NOTES_LEN);
-    const dbId = await dbSaveItem(s.userId, type, item, s.encKey);
-    logger.success('vault:save', 'Item saved', { type, dbId });
-    return { ok: true, dbId };
+    const id = await driveSaveItem(type, item, s.encKey);
+    logger.success('vault:save', 'Item saved', { type, id });
+    return { ok: true, id };
   } catch (e: unknown) { logError('vault:save', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
-ipcMain.handle('vault:delete', requireAuth(async (_e: electron.IpcMainInvokeEvent, { dbId }: { dbId: number }) => {
+ipcMain.handle('vault:delete', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id }: { id: string }) => {
   const s = getSession()!;
-  logger.ipcLog('vault:delete', 'Delete vault item', { dbId });
-  try { await dbSoftDelete(dbId, s.userId); logger.success('vault:delete', 'Item deleted', { dbId }); return { ok: true }; } catch (e: unknown) { logError('vault:delete', e); return { ok: false, error: 'Operation failed' }; }
+  logger.ipcLog('vault:delete', 'Delete vault item', { id });
+  try { await driveSoftDelete(id, 'password'); logger.success('vault:delete', 'Item deleted', { id }); return { ok: true }; } catch (e: unknown) { logError('vault:delete', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
 ipcMain.handle('vault:sync', requireAuthNoArgs(async () => {
   const s = getSession()!;
   logger.ipcLog('vault:sync', 'Syncing vault');
-  try { const vault = await dbLoadItems(s.userId, s.encKey); logger.success('vault:sync', 'Vault synced', { passwords: vault.passwords.length, notes: vault.notes.length }); return { ok: true, vault }; } catch (e: unknown) { logError('vault:sync', e); return { ok: false, error: 'Operation failed' }; }
+  try {
+    if (driveClient) await driveClient.syncToDrive();
+    const vault = await driveLoadItems(s.encKey);
+    logger.success('vault:sync', 'Vault synced', { passwords: vault.passwords.length, notes: vault.notes.length });
+    return { ok: true, vault };
+  } catch (e: unknown) { logError('vault:sync', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
-ipcMain.handle('vault:reorder', requireAuth(async (_e: electron.IpcMainInvokeEvent, { type, items }: { type: string; items: Array<{ _dbId?: number }> }) => {
+ipcMain.handle('vault:reorder', requireAuth(async (_e: electron.IpcMainInvokeEvent, { type, items }: { type: string; items: Array<{ _localId?: string }> }) => {
   const s = getSession()!;
   logger.ipcLog('vault:reorder', 'Reordering items', { type, count: items?.length });
-  try { await dbUpdateSortOrder(items, s.userId); logger.success('vault:reorder', 'Items reordered'); return { ok: true }; } catch (e: unknown) { logError('vault:reorder', e); return { ok: false }; }
+  try { await driveUpdateSortOrder(items, type); logger.success('vault:reorder', 'Items reordered'); return { ok: true }; } catch (e: unknown) { logError('vault:reorder', e); return { ok: false }; }
 }));
 
 ipcMain.handle('trash:load', requireAuthNoArgs(async () => {
   const s = getSession()!;
   logger.ipcLog('trash:load', 'Loading trash');
-  try { const items = await dbLoadTrash(s.userId, s.encKey); logger.success('trash:load', 'Trash loaded', { count: items.length }); return { ok: true, items }; } catch (e: unknown) { logError('trash:load', e); return { ok: false, error: 'Operation failed' }; }
+  try { const items = await driveLoadTrash(s.encKey); logger.success('trash:load', 'Trash loaded', { count: items.length }); return { ok: true, items }; } catch (e: unknown) { logError('trash:load', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
-ipcMain.handle('trash:restore', requireAuth(async (_e: electron.IpcMainInvokeEvent, { dbId }: { dbId: number }) => {
+ipcMain.handle('trash:restore', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id }: { id: string }) => {
   const s = getSession()!;
-  logger.ipcLog('trash:restore', 'Restoring from trash', { dbId });
-  try { await dbRestore(dbId, s.userId); logger.success('trash:restore', 'Item restored', { dbId }); return { ok: true }; } catch (e: unknown) { logError('trash:restore', e); return { ok: false, error: 'Operation failed' }; }
+  logger.ipcLog('trash:restore', 'Restoring from trash', { id });
+  try {
+    // Try each type since we don't store the type in trash
+    await driveRestore(id, 'password');
+    logger.success('trash:restore', 'Item restored', { id });
+    return { ok: true };
+  } catch (e: unknown) { logError('trash:restore', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
-ipcMain.handle('trash:purge', requireAuth(async (_e: electron.IpcMainInvokeEvent, { dbId }: { dbId: number }) => {
+ipcMain.handle('trash:purge', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id }: { id: string }) => {
   const s = getSession()!;
-  logger.ipcLog('trash:purge', 'Purging from trash', { dbId });
-  try { await dbPermDelete(dbId, s.userId); logger.success('trash:purge', 'Item purged', { dbId }); return { ok: true }; } catch (e: unknown) { logError('trash:purge', e); return { ok: false, error: 'Operation failed' }; }
+  logger.ipcLog('trash:purge', 'Purging from trash', { id });
+  try { await drivePermDelete(id, 'password'); logger.success('trash:purge', 'Item purged', { id }); return { ok: true }; } catch (e: unknown) { logError('trash:purge', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
 ipcMain.handle('2fa:status', requireAuthNoArgs(async () => {
   const s = getSession()!;
   logger.ipcLog('2fa:status', 'Checking 2FA status');
-  try { const d = await db2faGet(s.userId); const enabled = d?.enabled || false; logger.success('2fa:status', '2FA status', { enabled }); return { ok: true, enabled }; } catch { logger.warn('2fa:status', 'No 2FA record, defaulting to disabled'); return { ok: true, enabled: false }; }
+  try { const d = await drive2faGet(); const enabled = d?.enabled || false; logger.success('2fa:status', '2FA status', { enabled }); return { ok: true, enabled }; } catch { logger.warn('2fa:status', 'No 2FA record, defaulting to disabled'); return { ok: true, enabled: false }; }
 }));
 
 ipcMain.handle('2fa:setup', requireAuthNoArgs(async () => {
   const s = getSession()!;
   logger.ipcLog('2fa:setup', 'Setting up 2FA');
   try {
-    const existing = await db2faGet(s.userId);
+    const existing = await drive2faGet();
     if (existing?.enabled) {
       logger.warn('2fa:setup', '2FA already enabled, cannot re-setup without disabling first');
       return { ok: false, error: '2FA is already enabled. Disable it first before setting up again.' };
     }
     const secret = speakeasy!.generateSecret({ name: `Vault (${s.email})`, length: 20 });
-    await db2faSave(s.userId, secret.base32, false);
+    await drive2faSave(secret.base32, false);
     logger.success('2fa:setup', '2FA setup initiated');
     return { ok: true, secret: secret.base32, otpauth: secret.otpauth_url };
   } catch (e: unknown) { logError('2fa:setup', e); return { ok: false, error: 'Operation failed' }; }
@@ -535,9 +568,9 @@ ipcMain.handle('2fa:enable', requireAuth(async (_e: electron.IpcMainInvokeEvent,
   try {
     if (isRateLimited()) { logger.warn('2fa:enable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
     if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid token format'); return { ok: false, error: 'Invalid code format. Enter a 6-digit number.' }; }
-    const d = await db2faGet(s.userId); if (!d || !verify2fa(d.secret, token)) { recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid 2FA code'); return { ok: false, error: 'Invalid code' }; }
+    const d = await drive2faGet(); if (!d || !verify2fa(d.secret, token)) { recordFailedAttempt(); logger.warn('2fa:enable', 'Invalid 2FA code'); return { ok: false, error: 'Invalid code' }; }
     resetRateLimit();
-    await db2faSave(s.userId, d.secret, true); logger.success('2fa:enable', '2FA enabled'); return { ok: true };
+    await drive2faSave(d.secret, true); logger.success('2fa:enable', '2FA enabled'); return { ok: true };
   } catch (e: unknown) { logError('2fa:enable', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
@@ -547,9 +580,9 @@ ipcMain.handle('2fa:disable', requireAuth(async (_e: electron.IpcMainInvokeEvent
   try {
     if (isRateLimited()) { logger.warn('2fa:disable', 'Rate limited'); return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' }; }
     if (typeof token !== 'string' || !/^\d{6}$/.test(token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid token format'); return { ok: false, error: 'Enter your current 6-digit 2FA code to disable.' }; }
-    const d = await db2faGet(s.userId); if (!d || !verify2fa(d.secret, token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid 2FA code'); return { ok: false, error: 'Invalid code' }; }
+    const d = await drive2faGet(); if (!d || !verify2fa(d.secret, token)) { recordFailedAttempt(); logger.warn('2fa:disable', 'Invalid 2FA code'); return { ok: false, error: 'Invalid code' }; }
     resetRateLimit();
-    await db2faSave(s.userId, d.secret, false); logger.success('2fa:disable', '2FA disabled'); return { ok: true };
+    await drive2faSave(d.secret, false); logger.success('2fa:disable', '2FA disabled'); return { ok: true };
   } catch (e: unknown) { logError('2fa:disable', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
@@ -663,22 +696,18 @@ app.whenReady().then(() => {
   CryptoJS = require('crypto-js');
   setCryptoJS(CryptoJS);
   speakeasy = require('speakeasy');
-  const ws = require('ws');
-  const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-    auth: { persistSession: false },
-    realtime: { transport: ws }
-  });
-  logger.success('app', 'Dependencies loaded (CryptoJS, speakeasy, Supabase)');
-  registerJobs(ipcMain, requireAuth, requireAuthNoArgs, supabase, validation, getSessionFn, logger as any, logError);
-  registerTotp(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as any, enc, dec, logError);
-  registerSettings(ipcMain, requireAuth, requireAuthNoArgs, supabase, getSessionFn, logger as any, logError);
-  registerLogo(ipcMain, requireAuth, supabase, logger as any, getSessionFn, logError);
-  registerMonitor(ipcMain, requireAdminNoArgs, supabase, logger as any, getSessionFn, LOG_PATH);
+  logger.success('app', 'Dependencies loaded (CryptoJS, speakeasy)');
+
+  // Register modules — pass driveClient (will be null until login, modules handle this)
+  registerJobs(ipcMain, requireAuth, requireAuthNoArgs, driveClient, validation, getSessionFn, logger as any, logError);
+  registerTotp(ipcMain, requireAuth, requireAuthNoArgs, driveClient, getSessionFn, logger as any, enc, dec, logError);
+  registerSettings(ipcMain, requireAuth, requireAuthNoArgs, driveClient, getSessionFn, logger as any, logError);
+  registerLogo(ipcMain, requireAuth, driveClient, logger as any, getSessionFn, logError);
   setUserDataPath(app.getPath('userData'));
   setUserDataPathAccounts(app.getPath('userData'));
-  registerPin(ipcMain, requireAuth, requireAuthNoArgs, getSessionFn, logger as any, logError, supabase);
+  registerPin(ipcMain, requireAuth, requireAuthNoArgs, getSessionFn, logger as any, logError, driveClient);
   registerAccounts(ipcMain, requireAuthNoArgs, getSessionFn, logger as any, logError);
+
   createWindow();
 });
 
@@ -698,6 +727,9 @@ app.on('activate', () => {
   }
 });
 
-app.on('before-quit', () => {
-  logger.info('app', 'App quitting — session end');
+app.on('before-quit', async () => {
+  logger.info('app', 'App quitting — flushing Drive sync');
+  if (driveClient) {
+    try { await driveClient.close(); } catch { /* noop */ }
+  }
 });

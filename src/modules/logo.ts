@@ -1,6 +1,6 @@
 import https from 'https';
 import url from 'url';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { DriveClient } from './drive';
 import type { Session } from '../types';
 import { validDomain } from './validation';
 
@@ -17,7 +17,7 @@ type LogError = (ctx: string, err: unknown) => void;
 type IpcHandler = (...args: any[]) => any;
 type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 
-async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger): Promise<string | null> {
+async function fetchLogo(site: string, driveClient: DriveClient | null, logger: Logger): Promise<string | null> {
   logger.dbLog('fetchLogo', 'Fetching logo', { site });
   try {
     if (typeof site !== 'string' || site.length > 2048) return null;
@@ -26,20 +26,16 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
     if (!validDomain(domain)) { logger.warn('fetchLogo', 'Rejected invalid domain', { site, domain }); return null; }
     const isPrivateIP = (d: string): boolean => {
       if (d === 'localhost' || d === '0.0.0.0' || d === '[::1]' || d.includes(':')) return true;
-      // Resolve DNS to check for private IPs (handled at fetch time via redirect check)
-      // At domain-extraction time, block obvious private IPv4 patterns
       const octets = d.split('.');
       if (octets.length >= 4) {
-        // Check if first 4 octets form a private IP (handles 10.0.0.1.nip.io)
         const [a, b, c, dv] = [parseInt(octets[0], 10), parseInt(octets[1], 10), parseInt(octets[2], 10), parseInt(octets[3], 10)];
         if (!isNaN(a) && !isNaN(b) && a === 10) return true;
         if (!isNaN(a) && !isNaN(b) && a === 127) return true;
         if (!isNaN(a) && !isNaN(b) && a === 192 && b === 168) return true;
         if (!isNaN(a) && !isNaN(b) && a === 172 && b >= 16 && b <= 31) return true;
         if (!isNaN(a) && !isNaN(b) && a === 169 && b === 254) return true;
-        if (!isNaN(a) && a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+        if (!isNaN(a) && a === 100 && b >= 64 && b <= 127) return true;
       }
-      // Only do exact match for 4-octet IPs
       if (octets.length !== 4) return false;
       return false;
     };
@@ -48,11 +44,14 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
       return null;
     }
 
-    const { data, error } = await supabase.from('vault_logos').select('url').eq('domain', domain).maybeSingle();
-    if (error) throw error;
-    if (data?.url && data.url.startsWith('data:')) {
-      logger.dbLog('fetchLogo', 'Logo from cache', { domain });
-      return data.url;
+    // Check cache first
+    if (driveClient) {
+      const logos = await driveClient.loadLogos();
+      const cached = logos.find(l => l.domain === domain);
+      if (cached?.url && cached.url.startsWith('data:')) {
+        logger.dbLog('fetchLogo', 'Logo from cache', { domain });
+        return cached.url;
+      }
     }
 
     const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
@@ -95,8 +94,10 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
 
     const dataUrl = `data:${mime};base64,${imgData.toString('base64')}`;
 
-    await supabase.from('vault_logos').upsert({ domain, url: dataUrl, cached_at: new Date().toISOString() });
-    logger.dbLog('fetchLogo', 'Logo fetched and cached as data URL', { domain, mime, size: imgData.length });
+    if (driveClient) {
+      await driveClient.saveLogo(domain, dataUrl);
+    }
+    logger.dbLog('fetchLogo', 'Logo fetched and cached', { domain, mime, size: imgData.length });
     return dataUrl;
   } catch (e: unknown) { logger.warn('fetchLogo', 'Failed to fetch logo', { site, error: e instanceof Error ? e.message : String(e) }); return null; }
 }
@@ -104,7 +105,7 @@ async function fetchLogo(site: string, supabase: SupabaseClient, logger: Logger)
 function register(
   ipcMain: Electron.IpcMain,
   requireAuth: AuthWrapper,
-  supabase: SupabaseClient,
+  driveClient: DriveClient | null,
   logger: Logger,
   getSession: () => Session | null,
   logError: LogError,
@@ -113,7 +114,7 @@ function register(
     logger.ipcLog('logo:fetch', 'Fetching logo', { site });
     if (typeof site !== 'string' || !site.trim()) return { ok: false, error: 'Invalid site' };
     try {
-      const logoUrl = await fetchLogo(site, supabase, logger);
+      const logoUrl = await fetchLogo(site, driveClient, logger);
       return { ok: true, url: logoUrl };
     } catch (e: unknown) { const err = e as Error; logError('logo:fetch', err); return { ok: false }; }
   }));

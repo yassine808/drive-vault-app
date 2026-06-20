@@ -165,8 +165,8 @@ function playSound(type: string): void {
   }
 }
 api.onPlaySound((type: string) => playSound(type));
-api.onTrayLock(() => { if (S.user) { logInfo('auth', 'Tray lock'); doLock(); hide('tab-monitor'); } });
-api.onTrayLogout(() => { if (S.user) { logInfo('auth', 'Tray logout'); doLogout(); hide('tab-monitor'); } });
+api.onTrayLock(() => { if (S.user) { logInfo('auth', 'Tray lock'); doLock(); switchTab('passwords'); } });
+api.onTrayLogout(() => { if (S.user) { logInfo('auth', 'Tray logout'); doLogout(); switchTab('passwords'); } });
 
 // ═══ SOUND TEST BUTTONS ════════════════════════════════════════════════════════
 function testSound(soundType: string): void {
@@ -495,13 +495,9 @@ async function loadSettings(): Promise<void> {
   if (pinIndicator) pinIndicator.hidden = !S.settings.pin_login_enabled;
   logInfo('settings', 'settings loaded', S.settings);
 }
-function isAdmin(): boolean { return S.user?.isAdmin === true; }
 function enterApp(): void {
   logInfo('app', 'Entering app screen');
   screen('s-app'); renderUserChip();
-  const showAdmin = isAdmin();
-  document.querySelectorAll('.admin-only-nav').forEach((el) => { (el as HTMLElement).hidden = !showAdmin; });
-  if (!showAdmin && (document.querySelector('.nav-btn.active') as HTMLElement)?.dataset.tab === 'monitor') switchTab('passwords');
   switchTab('passwords'); armLock();
   // Save account for quick PIN login
   api.accounts.save().catch(() => {});
@@ -526,19 +522,16 @@ function renderUserChip(): void {
 
 // ═══ TABS ══════════════════════════════════════════════════════════════════════
 const _tabCache: Record<string, boolean> = {};
-let _monitorRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 document.querySelectorAll('.nav-btn[data-tab]').forEach((btn) => {
   const b = btn as HTMLElement;
   b.addEventListener('click', () => switchTab(b.dataset.tab!));
 });
 function switchTab(tab: string): void {
-  if (tab === 'monitor' && !isAdmin()) { logWarn('ui', 'Non-admin tried to open monitor tab'); return; }
   logInfo('ui', 'Tab switched', { tab });
-  if (tab !== 'monitor') { clearTimeout(_monitorRefreshTimer!); }
   document.querySelectorAll('.nav-btn[data-tab]').forEach((b) => {
     const el = b as HTMLElement; el.classList.toggle('active', el.dataset.tab === tab);
   });
-  ['passwords', 'notes', 'jobs', 'totp', 'trash', 'monitor', 'settings'].forEach((t) => {
+  ['passwords', 'notes', 'jobs', 'totp', 'trash', 'settings'].forEach((t) => {
     (document.getElementById('tab-' + t) as HTMLElement).hidden = t !== tab;
   });
   if (tab === 'passwords') renderPasswords();
@@ -546,7 +539,6 @@ function switchTab(tab: string): void {
   if (tab === 'trash') { if (!_tabCache.trash) { loadAndRenderTrash(); _tabCache.trash = true; } }
   if (tab === 'jobs') { if (!_tabCache.jobs) { loadAndRenderJobs(); _tabCache.jobs = true; } }
   if (tab === 'totp') { if (!_tabCache.totp) { loadAndRenderTotp(); _tabCache.totp = true; } }
-  if (tab === 'monitor') loadMonitor();
   if (tab === 'settings') { if (!_tabCache.settings) { loadSettingsTab(); _tabCache.settings = true; } }
   updateCounts();
 }
@@ -682,8 +674,8 @@ function renderPasswords(): void {
       title: 'Move to Trash?', msg: `"${pw.site}" will be moved to Trash and auto-deleted after 30 days.`,
       icon: '🗑️', okLabel: 'Move to Trash',
       onOk: async () => {
-        logInfo('password', 'Moving to trash', { site: pw.site, dbId: pw._dbId });
-        if (pw._dbId) await api.delete(pw._dbId);
+        logInfo('password', 'Moving to trash', { site: pw.site, dbId: pw._localId });
+        if (pw._localId) await api.delete(pw._localId);
         S.passwords = S.passwords.filter((p) => p.id !== pw.id);
         renderPasswords(); updateCounts(); toast('Moved to Trash');
         logOk('password', 'Moved to trash', { site: pw.site });
@@ -730,12 +722,12 @@ function openPwModal(existing: VaultItem | null = null): void {
   if (existing) {
     Object.assign(existing, { site, username, password, notes });
     const r = await api.save('password', existing);
-    if (r.ok && !existing._dbId) existing._dbId = r.dbId;
+    if (r.ok && !existing._localId) existing._localId = r.id;
     toast('Updated'); logOk('password', 'Password updated', { site });
   } else {
     const item: VaultItem = { id: uid(), site, username, password, notes };
     const r = await api.save('password', item);
-    if (r.ok) item._dbId = r.dbId;
+    if (r.ok) item._localId = r.id;
     S.passwords.unshift(item); toast('Saved'); logOk('password', 'Password created', { site });
   }
   renderPasswords(); updateCounts();
@@ -749,7 +741,7 @@ function openPwModal(existing: VaultItem | null = null): void {
 (document.getElementById('btn-add-note') as HTMLButtonElement).addEventListener('click', async () => {
   logInfo('note', 'New note created');
   const note: VaultItem = { id: uid(), title: 'Untitled', body: '' };
-  const r = await api.save('note', note); if (r.ok) note._dbId = r.dbId;
+  const r = await api.save('note', note); if (r.ok) note._localId = r.id;
   S.notes.unshift(note); renderNotesList(); updateCounts(); openNote(note.id as string);
 });
 
@@ -799,7 +791,7 @@ function openNote(id: string): void {
     (document.getElementById('n-wc') as HTMLElement).textContent = wc(note.body) + ' words';
     renderNotesList();
     (document.getElementById('n-status') as HTMLElement).textContent = 'Saving…';
-    const r = await api.save('note', note); if (r.ok && !note._dbId) note._dbId = r.dbId;
+    const r = await api.save('note', note); if (r.ok && !note._localId) note._localId = r.id;
     const s = document.getElementById('n-status') as HTMLElement; if (s) s.textContent = 'Saved';
     logOk('note', 'Note auto-saved', { noteId: id, title: note.title });
   };
@@ -809,7 +801,7 @@ function openNote(id: string): void {
     title: 'Move to Trash?', msg: `"${note.title || 'Untitled'}" will be moved to Trash.`, icon: '🗑️', okLabel: 'Move to Trash',
     onOk: async () => {
       logInfo('note', 'Note moved to trash', { noteId: id, title: note.title });
-      if (note._dbId) await api.delete(note._dbId);
+      if (note._localId) await api.delete(note._localId);
       S.notes = S.notes.filter((n) => n.id !== id); S.activeNote = null;
       renderNotesList(); updateCounts();
       (document.getElementById('note-editor') as HTMLElement).innerHTML = '<p class="note-placeholder">Select or create a note</p>';
@@ -860,7 +852,7 @@ async function loadAndRenderTrash(): Promise<void> {
   if (!r1.ok) { logErr('trash', 'Failed to load vault trash', r1.error); toast('Failed to load some trash items'); }
   if (!r2.ok) { logErr('trash', 'Failed to load job trash', r2.error); toast('Failed to load job trash'); }
   const vaultItems: (VaultItem & { _type: string; _deletedAt: string })[] = r1.ok ? (r1.items as (VaultItem & { _type: string; _deletedAt: string })[]) : [];
-  const jobItems: (Job & { _type: string; _deletedAt: string })[] = (r2.ok ? r2.items : []).map((j: Job) => ({ ...j, _type: 'job', _dbId: j.id, _deletedAt: j.deleted_at! }));
+  const jobItems: (Job & { _type: string; _deletedAt: string })[] = (r2.ok ? r2.items : []).map((j: Job) => ({ ...j, _type: 'job', _localId: j.id, _deletedAt: j.deleted_at! }));
   S.trash = [...vaultItems, ...jobItems].sort((a, b) => new Date(b._deletedAt).getTime() - new Date(a._deletedAt).getTime());
   updateCounts();
   (document.getElementById('trash-empty') as HTMLElement).hidden = !!S.trash.length;
@@ -896,10 +888,10 @@ async function loadAndRenderTrash(): Promise<void> {
       onOk: async () => {
         let ok = false;
         if (isJob) { const res = await api.jobsTrash.restore(jobItem.id!); ok = res.ok; }
-        else { const res = await api.trashRestore(vaultItem._dbId!); ok = res.ok; }
+        else { const res = await api.trashRestore(vaultItem._localId!); ok = res.ok; }
         if (!ok) { toast('Restore failed'); logErr('trash', 'Restore failed', { label }); return; }
-        const itemDbId = (item as unknown as VaultItem)._dbId;
-        S.trash = S.trash.filter((t) => (t as unknown as VaultItem)._dbId !== itemDbId);
+        const itemDbId = (item as unknown as VaultItem)._localId;
+        S.trash = S.trash.filter((t) => (t as unknown as VaultItem)._localId !== itemDbId);
         loadAndRenderTrash(); updateCounts(); toast('Restored ✓');
         logOk('trash', 'Item restored', { label });
       }
@@ -909,10 +901,10 @@ async function loadAndRenderTrash(): Promise<void> {
       onOk: async () => {
         logInfo('trash', 'Permanently deleting', { label });
         if (isJob) await api.jobsTrash.purge(jobItem.id!);
-        else await api.trashPurge(vaultItem._dbId!);
+        else await api.trashPurge(vaultItem._localId!);
         S.trash = S.trash.filter((t) => {
-          const tId = t._type === 'job' ? (t as unknown as Job).id : (t as unknown as VaultItem)._dbId;
-          const itemId = isJob ? jobItem.id : vaultItem._dbId;
+          const tId = t._type === 'job' ? (t as unknown as Job).id : (t as unknown as VaultItem)._localId;
+          const itemId = isJob ? jobItem.id : vaultItem._localId;
           return tId !== itemId;
         });
         row.remove(); if (!S.trash.length) (document.getElementById('trash-empty') as HTMLElement).hidden = false;
@@ -932,7 +924,7 @@ async function loadAndRenderTrash(): Promise<void> {
       const vaultItems = S.trash.filter((t) => t._type !== 'job');
       const jobItems = S.trash.filter((t) => t._type === 'job');
       await Promise.all([
-        ...vaultItems.map((t) => api.trashPurge((t as unknown as VaultItem)._dbId!)),
+        ...vaultItems.map((t) => api.trashPurge((t as unknown as VaultItem)._localId!)),
         ...jobItems.map((t) => api.jobsTrash.purge((t as unknown as Job).id!)),
       ]);
       S.trash = []; loadAndRenderTrash(); updateCounts(); toast('Trash emptied');
@@ -1222,7 +1214,7 @@ function base32Decode(b32: string): Uint8Array {
   for (let i = 0; i + 8 <= bits.length; i += 8) res.push(parseInt(bits.slice(i, i + 8), 2));
   return new Uint8Array(res);
 }
-async function computeTotpAsync(secret: string, id: number | undefined): Promise<void> {
+async function computeTotpAsync(secret: string, id: string | undefined): Promise<void> {
   try {
     const key = base32Decode(secret);
     const T = Math.floor(Date.now() / 30000);
@@ -1269,157 +1261,6 @@ let _totpEdit: TotpItem | null = null;
   if (e.target === (document.getElementById('totp-overlay') as HTMLElement)) hide('totp-overlay');
 });
 
-// ═══ MONITOR with circle gauges ═══════════════════════════════════════════════
-const _monitorEntries: import('./src/types').LogEntry[] = [];
-let _monitorFilter = 'all';
-
-function fmtSize(n: number): string {
-  return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B';
-}
-
-function renderLogEntries(): void {
-  const el = document.getElementById('log-view') as HTMLElement;
-  const filtered = _monitorFilter === 'all' ? _monitorEntries : _monitorEntries.filter((e) => e.level.toLowerCase() === _monitorFilter);
-  if (!filtered.length) { el.innerHTML = '<span class="log-empty">(no entries)</span>'; return; }
-  el.innerHTML = filtered.map((e) => {
-    const cls = 'log-level-' + (e.level || '').toLowerCase();
-    return `<div class="log-entry ${cls}"><span class="log-ts">${escapeHtml(e.ts || '')}</span> <span class="log-ctx">[${escapeHtml(e.ctx || '')}]</span> <span class="log-msg">${escapeHtml(e.text)}</span></div>`;
-  }).join('');
-  el.scrollTop = el.scrollHeight;
-}
-
-async function loadMonitor(): Promise<void> {
-  logInfo('monitor', 'Loading monitor data');
-  const [sr, lr] = await Promise.all([api.monitor.stats(), api.monitor.readLog()]);
-  if (sr.ok) {
-    const st = sr.stats;
-    const DB_LIMIT = 500 * 1024 * 1024;
-    const dbPct = st.dbSizeBytes ? Math.min(100, Math.round(st.dbSizeBytes / DB_LIMIT * 100)) : 0;
-    const logPct = Math.min(100, Math.round(st.logSize / (5 * 1024 * 1024) * 100));
-
-    (document.getElementById('dash-storage') as HTMLElement).textContent = fmtSize(st.dbSizeBytes || 0);
-    (document.getElementById('dash-storage-pct') as HTMLElement).textContent = dbPct + '% of 500 MB';
-
-    const circlesWrap = document.getElementById('monitor-circles') as HTMLElement; circlesWrap.innerHTML = '';
-    const cw1 = document.createElement('div'); cw1.className = 'mon-circle-wrap';
-    cw1.innerHTML = makeCircleSvg(dbPct, 'var(--accent)');
-    const lbl1 = document.createElement('div'); lbl1.className = 'mon-circle-label'; lbl1.textContent = fmtSize(st.dbSizeBytes || 0); cw1.appendChild(lbl1);
-    const sub1a = document.createElement('div'); sub1a.className = 'mon-circle-sub'; sub1a.textContent = 'Database used'; cw1.appendChild(sub1a);
-    const sub1b = document.createElement('div'); sub1b.className = 'mon-circle-sub'; sub1b.style.cssText = 'font-size:10px;margin-top:2px'; sub1b.textContent = dbPct + '% of 500 MB'; cw1.appendChild(sub1b);
-    circlesWrap.appendChild(cw1);
-    const cw2 = document.createElement('div'); cw2.className = 'mon-circle-wrap';
-    cw2.innerHTML = makeCircleSvg(logPct, '#f87171');
-    const lbl2 = document.createElement('div'); lbl2.className = 'mon-circle-label'; lbl2.textContent = fmtSize(st.logSize); cw2.appendChild(lbl2);
-    const sub2 = document.createElement('div'); sub2.className = 'mon-circle-sub'; sub2.textContent = 'Log file'; cw2.appendChild(sub2);
-    circlesWrap.appendChild(cw2);
-
-    const actEl = document.getElementById('dash-activity') as HTMLElement; actEl.innerHTML = '';
-    const recentEntries = (lr.ok ? lr.entries : []).filter((e: LogEntry) => e.level === 'AUTH' || e.level === 'ERROR' || e.level === 'WARN').slice(-8).reverse();
-    if (!recentEntries.length) {
-      actEl.innerHTML = '<div class="dash-activity-empty">No recent activity</div>';
-    } else {
-      recentEntries.forEach((e: LogEntry) => {
-        const row = document.createElement('div'); row.className = 'dash-activity-entry';
-        const ts = document.createElement('span'); ts.className = 'dash-activity-time'; ts.textContent = e.ts ? e.ts.replace('T', ' ').replace(/\.\d{3}Z$/, '') : ''; row.appendChild(ts);
-        const ctx = document.createElement('span'); ctx.className = 'dash-activity-ctx'; ctx.textContent = '[' + (e.ctx || e.level) + ']'; row.appendChild(ctx);
-        const msg = document.createElement('span'); msg.className = 'dash-activity-msg'; msg.textContent = e.text; row.appendChild(msg);
-        actEl.appendChild(row);
-      });
-    }
-
-    const gridWrap = document.getElementById('monitor-grid') as HTMLElement; gridWrap.innerHTML = '';
-    const mkCard = (num: number, lbl: string, wide?: boolean): HTMLElement => {
-      const c = document.createElement('div'); c.className = 'mon-card' + (wide ? ' mon-wide' : '');
-      const n = document.createElement('div'); n.className = 'mon-num'; n.textContent = String(num); c.appendChild(n);
-      const l = document.createElement('div'); l.className = 'mon-lbl'; l.textContent = lbl; c.appendChild(l);
-      return c;
-    };
-    gridWrap.appendChild(mkCard(st.items, 'Vault items'));
-    gridWrap.appendChild(mkCard(st.trash, 'In trash'));
-    gridWrap.appendChild(mkCard(st.jobs, 'Job apps'));
-    const supCard = document.createElement('div'); supCard.className = 'mon-card mon-wide';
-    const supNum = document.createElement('div'); supNum.className = 'mon-num'; supNum.style.cssText = 'font-size:12px;font-family:var(--mono)'; supNum.textContent = 'Supabase'; supCard.appendChild(supNum);
-    const supLbl = document.createElement('div'); supLbl.className = 'mon-lbl'; supLbl.textContent = 'Supabase · Encrypted storage'; supCard.appendChild(supLbl);
-    gridWrap.appendChild(supCard);
-    logOk('monitor', 'Monitor data loaded', { items: st.items, jobs: st.jobs, trash: st.trash });
-  } else { logErr('monitor', 'Failed to load stats', sr.error); }
-
-  if (lr.ok) { _monitorEntries.length = 0; _monitorEntries.push(...lr.entries); renderLogEntries(); }
-
-  const refEl = document.getElementById('monitor-last-refresh') as HTMLElement;
-  if (refEl) refEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
-
-  if (isAdmin()) { (document.getElementById('admin-dashboard') as HTMLElement).hidden = false; loadAdminDashboard(); }
-  else { (document.getElementById('admin-dashboard') as HTMLElement).hidden = true; }
-}
-
-async function loadAdminDashboard(): Promise<void> {
-  logInfo('admin', 'Loading admin dashboard');
-  const [usersRes, statsRes] = await Promise.all([api.admin.users(), api.admin.stats()]);
-
-  if (statsRes.ok) {
-    const st = statsRes.stats;
-    (document.getElementById('admin-total-users') as HTMLElement).textContent = String(st.totalUsers);
-    (document.getElementById('admin-total-items') as HTMLElement).textContent = String(st.totalItems);
-    (document.getElementById('admin-total-jobs') as HTMLElement).textContent = String(st.totalJobs);
-    (document.getElementById('admin-total-totp') as HTMLElement).textContent = String(st.totalTotp);
-  }
-
-  const listEl = document.getElementById('admin-users-list') as HTMLElement; listEl.innerHTML = '';
-  if (usersRes.ok && usersRes.users.length) {
-    usersRes.users.forEach((u: UserProfile) => {
-      const row = document.createElement('div'); row.className = 'admin-user-row';
-      const init = (u.name || u.email || '?')[0].toUpperCase();
-      if (u.avatar && u.avatar.startsWith('https://')) { const img = document.createElement('img'); img.className = 'admin-user-avatar'; img.src = u.avatar; row.appendChild(img); }
-      else { const fb = document.createElement('div'); fb.className = 'admin-user-avatar admin-user-avatar-fb'; fb.textContent = init; row.appendChild(fb); }
-      const info = document.createElement('div'); info.className = 'admin-user-info';
-      const nm = document.createElement('div'); nm.className = 'admin-user-name'; nm.textContent = u.name || '—';
-      const em = document.createElement('div'); em.className = 'admin-user-email'; em.textContent = u.email || '—';
-      const joined = u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
-      const lastLogin = u.last_seen ? new Date(u.last_seen).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'never';
-      const meta = document.createElement('div'); meta.className = 'admin-user-meta'; meta.textContent = 'Joined ' + joined + ' · Last login ' + lastLogin;
-      info.appendChild(nm); info.appendChild(em); info.appendChild(meta);
-      row.appendChild(info);
-      if (u.email === S.user?.email && S.user?.isAdmin) {
-        const badge = document.createElement('span'); badge.className = 'admin-user-badge badge-admin'; badge.textContent = 'admin'; row.appendChild(badge);
-      }
-      listEl.appendChild(row);
-    });
-  } else {
-    const noUsers = document.createElement('div'); noUsers.className = 'admin-no-users'; noUsers.textContent = 'No users found'; listEl.appendChild(noUsers);
-  }
-  logOk('admin', 'Admin dashboard loaded');
-}
-
-function makeCircleSvg(pct: number, color: string): string {
-  const safePct = Math.max(0, Math.min(100, parseInt(String(pct)) || 0));
-  const safeColor = String(color).replace(/[<>"'&]/g, '');
-  const r = 44, circ = 2 * Math.PI * r;
-  const dash = circ * (safePct / 100);
-  return `<svg class="mon-circle-svg" viewBox="0 0 100 100">
-    <circle cx="50" cy="50" r="${r}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="8"/>
-    <circle cx="50" cy="50" r="${r}" fill="none" stroke="${safeColor}" stroke-width="8"
-      stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}"
-      stroke-dashoffset="${(circ / 4).toFixed(1)}" stroke-linecap="round"/>
-    <text x="50" y="54" text-anchor="middle" fill="${safeColor}" font-size="16" font-weight="600" font-family="var(--mono)">${safePct}%</text>
-  </svg>`;
-}
-
-(document.getElementById('btn-refresh-monitor') as HTMLButtonElement).addEventListener('click', () => { logInfo('monitor', 'Refresh clicked'); loadMonitor(); });
-(document.getElementById('btn-clear-log') as HTMLButtonElement).addEventListener('click', async () => {
-  logInfo('monitor', 'Clear log clicked');
-  await api.monitor.clearLog(); _monitorEntries.length = 0; renderLogEntries(); toast('Log cleared');
-  logOk('monitor', 'Log cleared');
-});
-
-document.querySelectorAll('.log-filter').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.log-filter').forEach((b) => (b as HTMLElement).classList.remove('active'));
-    (btn as HTMLElement).classList.add('active');
-    _monitorFilter = (btn as HTMLElement).dataset.level!;
-    renderLogEntries();
-  });
-});
 
 // ═══ SETTINGS ══════════════════════════════════════════════════════════════════
 const DEFAULT_SETTINGS: AppSettings = {
