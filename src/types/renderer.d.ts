@@ -18,13 +18,13 @@ export interface PreloadApi {
   verify2fa(code: string): Promise<AuthResult>;
 
   save(type: string, item: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }>;
-  delete(id: string): Promise<{ ok: boolean; error?: string }>;
+  delete(id: string, type: string): Promise<{ ok: boolean; error?: string }>;
   sync(): Promise<{ ok: boolean; vault?: VaultData; error?: string }>;
   reorder(type: string, items: unknown[]): Promise<{ ok: boolean }>;
 
   trashLoad(): Promise<{ ok: boolean; items: Array<VaultItem & { _type: string; _deletedAt: string }>; error?: string }>;
-  trashRestore(id: string): Promise<{ ok: boolean }>;
-  trashPurge(id: string): Promise<{ ok: boolean }>;
+  trashRestore(id: string, type: string): Promise<{ ok: boolean }>;
+  trashPurge(id: string, type: string): Promise<{ ok: boolean }>;
 
   logoFetch(site: string): Promise<{ ok: boolean; url?: string }>;
 

@@ -31,7 +31,7 @@ function register(
     if (!driveClient) return [];
     const items = driveClient.loadItems('job');
     const jobs: Job[] = items.map(item => {
-      const decrypted = JSON.parse(item.encryptedData) as Record<string, unknown>;
+      const decrypted = JSON.parse(Buffer.from(item.encryptedData, 'base64').toString('utf8')) as Record<string, unknown>;
       return {
         id: item.id,
         company: decrypted.company as string || '',
@@ -95,7 +95,7 @@ function register(
     if (!driveClient) return [];
     const items = driveClient.loadTrash('job');
     const jobs: Job[] = items.map(item => {
-      const decrypted = JSON.parse(item.encryptedData) as Record<string, unknown>;
+      const decrypted = JSON.parse(Buffer.from(item.encryptedData, 'base64').toString('utf8')) as Record<string, unknown>;
       return {
         id: item.id,
         company: decrypted.company as string || '',

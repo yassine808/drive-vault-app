@@ -147,7 +147,7 @@ export class DriveClient {
         const cacheItem = this.findCacheItem(item.id, item.type);
         if (!cacheItem) throw new Error(`Cache item not found: ${item.id}`);
         const fileName = this.itemFileName(item.id, item.type);
-        const content = Buffer.from(cacheItem.encryptedData, 'utf8').toString('base64');
+        const content = cacheItem.encryptedData;
 
         if (item.driveFileId) {
           // Update existing file
@@ -354,8 +354,10 @@ export class DriveClient {
   saveItem(type: 'password' | 'note' | 'job' | 'totp', encryptedData: string, existingId?: string, sortOrder?: number): string {
     const now = new Date().toISOString();
 
+    let returnId: string;
     if (existingId) {
       // Update existing
+      returnId = existingId;
       const arr = this.getCacheArray(type);
       const idx = arr.findIndex(i => i.id === existingId);
       if (idx >= 0) {
@@ -373,9 +375,9 @@ export class DriveClient {
       });
     } else {
       // Create new
-      const id = crypto.randomUUID();
+      returnId = crypto.randomUUID();
       const item: CacheItem = {
-        id,
+        id: returnId,
         sortOrder: sortOrder ?? 0,
         encryptedData,
         createdAt: now,
@@ -385,7 +387,7 @@ export class DriveClient {
       const arr = this.getCacheArray(type);
       arr.push(item);
       this.cache.dirtyQueue.push({
-        id,
+        id: returnId,
         type,
         action: 'create',
         retryCount: 0,
@@ -395,7 +397,7 @@ export class DriveClient {
 
     this.markDirty();
     cache.saveCache(this.cache);
-    return existingId || (this.getCacheArray(type).find(i => i.encryptedData === encryptedData && i.updatedAt === now)?.id || '');
+    return returnId;
   }
 
   /**

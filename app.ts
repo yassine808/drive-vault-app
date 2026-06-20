@@ -675,7 +675,7 @@ function renderPasswords(): void {
       icon: '🗑️', okLabel: 'Move to Trash',
       onOk: async () => {
         logInfo('password', 'Moving to trash', { site: pw.site, dbId: pw._localId });
-        if (pw._localId) await api.delete(pw._localId);
+        if (pw._localId) await api.delete(pw._localId, 'password');
         S.passwords = S.passwords.filter((p) => p.id !== pw.id);
         renderPasswords(); updateCounts(); toast('Moved to Trash');
         logOk('password', 'Moved to trash', { site: pw.site });
@@ -801,7 +801,7 @@ function openNote(id: string): void {
     title: 'Move to Trash?', msg: `"${note.title || 'Untitled'}" will be moved to Trash.`, icon: '🗑️', okLabel: 'Move to Trash',
     onOk: async () => {
       logInfo('note', 'Note moved to trash', { noteId: id, title: note.title });
-      if (note._localId) await api.delete(note._localId);
+      if (note._localId) await api.delete(note._localId, 'note');
       S.notes = S.notes.filter((n) => n.id !== id); S.activeNote = null;
       renderNotesList(); updateCounts();
       (document.getElementById('note-editor') as HTMLElement).innerHTML = '<p class="note-placeholder">Select or create a note</p>';
@@ -888,7 +888,7 @@ async function loadAndRenderTrash(): Promise<void> {
       onOk: async () => {
         let ok = false;
         if (isJob) { const res = await api.jobsTrash.restore(jobItem.id!); ok = res.ok; }
-        else { const res = await api.trashRestore(vaultItem._localId!); ok = res.ok; }
+        else { const res = await api.trashRestore(vaultItem._localId!, item._type); ok = res.ok; }
         if (!ok) { toast('Restore failed'); logErr('trash', 'Restore failed', { label }); return; }
         const itemDbId = (item as unknown as VaultItem)._localId;
         S.trash = S.trash.filter((t) => (t as unknown as VaultItem)._localId !== itemDbId);
@@ -901,7 +901,7 @@ async function loadAndRenderTrash(): Promise<void> {
       onOk: async () => {
         logInfo('trash', 'Permanently deleting', { label });
         if (isJob) await api.jobsTrash.purge(jobItem.id!);
-        else await api.trashPurge(vaultItem._localId!);
+        else await api.trashPurge(vaultItem._localId!, item._type);
         S.trash = S.trash.filter((t) => {
           const tId = t._type === 'job' ? (t as unknown as Job).id : (t as unknown as VaultItem)._localId;
           const itemId = isJob ? jobItem.id : vaultItem._localId;
@@ -924,7 +924,7 @@ async function loadAndRenderTrash(): Promise<void> {
       const vaultItems = S.trash.filter((t) => t._type !== 'job');
       const jobItems = S.trash.filter((t) => t._type === 'job');
       await Promise.all([
-        ...vaultItems.map((t) => api.trashPurge((t as unknown as VaultItem)._localId!)),
+        ...vaultItems.map((t) => api.trashPurge((t as unknown as VaultItem)._localId!, t._type)),
         ...jobItems.map((t) => api.jobsTrash.purge((t as unknown as Job).id!)),
       ]);
       S.trash = []; loadAndRenderTrash(); updateCounts(); toast('Trash emptied');

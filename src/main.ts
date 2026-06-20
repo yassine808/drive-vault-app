@@ -166,7 +166,7 @@ async function driveRestore(localId: string, type: string): Promise<void> {
 async function drivePermDelete(localId: string, type: string): Promise<void> {
   logger.db('drivePermDelete', 'Permanently deleting item', { localId, type });
   if (!driveClient) throw new Error('Drive not initialized');
-  driveClient.permDelete(type as 'password' | 'note' | 'job', localId);
+  driveClient.permDelete(type as 'password' | 'note' | 'job' | 'totp', localId);
   logger.db('drivePermDelete', 'Success', { localId });
 }
 
@@ -202,7 +202,7 @@ async function googleOAuth(): Promise<GoogleProfile> {
   oauth2Client = new google.google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, REDIRECT_URI);
   const state = crypto.randomBytes(16).toString('hex');
   const stateCreatedAt = Date.now();
-  const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', scope: SCOPES, state, prompt: 'select_account' });
+  const authUrl = oauth2Client.generateAuthUrl({ access_type: 'online', scope: SCOPES, state, prompt: 'consent' });
   logger.authLog('oauth', 'OAuth URL generated', { state: state.slice(0, 8) + '...' });
 
   return new Promise((resolve, reject) => {
@@ -454,12 +454,20 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { go
   try {
     const encKey = deriveKey(googleId);
 
-    // For PIN login, we need to initialize Drive client but we don't have OAuth tokens.
-    // The user will need to do a full Google login first to set up Drive.
-    // For now, load from local cache only.
+    // Try to initialize Drive client if we have OAuth tokens
     if (oauth2Client) {
+      try {
+        driveClient = new DriveClient(googleId, encKey, logger as any);
+        await driveClient.init(oauth2Client);
+      } catch (driveErr) {
+        logger.warn('auth:loginWithPin', 'Drive init failed, using local cache only', { error: driveErr instanceof Error ? driveErr.message : String(driveErr) });
+        driveClient = null;
+      }
+    }
+
+    // If driveClient is null (no OAuth or init failed), create a cache-only instance
+    if (!driveClient) {
       driveClient = new DriveClient(googleId, encKey, logger as any);
-      await driveClient.init(oauth2Client);
     }
 
     const vault = await driveLoadItems(encKey);
@@ -494,10 +502,10 @@ ipcMain.handle('vault:save', requireAuth(async (_e: electron.IpcMainInvokeEvent,
   } catch (e: unknown) { logError('vault:save', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
-ipcMain.handle('vault:delete', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id }: { id: string }) => {
+ipcMain.handle('vault:delete', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
   const s = getSession()!;
-  logger.ipcLog('vault:delete', 'Delete vault item', { id });
-  try { await driveSoftDelete(id, 'password'); logger.success('vault:delete', 'Item deleted', { id }); return { ok: true }; } catch (e: unknown) { logError('vault:delete', e); return { ok: false, error: 'Operation failed' }; }
+  logger.ipcLog('vault:delete', 'Delete vault item', { id, type });
+  try { await driveSoftDelete(id, type as 'password' | 'note' | 'job'); logger.success('vault:delete', 'Item deleted', { id, type }); return { ok: true }; } catch (e: unknown) { logError('vault:delete', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
 ipcMain.handle('vault:sync', requireAuthNoArgs(async () => {
@@ -523,21 +531,20 @@ ipcMain.handle('trash:load', requireAuthNoArgs(async () => {
   try { const items = await driveLoadTrash(s.encKey); logger.success('trash:load', 'Trash loaded', { count: items.length }); return { ok: true, items }; } catch (e: unknown) { logError('trash:load', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
-ipcMain.handle('trash:restore', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id }: { id: string }) => {
+ipcMain.handle('trash:restore', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
   const s = getSession()!;
-  logger.ipcLog('trash:restore', 'Restoring from trash', { id });
+  logger.ipcLog('trash:restore', 'Restoring from trash', { id, type });
   try {
-    // Try each type since we don't store the type in trash
-    await driveRestore(id, 'password');
-    logger.success('trash:restore', 'Item restored', { id });
+    await driveRestore(id, type as 'password' | 'note' | 'job');
+    logger.success('trash:restore', 'Item restored', { id, type });
     return { ok: true };
   } catch (e: unknown) { logError('trash:restore', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
-ipcMain.handle('trash:purge', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id }: { id: string }) => {
+ipcMain.handle('trash:purge', requireAuth(async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
   const s = getSession()!;
-  logger.ipcLog('trash:purge', 'Purging from trash', { id });
-  try { await drivePermDelete(id, 'password'); logger.success('trash:purge', 'Item purged', { id }); return { ok: true }; } catch (e: unknown) { logError('trash:purge', e); return { ok: false, error: 'Operation failed' }; }
+  logger.ipcLog('trash:purge', 'Purging from trash', { id, type });
+  try { await drivePermDelete(id, type as 'password' | 'note' | 'job' | 'totp'); logger.success('trash:purge', 'Item purged', { id, type }); return { ok: true }; } catch (e: unknown) { logError('trash:purge', e); return { ok: false, error: 'Operation failed' }; }
 }));
 
 ipcMain.handle('2fa:status', requireAuthNoArgs(async () => {

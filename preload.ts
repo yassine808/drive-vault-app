@@ -49,9 +49,9 @@ contextBridge.exposeInMainWorld('api', {
     bridgeLog('call', 'vault:save', true, { type, localId: item?._localId as string });
     return ipcRenderer.invoke('vault:save', sessionToken, { type, item });
   },
-  delete: (id: string) => {
-    bridgeLog('call', 'vault:delete', true, { id });
-    return ipcRenderer.invoke('vault:delete', sessionToken, { id });
+  delete: (id: string, type: string) => {
+    bridgeLog('call', 'vault:delete', true, { id, type });
+    return ipcRenderer.invoke('vault:delete', sessionToken, { id, type });
   },
   sync: () => {
     bridgeLog('call', 'vault:sync', true);
@@ -66,13 +66,13 @@ contextBridge.exposeInMainWorld('api', {
     bridgeLog('call', 'trash:load', true);
     return ipcRenderer.invoke('trash:load', sessionToken);
   },
-  trashRestore: (id: string) => {
-    bridgeLog('call', 'trash:restore', true, { id });
-    return ipcRenderer.invoke('trash:restore', sessionToken, { id });
+  trashRestore: (id: string, type: string) => {
+    bridgeLog('call', 'trash:restore', true, { id, type });
+    return ipcRenderer.invoke('trash:restore', sessionToken, { id, type });
   },
-  trashPurge: (id: string) => {
-    bridgeLog('call', 'trash:purge', true, { id });
-    return ipcRenderer.invoke('trash:purge', sessionToken, { id });
+  trashPurge: (id: string, type: string) => {
+    bridgeLog('call', 'trash:purge', true, { id, type });
+    return ipcRenderer.invoke('trash:purge', sessionToken, { id, type });
   },
 
   logoFetch: (site: string) => {
@@ -162,7 +162,7 @@ contextBridge.exposeInMainWorld('api', {
     },
     status: () => {
       bridgeLog('call', 'pin:status', true);
-      return ipcRenderer.invoke('pin:status', sessionToken);
+      return ipcRenderer.invoke('pin:status');
     },
   },
 

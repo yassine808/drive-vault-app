@@ -65,9 +65,9 @@ Main Process (src/main.ts)
 
 ### Module Registration Pattern
 
-`main.ts` is the entry point (~1400 lines). Domain modules (`jobs.ts`, `totp.ts`, `settings.ts`, `monitor.ts`, `logo.ts`, `pin.ts`, `accounts.ts`) export a `register()` function called inside `app.whenReady()`. Each `register()` receives `ipcMain`, auth wrappers, `supabase`, `validation`, `getSession`, `logger`, and `logError` — then calls `ipcMain.handle()` directly. This avoids passing `supabase` as a constructor parameter before it's initialized.
+`main.ts` is the entry point (~1400 lines). Domain modules (`jobs.ts`, `totp.ts`, `settings.ts`, `logo.ts`, `pin.ts`, `accounts.ts`) export a `register()` function called inside `app.whenReady()`. Each `register()` receives `ipcMain`, auth wrappers, `DriveClient`, `validation`, `getSession`, `logger`, and `logError` — then calls `ipcMain.handle()` directly.
 
-Some modules with encrypted data (totp, settings, pin) also receive `enc`/`dec` crypto functions directly in their `register()` signature. The `pin.ts` module uses local file storage but also receives `supabase` to sync `pin_login_enabled`/`pin_allow_alpha` to `vault_settings`. The `accounts.ts` module stores saved accounts locally (no Supabase). Both `pin.ts` and `accounts.ts` receive `app.getPath('userData')` via a `setUserDataPath()` initializer.
+Some modules with encrypted data (totp, settings, pin) also receive `enc`/`dec` crypto functions directly in their `register()` signature. The `pin.ts` module uses local file storage only. The `accounts.ts` module stores saved accounts locally. Both `pin.ts` and `accounts.ts` receive `app.getPath('userData')` via a `setUserDataPath()` initializer.
 
 ### IPC Channels
 
