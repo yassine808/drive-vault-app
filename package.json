@@ -35,7 +35,7 @@
   "dependencies": {
     "crypto-js": "^4.2.0",
     "dotenv": "^17.4.2",
-    "googleapis": "^140.0.0",
+    "googleapis": "^173.0.0",
     "speakeasy": "^2.0.0",
     "uuid": "^11.1.1"
   },
@@ -45,7 +45,7 @@
     "@types/speakeasy": "^2.0.10",
     "@types/uuid": "^10.0.0",
     "electron": "^42.2.0",
-    "electron-builder": "^24.0.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.0",
     "prettier": "^3.8.3",
     "sharp": "^0.34.5",
