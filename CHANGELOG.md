@@ -31,7 +31,7 @@ A comprehensive audit scanned every file across 5 attack surfaces:
 - Clipboard auto-clears after 30 seconds
 
 **Database & SQL (8 fixes)**
-- Generic error messages (no Supabase internal details leaked to renderer)
+- Generic error messages (no internal details leaked to renderer)
 - Explicit column SELECT statements instead of `SELECT *`
 - Domain validation on logo fetch (SSRF prevention)
 - Job status validated against whitelist
@@ -69,4 +69,4 @@ A comprehensive audit scanned every file across 5 attack surfaces:
 ### Build
 
 - Windows builds now produce both NSIS installer and portable `.exe`
-- Electron 42, Supabase JS 2.43
+- Electron 42

@@ -125,7 +125,7 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
 ### Saved Accounts
 
 - **Purpose**: Show previously logged-in accounts on the PIN screen for quick switching. Users click an account avatar and enter their PIN.
-- **Storage**: Local file only — `%APPDATA%/Vault/vault_accounts` (or platform equivalent via `app.getPath('userData')`). Never sent to Supabase.
+- **Storage**: Local file only — `%APPDATA%/Vault/vault_accounts` (or platform equivalent via `app.getPath('userData')`). Never sent to any remote server.
 - **File format**: JSON array of `{ googleId, email, name, avatar, lastUsed }`. Max 10 accounts, sorted by `lastUsed` descending.
 - **Flow**:
   1. On successful login (Google or PIN), `accounts:save` is called to upsert the account

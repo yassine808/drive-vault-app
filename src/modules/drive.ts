@@ -31,7 +31,7 @@ const SUBFOLDERS = {
 type SubfolderType = keyof typeof SUBFOLDERS;
 
 /**
- * DriveClient — replaces SupabaseClient for all storage operations.
+ * DriveClient — Google Drive storage operations.
  * Each item (password, note, job, TOTP) is stored as a separate encrypted file.
  * Settings, 2FA config, and logo cache are stored as single files.
  * A local cache provides offline support; a dirty queue handles sync retries.
@@ -459,7 +459,7 @@ export class DriveClient {
     this.cacheDirty = true;
   }
 
-  // ── CRUD operations (replace Supabase db helpers) ──
+  // ── CRUD operations ──
 
   /**
    * Load all non-deleted items of a given type from local cache.

@@ -87,7 +87,7 @@ type GoogleProfile = {
   avatar: string | null;
 };
 
-// ── Drive-backed data operations (replaces Supabase db helpers) ──
+// ── Drive-backed data operations ──
 
 async function driveLoadItems(encKey: string): Promise<{ passwords: Record<string, unknown>[]; notes: Record<string, unknown>[] }> {
   logger.db('driveLoadItems', 'Loading vault items from cache');
