@@ -541,7 +541,7 @@ function switchTab(tab: string): void {
   document.querySelectorAll('.nav-btn[data-tab]').forEach((b) => {
     const el = b as HTMLElement; el.classList.toggle('active', el.dataset.tab === tab);
   });
-  ['passwords', 'notes', 'jobs', 'totp', 'trash', 'settings'].forEach((t) => {
+  ['passwords', 'notes', 'jobs', 'totp', 'trash', 'sync', 'settings'].forEach((t) => {
     (document.getElementById('tab-' + t) as HTMLElement).hidden = t !== tab;
   });
   if (tab === 'passwords') renderPasswords();
@@ -549,6 +549,7 @@ function switchTab(tab: string): void {
   if (tab === 'trash') { if (!_tabCache.trash) { loadAndRenderTrash(); _tabCache.trash = true; } }
   if (tab === 'jobs') { if (!_tabCache.jobs) { loadAndRenderJobs(); _tabCache.jobs = true; } }
   if (tab === 'totp') { if (!_tabCache.totp) { loadAndRenderTotp(); _tabCache.totp = true; } }
+  if (tab === 'sync') { if (!_tabCache.sync) { loadSyncTab(); _tabCache.sync = true; } }
   if (tab === 'settings') { if (!_tabCache.settings) { loadSettingsTab(); _tabCache.settings = true; } }
   updateCounts();
 }
@@ -570,7 +571,110 @@ function updateCounts(): void {
 });
 
 // ═══ PASSWORDS ════════════════════════════════════════════════════════════════
-(document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
+	(document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
+	async function loadSyncTab() {
+	  logInfo('sync', 'Loading sync tab');
+	  await Promise.all([loadSyncFolders(), loadSyncActivity()]);
+	}
+
+	async function loadSyncFolders() {
+	  const r = await api.sync.foldersList();
+	  if (!r.ok) { toast('Failed to load sync folders'); return; }
+	  const list = document.getElementById('sync-folders-list');
+	  const empty = document.getElementById('sync-empty');
+	  list.innerHTML = '';
+	  if (!r.folders.length) { empty.hidden = false; list.hidden = true; return; }
+	  empty.hidden = true; list.hidden = false;
+	  for (const folder of r.folders) {
+	    const row = document.createElement('div');
+	    row.className = 'sync-folder-row';
+	    row.id = 'sync-folder-' + folder.id;
+	    const sc = folder.status === 'syncing' ? 'syncing' : folder.status === 'error' ? 'err' : folder.status === 'conflict' ? 'conflict' : 'idle';
+	    const st = folder.status === 'syncing' ? 'Syncing...' : folder.status === 'error' ? (folder.errorMessage || 'Error') : folder.status === 'conflict' ? 'Conflict' : (folder.lastSyncedAt ? 'Synced ' + timeAgo(folder.lastSyncedAt) : 'Never synced');
+	    row.innerHTML = '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div class="sync-folder-info"><div class="sync-folder-path" title="' + escHtml(folder.localPath) + '">' + escHtml(folder.localPath) + '</div><div class="sync-folder-detail">→ Vault/sync/' + escHtml(folder.driveFolderName) + '/ · <span class="sync-status ' + sc + '">' + escHtml(st) + '</span></div></div><div class="sync-folder-actions"><label class="toggle toggle-sm"><input type="checkbox" class="sync-folder-toggle" ' + (folder.enabled ? 'checked' : '') + ' data-folder-id="' + folder.id + '" /><span class="toggle-track"></span></label><button class="icon-btn sync-folder-remove" data-folder-id="' + folder.id + '" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
+	    list.appendChild(row);
+	  }
+	  list.querySelectorAll('.sync-folder-remove').forEach(function(btn) {
+	    btn.addEventListener('click', async function() {
+	      var id = btn.dataset.folderId;
+	      var ok = await confirm('Remove this sync folder? Files on your PC and Drive will NOT be deleted.');
+	      if (!ok) return;
+	      var res = await api.sync.foldersRemove(id);
+	      if (res.ok) { toast('Folder removed'); loadSyncFolders(); } else { toast('Failed: ' + res.error); }
+	    });
+	  });
+	  list.querySelectorAll('.sync-folder-toggle').forEach(function(input) {
+	    input.addEventListener('change', async function() {
+	      toast(input.checked ? 'Folder enabled' : 'Folder disabled');
+	    });
+	  });
+	}
+
+	async function loadSyncActivity() {
+	  var r = await api.sync.getActivityLog();
+	  var list = document.getElementById('sync-activity-list');
+	  var section = document.getElementById('sync-activity');
+	  if (!r.ok || !r.entries.length) { section.hidden = true; return; }
+	  section.hidden = false; list.innerHTML = '';
+	  for (var i = 0; i < Math.min(r.entries.length, 50); i++) {
+	    var entry = r.entries[i];
+	    var el = document.createElement('div');
+	    el.className = 'sync-activity-entry';
+	    var icon = entry.action === 'upload' ? '↑' : entry.action === 'download' ? '↓' : entry.action === 'conflict' ? '⚡' : entry.action === 'error' ? '✗' : '•';
+	    var color = entry.action === 'error' ? 'var(--red)' : entry.action === 'conflict' ? 'var(--amber)' : 'var(--txt-muted)';
+	    el.innerHTML = '<span class="sync-activity-icon" style="color:' + color + '">' + icon + '</span><span class="sync-activity-file">' + escHtml(entry.filePath) + '</span><span class="sync-activity-time">' + timeAgo(entry.ts) + '</span>';
+	    if (entry.detail) el.title = entry.detail;
+	    list.appendChild(el);
+	  }
+	}
+
+	function timeAgo(ts) {
+	  if (!ts) return 'never';
+	  var s = Math.floor((Date.now() - ts) / 1000);
+	  if (s < 60) return 'just now';
+	  var m = Math.floor(s / 60);
+	  if (m < 60) return m + 'm ago';
+	  var h = Math.floor(m / 60);
+	  if (h < 24) return h + 'h ago';
+	  return Math.floor(h / 24) + 'd ago';
+	}
+
+	function escHtml(s) {
+	  var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+	}
+
+
+	document.getElementById('btn-sync-now') && document.getElementById('btn-sync-now').addEventListener('click', async function() {
+	  var btn = document.getElementById('btn-sync-now');
+	  btn.style.opacity = '.5'; btn.style.pointerEvents = 'none'; btn.textContent = 'Syncing...';
+	  logInfo('sync', 'Manual sync triggered');
+	  var r = await api.sync.syncNow();
+	  btn.style.opacity = ''; btn.style.pointerEvents = '';
+	  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Sync now';
+	  if (r.ok) {
+	    var parts = [];
+	    if (r.uploaded) parts.push(r.uploaded + ' uploaded');
+	    if (r.downloaded) parts.push(r.downloaded + ' downloaded');
+	    if (r.conflicts) parts.push(r.conflicts + ' conflicts');
+	    toast(parts.length ? 'Sync complete: ' + parts.join(', ') : 'Everything up to date');
+	    logOk('sync', 'Sync complete', r);
+	  } else { toast('Sync error: ' + r.error); logErr('sync', 'Sync failed', r.error); }
+	  loadSyncFolders(); loadSyncActivity();
+	});
+
+	document.getElementById('btn-sync-add') && document.getElementById('btn-sync-add').addEventListener('click', async function() {
+	  logInfo('sync', 'Add folder clicked');
+	  var res = await api.sync.browseFolder();
+	  if (!res.ok || !res.path) return;
+	  var defaultName = res.path.split(/[\\/]/).filter(Boolean).pop() || 'Folder';
+	  var driveName = prompt('Name for this folder on Drive:', defaultName);
+	  if (driveName === null) return;
+	  var addRes = await api.sync.foldersAdd(res.path, driveName || defaultName);
+	  if (addRes.ok) { toast('Folder added — syncing...'); api.sync.syncNow().then(function() { loadSyncFolders(); loadSyncActivity(); }); loadSyncFolders(); }
+	  else { toast('Failed: ' + addRes.error); }
+	});
+
+	(document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
 (document.getElementById('pw-search') as HTMLInputElement).addEventListener('input', renderPasswords);
 
 async function getLogo(site: string): Promise<string | null> {

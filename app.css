@@ -1158,6 +1158,37 @@ html, body {
   margin-top: 10px;
 }
 
+	/* SYNC TAB STYLES */
+	.sync-body { display: flex; flex-direction: column; gap: 16px; }
+	.sync-folders-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+	.sync-folders-title { font-size: 13px; font-weight: 600; color: var(--txt-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+	.sync-folders-list { display: flex; flex-direction: column; gap: 8px; }
+	.sync-folder-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px; }
+	.sync-folder-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--bg-raised); display: flex; align-items: center; justify-content: center; color: var(--accent); flex-shrink: 0; }
+	.sync-folder-info { flex: 1; min-width: 0; }
+	.sync-folder-path { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.sync-folder-detail { font-size: 11px; color: var(--txt-muted); margin-top: 2px; }
+	.sync-folder-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+	.sync-folder-remove { opacity: 0.4; }
+	.sync-folder-remove:hover { opacity: 1; color: var(--red); }
+	.sync-status { font-size: 11px; }
+	.sync-status.syncing { color: var(--accent); }
+	.sync-status.err { color: var(--red); }
+	.sync-status.conflict { color: var(--amber, #f59e0b); }
+	.sync-status.idle { color: var(--txt-muted); }
+	.sync-empty { text-align: center; padding: 40px 20px; color: var(--txt-muted); }
+	.sync-empty svg { margin: 0 auto 12px; display: block; }
+	.sync-empty p { font-size: 13px; line-height: 1.6; }
+	.sync-add-btn { align-self: flex-start; }
+	.sync-activity { border-top: 1px solid var(--border); padding-top: 16px; }
+	.sync-activity-title { font-size: 12px; font-weight: 600; color: var(--txt-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+	.sync-activity-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+	.sync-activity-entry { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+	.sync-activity-icon { width: 16px; text-align: center; flex-shrink: 0; }
+	.sync-activity-file { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--txt); }
+	.sync-activity-time { color: var(--txt-muted); flex-shrink: 0; }
+
+
 /* ═══════════════════════════════════════════════════════════════
    SETTINGS
    ═══════════════════════════════════════════════════════════════ */

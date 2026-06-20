@@ -4,7 +4,8 @@
 import type {
   VaultItem, Job, TotpItem, Settings, UserProfile,
   VaultData, LogEntry, DriveStats, ConfirmOpts, TotpConfig,
-  AuthResult, PinStatus, PinVerifyResult
+  AuthResult, PinStatus, PinVerifyResult,
+  SyncFolder, SyncConfig, SyncActivityEntry
 } from './index';
 
 export type { ConfirmOpts, TotpConfig, AuthResult, PreloadApi };
@@ -73,6 +74,17 @@ export interface PreloadApi {
     change(oldPin: string, newPin: string, allowAlpha: boolean): Promise<{ ok: boolean; error?: string }>;
     disable(): Promise<{ ok: boolean; error?: string }>;
     status(): Promise<PinStatus>;
+  };
+
+  sync: {
+    foldersList(): Promise<{ ok: boolean; folders: SyncFolder[]; error?: string }>;
+    foldersAdd(localPath: string, driveFolderName: string): Promise<{ ok: boolean; folder?: SyncFolder; error?: string }>;
+    foldersRemove(folderId: string): Promise<{ ok: boolean; error?: string }>;
+    status(): Promise<{ ok: boolean; config: SyncConfig; error?: string }>;
+    syncNow(): Promise<{ ok: boolean; uploaded?: number; downloaded?: number; conflicts?: number; errors?: number; error?: string }>;
+    getActivityLog(): Promise<{ ok: boolean; entries: SyncActivityEntry[]; error?: string }>;
+    browseFolder(): Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
+    onStatusUpdate(cb: (config: SyncConfig) => void): void;
   };
 
   minimize(): Promise<void>;

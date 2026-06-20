@@ -166,3 +166,48 @@ export type AppAccent =
 
 export type AppSoundTone = 'chime' | 'ding' | 'soft' | 'bright';
 export type AppHoverTone = AppSoundTone | 'click' | 'tap' | 'pop' | 'none';
+
+// ── Sync types ──
+
+export type SyncFolderStatus = 'idle' | 'syncing' | 'error' | 'conflict';
+export type SyncConflictType = 'none' | 'local_newer' | 'drive_newer' | 'both';
+export type SyncActionType = 'upload' | 'download' | 'delete_local' | 'delete_drive' | 'conflict' | 'error' | 'skip';
+
+export interface SyncFolder {
+  id: string;
+  localPath: string;
+  driveFolderName: string;
+  enabled: boolean;
+  lastSyncAt: number | null;
+  status: SyncFolderStatus;
+  errorMessage?: string;
+}
+
+export interface SyncFileState {
+  relativePath: string;
+  localHash: string | null;
+  localMtime: number | null;
+  driveFileId: string | null;
+  driveModifiedTime: string | null;
+  driveHash: string | null;
+  conflict: SyncConflictType;
+}
+
+export interface SyncFolderState {
+  folderId: string;
+  files: Record<string, SyncFileState>;
+}
+
+export interface SyncConfig {
+  folders: SyncFolder[];
+  globalState: 'idle' | 'syncing' | 'error';
+  lastFullSyncAt: number | null;
+}
+
+export interface SyncActivityEntry {
+  ts: number;
+  folderId: string;
+  action: SyncActionType;
+  filePath: string;
+  detail?: string;
+}

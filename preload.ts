@@ -177,6 +177,38 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  sync: {
+    foldersList: () => {
+      bridgeLog('call', 'sync:folders:list', true);
+      return ipcRenderer.invoke('sync:folders:list', sessionToken);
+    },
+    foldersAdd: (localPath: string, driveFolderName: string) => {
+      bridgeLog('call', 'sync:folders:add', true);
+      return ipcRenderer.invoke('sync:folders:add', sessionToken, { localPath, driveFolderName });
+    },
+    foldersRemove: (folderId: string) => {
+      bridgeLog('call', 'sync:folders:remove', true);
+      return ipcRenderer.invoke('sync:folders:remove', sessionToken, { folderId });
+    },
+    status: () => {
+      bridgeLog('call', 'sync:status', true);
+      return ipcRenderer.invoke('sync:status', sessionToken);
+    },
+    syncNow: () => {
+      bridgeLog('call', 'sync:now', true);
+      return ipcRenderer.invoke('sync:now', sessionToken);
+    },
+    getActivityLog: () => {
+      bridgeLog('call', 'sync:log', true);
+      return ipcRenderer.invoke('sync:log', sessionToken);
+    },
+    browseFolder: () => {
+      bridgeLog('call', 'sync:browse-folder', true);
+      return ipcRenderer.invoke('sync:browse-folder', sessionToken);
+    },
+    onStatusUpdate: (cb: (config: unknown) => void) => ipcRenderer.on('sync:status-update', (_e, config) => cb(config)),
+  },
+
   accounts: {
     list: () => {
       bridgeLog('call', 'accounts:list', true);

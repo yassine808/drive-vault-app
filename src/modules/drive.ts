@@ -26,6 +26,7 @@ const SUBFOLDERS = {
   job: 'jobs',
   totp: 'totp',
   settings: 'settings',
+  sync: 'sync',
 } as const;
 
 type SubfolderType = keyof typeof SUBFOLDERS;

@@ -313,6 +313,7 @@ import { register as registerSettings } from './modules/settings';
 import { register as registerLogo } from './modules/logo';
 import { register as registerPin, setUserDataPath } from './modules/pin';
 import { register as registerAccounts, setUserDataPathAccounts } from './modules/accounts';
+import { register as registerSync } from './modules/sync';
 import { DriveClient } from './modules/drive';
 import * as cache from './modules/cache';
 
@@ -744,6 +745,7 @@ app.whenReady().then(() => {
   setUserDataPathAccounts(app.getPath('userData'));
   registerPin(ipcMain, requireAuth, requireAuthNoArgs, getSessionFn, logger as any, logError, driveClient);
   registerAccounts(ipcMain, requireAuthNoArgs, getSessionFn, logger as any, logError);
+  registerSync(ipcMain, requireAuth, requireAuthNoArgs, driveClient, getSessionFn, logger as any, logError);
 
   createWindow();
 });
