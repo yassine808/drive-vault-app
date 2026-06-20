@@ -5,6 +5,7 @@ import type Electron from 'electron';
 import type { DriveClient } from './drive';
 import { enc, dec, derivePinKey } from './crypto';
 import type { Session } from '../types';
+import { storeToken } from './pintoken';
 
 type Logger = {
   dbLog: (ctx: string, msg: string, data?: unknown) => void;
@@ -200,7 +201,6 @@ function register(
       logger.debug('pin:verify', 'Deriving encryption key', { googleId: googleId.slice(0, 8) + '...' });
 
       // Generate a short-lived token that auth:loginWithPin requires
-      const { storeToken } = require('./pintoken');
       const token = storeToken(googleId, email);
 
       logger.success('pin:verify', 'PIN verified', { email });

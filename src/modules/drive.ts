@@ -698,7 +698,7 @@ export class DriveClient {
 
   async save2fa(secret: string, enabled: boolean): Promise<void> {
     this.cache.twofa = { secret, enabled };
-    const content = Buffer.from(JSON.stringify({ secret, enabled }, null, 2), 'utf8').toString('base64');
+    const content = JSON.stringify({ secret, enabled }, null, 2);
 
     if (!this.drive) {
       cache.saveCache(this.cache);

@@ -3,6 +3,7 @@
  * pin.ts generates tokens on successful verification.
  * main.ts consumes tokens in auth:loginWithPin.
  */
+import crypto from 'crypto';
 
 interface PinVerifyEntry {
   googleId: string;
@@ -21,7 +22,7 @@ setInterval(() => {
 }, 60_000);
 
 export function storeToken(googleId: string, email: string): string {
-  const token = require('crypto').randomBytes(16).toString('hex');
+  const token = crypto.randomBytes(16).toString('hex');
   tokens.set(token, { googleId, email, expiresAt: Date.now() + 30_000 });
   return token;
 }
