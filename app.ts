@@ -55,6 +55,9 @@ const S: AppState = {
   },
 };
 
+// ── In-memory icon cache (session only; cleared on app close, NOT on logout) ──
+const iconCache: Record<string, string> = {};
+
 // ═══ LOGGER ═══════════════════════════════════════════════════════════════════
 const RLOG_KEY = 'vault-renderer-log';
 const RLOG_MAX = 2000;
@@ -103,6 +106,16 @@ function toast(msg: string, ms?: number): void {
 }
 function show(id: string): void { (document.getElementById(id) as HTMLElement).hidden = false; }
 function hide(id: string): void { (document.getElementById(id) as HTMLElement).hidden = true; }
+
+// ── Modal blur: track overlay open/close to blur main content ──
+const _OVERLAY_IDS = ['modal-overlay', 'gen-overlay', 'job-overlay', 'totp-overlay', 'twofa-overlay', 'confirm-overlay'];
+function _updateModalBlur(): void {
+  const anyOpen = _OVERLAY_IDS.some((id) => !(document.getElementById(id) as HTMLElement).hidden);
+  document.querySelector('.main')?.classList.toggle('modal-open', anyOpen);
+}
+function showOverlay(id: string): void { show(id); _updateModalBlur(); }
+function hideOverlay(id: string): void { hide(id); _updateModalBlur(); }
+
 function screen(s: string): void {
   ['s-login', 's-2fa', 's-lock', 's-pin', 's-app'].forEach((id: string) => {
     const el = document.getElementById(id);
@@ -210,12 +223,12 @@ function confirm(opts: ConfirmOpts): void {
   const newOk = okBtn.cloneNode(true) as HTMLButtonElement;
   okBtn.parentNode!.replaceChild(newOk, okBtn);
   newOk.textContent = opts.okLabel || 'Delete'; newOk.className = opts.okClass || 'btn-danger';
-  newOk.addEventListener('click', () => { hide('confirm-overlay'); logInfo('ui', 'Confirm dialog accepted', { title: opts.title }); opts.onOk(); });
-  show('confirm-overlay');
+  newOk.addEventListener('click', () => { hideOverlay('confirm-overlay'); logInfo('ui', 'Confirm dialog accepted', { title: opts.title }); opts.onOk(); });
+  showOverlay('confirm-overlay');
 }
-(document.getElementById('confirm-cancel') as HTMLButtonElement).addEventListener('click', () => { hide('confirm-overlay'); logInfo('ui', 'Confirm dialog cancelled'); });
+(document.getElementById('confirm-cancel') as HTMLButtonElement).addEventListener('click', () => { hideOverlay('confirm-overlay'); logInfo('ui', 'Confirm dialog cancelled'); });
 (document.getElementById('confirm-overlay') as HTMLElement).addEventListener('click', (e: MouseEvent) => {
-  if (e.target === (document.getElementById('confirm-overlay') as HTMLElement)) { hide('confirm-overlay'); logInfo('ui', 'Confirm dialog dismissed (overlay click)'); }
+  if (e.target === (document.getElementById('confirm-overlay') as HTMLElement)) { hideOverlay('confirm-overlay'); logInfo('ui', 'Confirm dialog dismissed (overlay click)'); }
 });
 
 // ═══ AUTO-LOCK ════════════════════════════════════════════════════════════════
@@ -632,193 +645,292 @@ function updateCounts(): void {
 });
 
 // ═══ PASSWORDS ════════════════════════════════════════════════════════════════
-	(document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
-	async function loadSyncTab() {
-	  logInfo('sync', 'Loading sync tab');
-	  await Promise.all([loadSyncFolders(), loadSyncActivity()]);
-	}
+    (document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
+    async function loadSyncTab() {
+      logInfo('sync', 'Loading sync tab');
+      await Promise.all([loadSyncFolders(), loadSyncActivity()]);
+    }
 
-	async function loadSyncFolders() {
-	  const r = await api.sync.foldersList();
-	  if (!r.ok) { toast('Failed to load sync folders'); return; }
-	  const list = document.getElementById('sync-folders-list');
-	  const empty = document.getElementById('sync-empty');
-	  list.innerHTML = '';
-	  if (!r.folders.length) { empty.hidden = false; list.hidden = true; return; }
-	  empty.hidden = true; list.hidden = false;
-	  for (const folder of r.folders) {
-	    const row = document.createElement('div');
-	    row.className = 'sync-folder-row';
-	    row.id = 'sync-folder-' + folder.id;
-	    const sc = folder.status === 'syncing' ? 'syncing' : folder.status === 'error' ? 'err' : folder.status === 'conflict' ? 'conflict' : 'idle';
-	    const st = folder.status === 'syncing' ? 'Syncing...' : folder.status === 'error' ? (folder.errorMessage || 'Error') : folder.status === 'conflict' ? 'Conflict' : (folder.lastSyncedAt ? 'Synced ' + timeAgo(folder.lastSyncedAt) : 'Never synced');
-	    row.innerHTML = '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div class="sync-folder-info"><div class="sync-folder-path" title="' + escHtml(folder.localPath) + '">' + escHtml(folder.localPath) + '</div><div class="sync-folder-detail">→ Vault/sync/' + escHtml(folder.driveFolderName) + '/ · <span class="sync-status ' + sc + '">' + escHtml(st) + '</span></div></div><div class="sync-folder-actions"><label class="toggle toggle-sm"><input type="checkbox" class="sync-folder-toggle" ' + (folder.enabled ? 'checked' : '') + ' data-folder-id="' + folder.id + '" /><span class="toggle-track"></span></label><button class="icon-btn sync-folder-remove" data-folder-id="' + folder.id + '" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
-	    list.appendChild(row);
-	  }
-	  list.querySelectorAll('.sync-folder-remove').forEach(function(btn) {
-	    btn.addEventListener('click', async function() {
-	      var id = btn.dataset.folderId;
-	      var confirmed = await new Promise<boolean>(function(resolve) {
-	        confirm({
-	          title: 'Remove sync folder?',
-	          msg: 'Files on your PC and Drive will NOT be deleted. Only the sync mapping will be removed.',
-	          icon: '⚠️',
-	          okLabel: 'Remove',
-	          okClass: 'btn-danger',
-	          onOk: function() { resolve(true); }
-	        });
-	        // Wire cancel to resolve(false)
-	        var cancelBtn = document.getElementById('confirm-cancel');
-	        var origOnclick = cancelBtn.onclick;
-	        cancelBtn.addEventListener('click', function handler() {
-	          cancelBtn.removeEventListener('click', handler);
-	          resolve(false);
-	        });
-	      });
-	      if (!confirmed) return;
-	      var res = await api.sync.foldersRemove(id);
-	      if (res.ok) { toast('Folder removed'); loadSyncFolders(); } else { toast('Failed: ' + res.error); }
-	    });
-	  });
-	  list.querySelectorAll('.sync-folder-toggle').forEach(function(input) {
-		    input.addEventListener('change', async function() {
-		      var folderId = input.dataset.folderId;
-	      var toggleRes = await api.sync.foldersToggle(folderId, input.checked);
-	      if (toggleRes.ok) { toast(input.checked ? 'Folder enabled' : 'Folder disabled'); }
-	      else { toast('Failed: ' + toggleRes.error); input.checked = !input.checked; }
-		    });
-		  });
-	}
+    async function loadSyncFolders() {
+      const r = await api.sync.foldersList();
+      if (!r.ok) { toast('Failed to load sync folders'); return; }
+      const list = document.getElementById('sync-folders-list');
+      const empty = document.getElementById('sync-empty');
+      list.innerHTML = '';
+      if (!r.folders.length) { empty.hidden = false; list.hidden = true; return; }
+      empty.hidden = true; list.hidden = false;
+      for (const folder of r.folders) {
+        const row = document.createElement('div');
+        row.className = 'sync-folder-row';
+        row.id = 'sync-folder-' + folder.id;
+        row.setAttribute('draggable', 'true');
+        row.dataset.folderId = folder.id;
+        const sc = folder.status === 'syncing' ? 'syncing' : folder.status === 'error' ? 'err' : folder.status === 'conflict' ? 'conflict' : 'idle';
+        const st = folder.status === 'syncing' ? 'Syncing...' : folder.status === 'error' ? (folder.errorMessage || 'Error') : folder.status === 'conflict' ? 'Conflict' : (folder.lastSyncedAt ? 'Synced ' + timeAgo(folder.lastSyncedAt) : 'Never synced');
+        let statusIcon;
+        if (folder.status === 'syncing') {
+          statusIcon = '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
+        } else if (folder.status === 'error') {
+          statusIcon = '<span class="sync-status-icon sync-status-error">✗</span>';
+        } else if (folder.status === 'conflict') {
+          statusIcon = '<span class="sync-status-icon sync-status-conflict">⚡</span>';
+        } else if (folder.lastSyncedAt) {
+          statusIcon = '<span class="sync-status-icon sync-status-synced">✓</span>';
+        } else {
+          statusIcon = '<span class="sync-status-icon"></span>';
+        }
+        row.innerHTML = '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div class="sync-folder-info"><div class="sync-folder-path" title="' + escHtml(folder.localPath) + '">' + escHtml(folder.localPath) + '</div><div class="sync-folder-detail">→ Vault/' + escHtml(folder.driveFolderName) + '/ · <span class="sync-status ' + sc + '">' + escHtml(st) + '</span></div></div>' + statusIcon + '<div class="sync-folder-actions"><label class="toggle toggle-sm"><input type="checkbox" class="sync-folder-toggle" ' + (folder.enabled ? 'checked' : '') + ' data-folder-id="' + folder.id + '" /><span class="toggle-track"></span></label><button class="icon-btn sync-folder-remove" data-folder-id="' + folder.id + '" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
+        list.appendChild(row);
+      }
+      var dragSrcRow: HTMLElement | null = null;
+      list.querySelectorAll('.sync-folder-row').forEach(function(row) {
+        row.addEventListener('dragstart', function(e) {
+          dragSrcRow = row;
+          row.classList.add('dragging');
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.dataset.folderId || '');
+          }
+        });
+        row.addEventListener('dragover', function(e) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          if (dragSrcRow && dragSrcRow !== row) {
+            row.classList.add('drag-over');
+          }
+          return false;
+        });
+        row.addEventListener('dragleave', function() {
+          row.classList.remove('drag-over');
+        });
+        row.addEventListener('drop', function(e) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.stopPropagation) e.stopPropagation();
+          row.classList.remove('drag-over');
+          if (!dragSrcRow || dragSrcRow === row) return;
+          var rect = row.getBoundingClientRect();
+          var midY = rect.top + rect.height / 2;
+          var listEl = row.parentElement;
+          if (e.clientY < midY) {
+            listEl.insertBefore(dragSrcRow, row);
+          } else {
+            var next = row.nextSibling;
+            if (next) {
+              listEl.insertBefore(dragSrcRow, next);
+            } else {
+              listEl.appendChild(dragSrcRow);
+            }
+          }
+          var newOrder: string[] = [];
+          listEl.querySelectorAll('.sync-folder-row').forEach(function(r) {
+            newOrder.push(r.dataset.folderId || '');
+          });
+          logInfo('sync', 'Folder reorder: ' + newOrder.join(', '));
+          dragSrcRow = null;
+          return false;
+        });
+        row.addEventListener('dragend', function() {
+          row.classList.remove('dragging');
+          list.querySelectorAll('.sync-folder-row').forEach(function(r) {
+            r.classList.remove('drag-over');
+          });
+          dragSrcRow = null;
+        });
+      });
+      list.querySelectorAll('.sync-folder-remove').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+          var id = btn.dataset.folderId;
+          var confirmed = await new Promise<boolean>(function(resolve) {
+            confirm({
+              title: 'Remove sync folder?',
+              msg: 'Files on your PC and Drive will NOT be deleted. Only the sync mapping will be removed.',
+              icon: '⚠️',
+              okLabel: 'Remove',
+              okClass: 'btn-danger',
+              onOk: function() { resolve(true); }
+            });
+            // Wire cancel to resolve(false)
+            var cancelBtn = document.getElementById('confirm-cancel');
+            var origOnclick = cancelBtn.onclick;
+            cancelBtn.addEventListener('click', function handler() {
+              cancelBtn.removeEventListener('click', handler);
+              resolve(false);
+            });
+          });
+          if (!confirmed) return;
+          var res = await api.sync.foldersRemove(id);
+          if (res.ok) { toast('Folder removed'); loadSyncFolders(); } else { toast('Failed: ' + res.error); }
+        });
+      });
+      list.querySelectorAll('.sync-folder-toggle').forEach(function(input) {
+            input.addEventListener('change', async function() {
+              var folderId = input.dataset.folderId;
+          var toggleRes = await api.sync.foldersToggle(folderId, input.checked);
+          if (toggleRes.ok) { toast(input.checked ? 'Folder enabled' : 'Folder disabled'); }
+          else { toast('Failed: ' + toggleRes.error); input.checked = !input.checked; }
+            });
+          });
+    }
 
-	async function loadSyncActivity() {
-	  var r = await api.sync.getActivityLog();
-	  var list = document.getElementById('sync-activity-list');
-	  var section = document.getElementById('sync-activity');
-	  if (!r.ok || !r.entries.length) { section.hidden = true; return; }
-	  section.hidden = false; list.innerHTML = '';
-	  for (var i = 0; i < Math.min(r.entries.length, 50); i++) {
-	    var entry = r.entries[i];
-	    var el = document.createElement('div');
-	    el.className = 'sync-activity-entry';
-	    var icon = entry.action === 'upload' ? '↑' : entry.action === 'download' ? '↓' : entry.action === 'conflict' ? '⚡' : entry.action === 'error' ? '✗' : '•';
-	    var color = entry.action === 'error' ? 'var(--red)' : entry.action === 'conflict' ? 'var(--amber)' : 'var(--txt-muted)';
-	    el.innerHTML = '<span class="sync-activity-icon" style="color:' + color + '">' + icon + '</span><span class="sync-activity-file">' + escHtml(entry.filePath) + '</span><span class="sync-activity-time">' + timeAgo(entry.ts) + '</span>';
-	    if (entry.detail) el.title = entry.detail;
-	    list.appendChild(el);
-	  }
-	}
+    async function loadSyncActivity() {
+      var r = await api.sync.getActivityLog();
+      var list = document.getElementById('sync-activity-list');
+      var section = document.getElementById('sync-activity');
+      if (!r.ok || !r.entries.length) { section.hidden = true; return; }
+      section.hidden = false; list.innerHTML = '';
+      for (var i = 0; i < Math.min(r.entries.length, 50); i++) {
+        var entry = r.entries[i];
+        var el = document.createElement('div');
+        el.className = 'sync-activity-entry';
+        var icon = entry.action === 'upload' ? '↑' : entry.action === 'download' ? '↓' : entry.action === 'conflict' ? '⚡' : entry.action === 'error' ? '✗' : '•';
+        var color = entry.action === 'error' ? 'var(--red)' : entry.action === 'conflict' ? 'var(--amber)' : 'var(--txt-muted)';
+        el.innerHTML = '<span class="sync-activity-icon" style="color:' + color + '">' + icon + '</span><span class="sync-activity-file">' + escHtml(entry.filePath) + '</span><span class="sync-activity-time">' + timeAgo(entry.ts) + '</span>';
+        if (entry.detail) el.title = entry.detail;
+        list.appendChild(el);
+      }
+    }
 
-	function timeAgo(ts) {
-	  if (!ts) return 'never';
-	  var s = Math.floor((Date.now() - ts) / 1000);
-	  if (s < 60) return 'just now';
-	  var m = Math.floor(s / 60);
-	  if (m < 60) return m + 'm ago';
-	  var h = Math.floor(m / 60);
-	  if (h < 24) return h + 'h ago';
-	  return Math.floor(h / 24) + 'd ago';
-	}
+    function timeAgo(ts) {
+      if (!ts) return 'never';
+      var s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 60) return 'just now';
+      var m = Math.floor(s / 60);
+      if (m < 60) return m + 'm ago';
+      var h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
+    }
 
-	function escHtml(s) {
-	  var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
-	}
+    function escHtml(s) {
+      var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+    }
 
 
-	document.getElementById('btn-sync-now') && document.getElementById('btn-sync-now').addEventListener('click', async function() {
-	  var btn = document.getElementById('btn-sync-now');
-	  btn.style.opacity = '.5'; btn.style.pointerEvents = 'none'; btn.textContent = 'Syncing...';
-	  logInfo('sync', 'Manual sync triggered');
-	  var r = await api.sync.syncNow();
-	  btn.style.opacity = ''; btn.style.pointerEvents = '';
-	  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Sync now';
-	  if (r.ok) {
-	    var parts = [];
-	    if (r.uploaded) parts.push(r.uploaded + ' uploaded');
-	    if (r.downloaded) parts.push(r.downloaded + ' downloaded');
-	    if (r.conflicts) parts.push(r.conflicts + ' conflicts');
-	    toast(parts.length ? 'Sync complete: ' + parts.join(', ') : 'Everything up to date');
-	    logOk('sync', 'Sync complete', r);
-	  } else { toast('Sync error: ' + r.error); logErr('sync', 'Sync failed', r.error); }
-	  loadSyncFolders(); loadSyncActivity();
-	});
+    document.getElementById('btn-sync-now') && document.getElementById('btn-sync-now').addEventListener('click', async function() {
+      var btn = document.getElementById('btn-sync-now');
+      btn.style.opacity = '.5'; btn.style.pointerEvents = 'none'; btn.textContent = 'Syncing...';
+      logInfo('sync', 'Manual sync triggered');
+      var r = await api.sync.syncNow();
+      btn.style.opacity = ''; btn.style.pointerEvents = '';
+      btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Sync now';
+      if (r.ok) {
+        var parts = [];
+        if (r.uploaded) parts.push(r.uploaded + ' uploaded');
+        if (r.downloaded) parts.push(r.downloaded + ' downloaded');
+        if (r.conflicts) parts.push(r.conflicts + ' conflicts');
+        toast(parts.length ? 'Sync complete: ' + parts.join(', ') : 'Everything up to date');
+        logOk('sync', 'Sync complete', r);
+      } else { toast('Sync error: ' + r.error); logErr('sync', 'Sync failed', r.error); }
+      loadSyncFolders(); loadSyncActivity();
+    });
 
-	document.getElementById('btn-sync-add') && document.getElementById('btn-sync-add').addEventListener('click', async function() {
-	  logInfo('sync', 'Add folder clicked');
-	  var res = await api.sync.browseFolder();
-	  if (!res.ok || !res.path) return;
-	  var defaultName = res.path.split(/[\/]/).filter(Boolean).pop() || 'Folder';
-	  // Use custom confirm modal with an inline input instead of window.prompt
-	  var driveName = await new Promise<string | null>(function(resolve) {
-	    var overlay = document.getElementById('confirm-overlay');
-	    var title = document.getElementById('confirm-title');
-	    var msg = document.getElementById('confirm-msg');
-	    var okBtn = document.getElementById('confirm-ok');
-	    var cancelBtn = document.getElementById('confirm-cancel');
-	    var icon = document.getElementById('confirm-icon');
-	    title.textContent = 'Name on Drive';
-	    msg.textContent = 'Choose a name for this folder on Google Drive:';
-	    icon.textContent = '📁';
-	    okBtn.textContent = 'Add folder';
-	    okBtn.className = 'btn-primary';
-	    var inputId = 'sync-folder-name-input';
-	    var existing = document.getElementById(inputId);
-	    if (existing) existing.remove();
-	    var inp = document.createElement('input');
-	    inp.id = inputId;
-	    inp.className = 'fi';
-	    inp.style.cssText = 'width:100%;margin-top:10px;text-align:center;font-size:14px;';
-	    inp.value = defaultName;
-	    inp.placeholder = 'Folder name';
-	    msg.appendChild(inp);
-	    overlay.hidden = false;
-	    setTimeout(function() { inp.focus(); inp.select(); }, 60);
-	    var cleanup = function() {
-	      overlay.hidden = true;
-	      inp.remove();
-	      okBtn.removeEventListener('click', onOk);
-	      cancelBtn.removeEventListener('click', onCancel);
-	      document.removeEventListener('keydown', onKey);
-	    };
-	    var onOk = function() { cleanup(); resolve(inp.value.trim() || defaultName); };
-	    var onCancel = function() { cleanup(); resolve(null); };
-	    var onKey = function(e: KeyboardEvent) {
-	      if (e.key === 'Enter') onOk();
-	      if (e.key === 'Escape') onCancel();
-	    };
-	    okBtn.addEventListener('click', onOk);
-	    cancelBtn.addEventListener('click', onCancel);
-	    document.addEventListener('keydown', onKey);
-	  });
-	  if (driveName === null) return;
-	  var addRes = await api.sync.foldersAdd(res.path, driveName);
-	  if (addRes.ok) { toast('Folder added — syncing...'); api.sync.syncNow().then(function() { loadSyncFolders(); loadSyncActivity(); }); loadSyncFolders(); }
-	  else { toast('Failed: ' + addRes.error); }
-	});
+    document.getElementById('btn-sync-add') && document.getElementById('btn-sync-add').addEventListener('click', async function() {
+      logInfo('sync', 'Add folder clicked');
+      var res = await api.sync.browseFolder();
+      if (!res.ok || !res.path) return;
+      var defaultName = res.path.split(/[\/]/).filter(Boolean).pop() || 'Folder';
+      // Use custom confirm modal with an inline input instead of window.prompt
+      var driveName = await new Promise<string | null>(function(resolve) {
+        var overlay = document.getElementById('confirm-overlay');
+        var title = document.getElementById('confirm-title');
+        var msg = document.getElementById('confirm-msg');
+        var okBtn = document.getElementById('confirm-ok');
+        var cancelBtn = document.getElementById('confirm-cancel');
+        var icon = document.getElementById('confirm-icon');
+        title.textContent = 'Name on Drive';
+        msg.textContent = 'Choose a name for this folder on Google Drive:';
+        icon.textContent = '📁';
+        okBtn.textContent = 'Add folder';
+        okBtn.className = 'btn-primary';
+        var inputId = 'sync-folder-name-input';
+        var existing = document.getElementById(inputId);
+        if (existing) existing.remove();
+        var inp = document.createElement('input');
+        inp.id = inputId;
+        inp.className = 'fi';
+        inp.style.cssText = 'width:100%;margin-top:10px;text-align:center;font-size:14px;';
+        inp.value = defaultName;
+        inp.placeholder = 'Folder name';
+        msg.appendChild(inp);
+        overlay.hidden = false;
+        setTimeout(function() { inp.focus(); inp.select(); }, 60);
+        var cleanup = function() {
+          overlay.hidden = true;
+          inp.remove();
+          okBtn.removeEventListener('click', onOk);
+          cancelBtn.removeEventListener('click', onCancel);
+          document.removeEventListener('keydown', onKey);
+        };
+        var onOk = function() { cleanup(); resolve(inp.value.trim() || defaultName); };
+        var onCancel = function() { cleanup(); resolve(null); };
+        var onKey = function(e: KeyboardEvent) {
+          if (e.key === 'Enter') onOk();
+          if (e.key === 'Escape') onCancel();
+        };
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        document.addEventListener('keydown', onKey);
+      });
+      if (driveName === null) return;
+      var addRes = await api.sync.foldersAdd(res.path, driveName);
+      if (addRes.ok) { toast('Folder added — syncing...'); api.sync.syncNow().then(function() { loadSyncFolders(); loadSyncActivity(); }); loadSyncFolders(); }
+      else { toast('Failed: ' + addRes.error); }
+    });
 
-	(document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
+    (document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
 (document.getElementById('pw-search') as HTMLInputElement).addEventListener('input', renderPasswords);
 
 async function getLogo(site: string): Promise<string | null> {
   if (!site) return null;
+  const domain = site.toLowerCase();
+  if (iconCache[domain]) return iconCache[domain];
   try {
     const r = await api.logoFetch(site);
-    return r?.ok ? r.url ?? null : null;
+    const url = r?.ok ? r.url ?? null : null;
+    if (url) iconCache[domain] = url;
+    return url;
   } catch { return null; }
 }
 
-// HIBP breach check
-const breachCache: Record<string, string> = {};
+// HIBP breach check — k-anonymity model with proper line-by-line suffix matching.
+// Cache stores parsed suffix sets (not raw text) to avoid false-positive substring matches.
+const breachCache: Record<string, Set<string>> = {};
 async function checkBreach(password: string): Promise<boolean> {
   try {
     const sha1 = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(password));
     const hex = Array.from(new Uint8Array(sha1)).map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
     const prefix = hex.slice(0, 5), suffix = hex.slice(5);
-    if (breachCache[prefix] !== undefined) return breachCache[prefix].includes(suffix);
-    const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
-    const text = await res.text();
-    breachCache[prefix] = text;
-    return text.includes(suffix);
-  } catch { return false; }
+    // Use cached result if available
+    if (breachCache[prefix] !== undefined) return breachCache[prefix].has(suffix);
+    // Fetch with retry for transient failures
+    let text = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+          headers: { 'Add-Padding': 'true' },
+        });
+        if (res.ok) { text = await res.text(); break; }
+        if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
+        console.warn(`[breach] HIBP returned ${res.status} for prefix ${prefix}`);
+        return false;
+      } catch (e) {
+        if (attempt === 2) throw e;
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    // Parse response into a Set of suffixes for exact matching.
+    // Response format: each line is "SUFFIX:COUNT" where SUFFIX is 35 hex chars.
+    const suffixes = new Set<string>();
+    for (const line of text.split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx > 0) suffixes.add(line.slice(0, idx).trim().toUpperCase());
+    }
+    breachCache[prefix] = suffixes;
+    return suffixes.has(suffix);
+  } catch (e) {
+    console.warn('[breach] checkBreach failed:', e);
+    return false;
+  }
 }
 
 function renderPasswords(): void {
@@ -941,7 +1053,7 @@ function openPwModal(existing: VaultItem | null = null): void {
   const newInp = pwInp.cloneNode(true) as HTMLInputElement; pwInp.parentNode!.replaceChild(newInp, pwInp);
   newInp.value = existing?.password || ''; newInp.type = 'password';
   newInp.addEventListener('input', () => updateSm('sm', newInp.value));
-  show('modal-overlay'); setTimeout(() => (document.getElementById('f-site') as HTMLInputElement).focus(), 60);
+  showOverlay('modal-overlay'); setTimeout(() => (document.getElementById('f-site') as HTMLInputElement).focus(), 60);
 }
 (document.getElementById('eye-btn') as HTMLButtonElement).addEventListener('click', () => {
   const f = document.getElementById('f-pw') as HTMLInputElement; f.type = f.type === 'password' ? 'text' : 'password';
@@ -953,7 +1065,7 @@ function openPwModal(existing: VaultItem | null = null): void {
   const password = (document.getElementById('f-pw') as HTMLInputElement).value;
   const notes = (document.getElementById('f-notes') as HTMLTextAreaElement).value.trim();
   if (!site || !password) { toast('Site and password required'); return; }
-  const existing = _pwEx; hide('modal-overlay');
+  const existing = _pwEx; hideOverlay('modal-overlay');
   if (existing) {
     Object.assign(existing, { site, username, password, notes });
     const r = await api.save('password', existing);
@@ -967,9 +1079,9 @@ function openPwModal(existing: VaultItem | null = null): void {
   }
   renderPasswords(); updateCounts();
 });
-(document.getElementById('modal-cancel') as HTMLButtonElement).addEventListener('click', () => hide('modal-overlay'));
+(document.getElementById('modal-cancel') as HTMLButtonElement).addEventListener('click', () => hideOverlay('modal-overlay'));
 (document.getElementById('modal-overlay') as HTMLElement).addEventListener('click', (e: MouseEvent) => {
-  if (e.target === (document.getElementById('modal-overlay') as HTMLElement)) hide('modal-overlay');
+  if (e.target === (document.getElementById('modal-overlay') as HTMLElement)) hideOverlay('modal-overlay');
 });
 
 // ═══ NOTES with drag reorder (vertical only) ═══════════════════════════════
@@ -1350,7 +1462,7 @@ function openJobModal(existing: Job | null = null): void {
   (document.getElementById('j-notes') as HTMLTextAreaElement).value = existing?.notes || '';
   const status = existing?.status || 'wait';
   document.querySelectorAll('.status-pick').forEach((b) => { (b as HTMLElement).classList.toggle('active', (b as HTMLElement).dataset.val === status); });
-  show('job-overlay'); setTimeout(() => (document.getElementById('j-company') as HTMLInputElement).focus(), 60);
+  showOverlay('job-overlay'); setTimeout(() => (document.getElementById('j-company') as HTMLInputElement).focus(), 60);
 }
 document.querySelectorAll('.status-pick').forEach((btn) => {
   btn.addEventListener('click', () => { document.querySelectorAll('.status-pick').forEach((b) => (b as HTMLElement).classList.remove('active')); (btn as HTMLElement).classList.add('active'); });
@@ -1367,7 +1479,7 @@ document.querySelectorAll('.status-pick').forEach((btn) => {
     applied_at: (document.getElementById('j-date') as HTMLInputElement).value,
     notes: (document.getElementById('j-notes') as HTMLTextAreaElement).value.trim(), status,
   };
-  hide('job-overlay');
+  hideOverlay('job-overlay');
   const r = await api.jobsSave(job as unknown as Record<string, unknown>);
   if (r.ok) {
     if (_jobEdit) Object.assign(_jobEdit, job);
@@ -1376,9 +1488,9 @@ document.querySelectorAll('.status-pick').forEach((btn) => {
     logOk('jobs', _jobEdit ? 'Job updated' : 'Job created', { company, status });
   } else { toast('Save failed: ' + r.error); logErr('jobs', 'Job save failed', { company, error: r.error }); }
 });
-(document.getElementById('job-cancel') as HTMLButtonElement).addEventListener('click', () => hide('job-overlay'));
+(document.getElementById('job-cancel') as HTMLButtonElement).addEventListener('click', () => hideOverlay('job-overlay'));
 (document.getElementById('job-overlay') as HTMLElement).addEventListener('click', (e: MouseEvent) => {
-  if (e.target === (document.getElementById('job-overlay') as HTMLElement)) hide('job-overlay');
+  if (e.target === (document.getElementById('job-overlay') as HTMLElement)) hideOverlay('job-overlay');
 });
 
 // ═══ TOTP VAULT ════════════════════════════════════════════════════════════════
@@ -1472,7 +1584,7 @@ let _totpEdit: TotpItem | null = null;
   (document.getElementById('t-secret') as HTMLInputElement).value = '';
   (document.getElementById('t-icon') as HTMLInputElement).value = '';
   logInfo('totp', 'Add TOTP account modal opened');
-  show('totp-overlay'); setTimeout(() => (document.getElementById('t-name') as HTMLInputElement).focus(), 60);
+  showOverlay('totp-overlay'); setTimeout(() => (document.getElementById('t-name') as HTMLInputElement).focus(), 60);
 });
 (document.getElementById('totp-ok') as HTMLButtonElement).addEventListener('click', async () => {
   const name = (document.getElementById('t-name') as HTMLInputElement).value.trim();
@@ -1483,7 +1595,7 @@ let _totpEdit: TotpItem | null = null;
     issuer: (document.getElementById('t-issuer') as HTMLInputElement).value.trim(),
     secret, icon: (document.getElementById('t-icon') as HTMLInputElement).value || '🔐',
   };
-  hide('totp-overlay');
+  hideOverlay('totp-overlay');
   const r = await api.totpSave(item as unknown as Record<string, unknown>);
   if (r.ok) {
     if (_totpEdit) Object.assign(_totpEdit, item); else { item.id = r.id; S.totp.unshift(item); }
@@ -1491,9 +1603,9 @@ let _totpEdit: TotpItem | null = null;
     logOk('totp', _totpEdit ? 'TOTP account updated' : 'TOTP account created', { name });
   } else { toast('Save failed: ' + r.error); logErr('totp', 'TOTP save failed', { name, error: r.error }); }
 });
-(document.getElementById('totp-cancel') as HTMLButtonElement).addEventListener('click', () => hide('totp-overlay'));
+(document.getElementById('totp-cancel') as HTMLButtonElement).addEventListener('click', () => hideOverlay('totp-overlay'));
 (document.getElementById('totp-overlay') as HTMLElement).addEventListener('click', (e: MouseEvent) => {
-  if (e.target === (document.getElementById('totp-overlay') as HTMLElement)) hide('totp-overlay');
+  if (e.target === (document.getElementById('totp-overlay') as HTMLElement)) hideOverlay('totp-overlay');
 });
 
 
@@ -1838,7 +1950,7 @@ function openGen(fillMode = false): void {
   (document.getElementById('gen-len-val') as HTMLElement).textContent = String(S.settings.gen_length || 20);
   (document.getElementById('go-syms') as HTMLInputElement).checked = !!S.settings.gen_symbols;
   (document.getElementById('go-nums') as HTMLInputElement).checked = !!S.settings.gen_numbers;
-  show('gen-overlay');
+  showOverlay('gen-overlay');
   const useBtn = document.getElementById('gen-use') as HTMLButtonElement;
   const newUse = useBtn.cloneNode(true) as HTMLButtonElement; useBtn.parentNode!.replaceChild(newUse, useBtn);
   newUse.hidden = !fillMode;
@@ -1850,7 +1962,7 @@ function openGen(fillMode = false): void {
   });
   doGenerate();
 }
-function closeGen(): void { hide('gen-overlay'); }
+function closeGen(): void { hideOverlay('gen-overlay'); }
 ['go-upper', 'go-nums', 'go-syms'].forEach((id) => {
   (document.getElementById(id) as HTMLInputElement).addEventListener('change', () => {
     if ((document.getElementById('gen-overlay') as HTMLElement).hidden) return;
@@ -1911,7 +2023,7 @@ function closeGen(): void { hide('gen-overlay'); }
       const token = (document.getElementById('twofa-setup-code') as HTMLInputElement)?.value.trim();
       const er = await api.twofa.enable(token);
       if (!er.ok) { const el = document.getElementById('twofa-setup-err') as HTMLElement; el.hidden = false; el.textContent = er.error ?? ""; logWarn('2fa', '2FA enable failed', er.error); return; }
-      hide('twofa-overlay'); toast('2FA enabled ✓'); logOk('2fa', '2FA enabled');
+      hideOverlay('twofa-overlay'); toast('2FA enabled ✓'); logOk('2fa', '2FA enabled');
     });
   }
   const newDis = disBtn.cloneNode(true) as HTMLButtonElement; disBtn.parentNode!.replaceChild(newDis, disBtn);
@@ -1922,13 +2034,13 @@ function closeGen(): void { hide('gen-overlay'); }
     logInfo('2fa', '2FA disable clicked');
     const res = await api.twofa.disable(code);
     if (!res.ok) { toast(res.error || 'Failed to disable 2FA'); return; }
-    hide('twofa-overlay'); toast('2FA disabled'); logOk('2fa', '2FA disabled');
+    hideOverlay('twofa-overlay'); toast('2FA disabled'); logOk('2fa', '2FA disabled');
   });
-  show('twofa-overlay');
+  showOverlay('twofa-overlay');
 });
-(document.getElementById('twofa-cancel') as HTMLButtonElement).addEventListener('click', () => hide('twofa-overlay'));
+(document.getElementById('twofa-cancel') as HTMLButtonElement).addEventListener('click', () => hideOverlay('twofa-overlay'));
 (document.getElementById('twofa-overlay') as HTMLElement).addEventListener('click', (e: MouseEvent) => {
-  if (e.target === (document.getElementById('twofa-overlay') as HTMLElement)) hide('twofa-overlay');
+  if (e.target === (document.getElementById('twofa-overlay') as HTMLElement)) hideOverlay('twofa-overlay');
 });
 
 // ═══ KEYBOARD ═══════════════════════════════════════════════════════════
@@ -1963,3 +2075,8 @@ document.addEventListener('mouseover', (e: MouseEvent) => {
   screen('s-login');
   logInfo('app', 'App initialized, showing login screen');
 })();
+
+// Clear in-memory icon cache on app close (NOT on logout)
+window.addEventListener('beforeunload', () => {
+  Object.keys(iconCache).forEach((k) => delete iconCache[k]);
+});

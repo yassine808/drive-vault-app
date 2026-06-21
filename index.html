@@ -8,18 +8,6 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-<header class="titlebar" id="titlebar">
-  <div class="tb-left">
-    <div class="tb-logo">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="var(--accent)"/>
-        <path d="M9 12l2 2 4-4" stroke="var(--bg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>
-    <span class="tb-title">Vault</span>
-  </div>
-  <div class="tb-right"></div>
-</header>
 
 <!-- LOGIN -->
 <div class="screen center" id="s-login">
@@ -209,6 +197,18 @@
 <!-- 2FA SETTINGS MODAL --><div class="overlay" id="twofa-overlay" hidden><div class="modal" style="width:420px;text-align:center"><h3 id="twofa-modal-title">Two-factor authentication</h3><div id="twofa-modal-body"></div><div class="modal-foot" style="justify-content:center"><button class="btn-ghost" id="twofa-cancel">Cancel</button><button class="btn-primary" id="twofa-ok" hidden>Enable 2FA</button><button class="btn-danger" id="twofa-disable" hidden>Disable 2FA</button></div></div></div>
 <!-- CONFIRM --><div class="overlay" id="confirm-overlay" hidden><div class="confirm-modal"><div class="confirm-icon" id="confirm-icon">ðŸ&mdash;&lsquo;ï¸</div><h3 id="confirm-title">Delete this item?</h3><p class="confirm-msg" id="confirm-msg">It will be moved to Trash and auto-deleted after 30 days.</p><div class="modal-foot"><button class="btn-ghost" id="confirm-cancel">Cancel</button><button class="btn-danger" id="confirm-ok">Delete</button></div></div></div>
 <!-- STATUS POPUP --><div class="status-popup" id="status-popup" hidden><button class="status-pop-opt" data-val="accepted">âœ&hellip; Accepted</button><button class="status-pop-opt" data-val="wait">â³ Waiting</button><button class="status-pop-opt" data-val="rejected">âŒ Rejected</button></div>
+<header class="titlebar" id="titlebar">
+  <div class="tb-left">
+    <div class="tb-logo">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6l-8-4z" fill="var(--accent)"/>
+        <path d="M9 12l2 2 4-4" stroke="var(--bg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <span class="tb-title">Vault</span>
+  </div>
+  <div class="tb-right"></div>
+</header>
 <div class="toast" id="toast"></div>
 <script type="module" src="/app.ts"></script>
 </body>

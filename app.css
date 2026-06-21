@@ -75,7 +75,7 @@ html, body {
 	   TITLEBAR
 	   ═══════════════════════════════════════════════════════════════ */
 	.titlebar {
-	  position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 200;
+	  position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 350;
 	  display: flex; align-items: center; justify-content: space-between;
 	  padding: 0 18px;
 	  background: var(--bg);
@@ -553,9 +553,9 @@ html, body {
    ═══════════════════════════════════════════════════════════════ */
 .overlay {
   position: fixed; inset: 0; z-index: 300;
-  background: oklch(0 0 0 / 0.5);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: oklch(0 0 0 / 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex; align-items: center; justify-content: center;
 }
 .modal {
@@ -1220,8 +1220,11 @@ html, body {
    SETTINGS
    ═══════════════════════════════════════════════════════════════ */
 .settings-body{
-  display:flex;flex-direction:column;gap:12px;
-  max-width:680px;padding-bottom:32px;
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;
+  max-width:900px;padding-bottom:32px;
+}
+@media (max-width: 720px){
+  .settings-body{grid-template-columns:1fr}
 }
 .settings-card {
   background: var(--bg-surface); border: 1px solid var(--border);
@@ -1451,3 +1454,30 @@ body.compact .settings-card{padding:16px}
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MODAL BLUR — blur main content when any overlay is open
+   ═══════════════════════════════════════════════════════════════ */
+.main.modal-open {
+  filter: blur(6px) brightness(0.7);
+  transition: filter 0.2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SYNC DRAG-AND-DROP + STATUS ICONS
+   ═══════════════════════════════════════════════════════════════ */
+.sync-folder-row[draggable="true"] { cursor: grab; user-select: none; }
+.sync-folder-row[draggable="true"]:active { cursor: grabbing; }
+.sync-folder-row.dragging { opacity: 0.4; }
+.sync-folder-row.drag-over { border-top: 2px solid var(--accent) !important; }
+.sync-status-icon { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.sync-status-syncing { color: var(--accent); }
+.sync-status-error { color: var(--red); }
+.sync-status-conflict { color: #f59e0b; }
+.sync-status-synced { color: #22c55e; }
+.sync-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--accent); border-right-color: transparent;
+  animation: sync-spin 0.6s linear infinite;
+}
+@keyframes sync-spin { to { transform: rotate(360deg); } }

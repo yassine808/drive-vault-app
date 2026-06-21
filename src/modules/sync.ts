@@ -21,7 +21,7 @@ type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 // ── Constants ──
 const SYNC_CONFIG_FILE = 'sync_config.json';
 const SYNC_STATE_FILE = 'sync_state.json';
-const SYNC_DRIVE_FOLDER = 'sync'; // subfolder name in Vault/
+const SYNC_DRIVE_FOLDER = ''; // sync folders go directly under Vault/ (no subfolder)
 const MAX_ACTIVITY_LOG = 200;
 const FILE_WATCH_DEBOUNCE_MS = 2000;
 
@@ -196,7 +196,7 @@ class SyncEngine {
     this.drive = driveClient;
   }
 
-  // Get or create the Vault/sync/ folder on Drive
+  // Get the Vault folder ID on Drive (sync folders go directly under Vault/)
   private async getSyncFolderId(): Promise<string | null> {
     if (!this.drive || !(this.drive as any).drive) return null;
     if (this.syncFolderId) return this.syncFolderId;
@@ -204,26 +204,8 @@ class SyncEngine {
     const vaultFolderId = (this.drive as any).vaultFolderId;
     if (!vaultFolderId) return null;
 
-    const drive = (this.drive as any).drive;
-    const res = await drive.files.list({
-      q: `name='${SYNC_DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and '${vaultFolderId}' in parents and trashed=false`,
-      spaces: 'drive',
-      fields: 'files(id, name)',
-    });
-
-    if (res.data.files && res.data.files.length > 0) {
-      this.syncFolderId = res.data.files[0].id!;
-    } else {
-      const created = await drive.files.create({
-        requestBody: {
-          name: SYNC_DRIVE_FOLDER,
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: [vaultFolderId],
-        },
-        fields: 'id',
-      });
-      this.syncFolderId = created.data.id!;
-    }
+    // Sync folders are placed directly inside Vault/ — no intermediate subfolder needed.
+    this.syncFolderId = vaultFolderId;
     return this.syncFolderId;
   }
 

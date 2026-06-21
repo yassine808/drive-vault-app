@@ -212,6 +212,34 @@ async function googleOAuth(): Promise<GoogleProfile> {
     oauthInProgress = true;
     oauthServer = http.createServer(async (req, res) => {
       const parsed = url.parse(req.url || '', true);
+
+      // Serve a clean "Signing in..." page at the root so the user sees
+      // localhost:42813 in the browser instead of the full Google OAuth URL.
+      if (parsed.pathname === '/') {
+        const nonce = crypto.randomBytes(16).toString('base64');
+        const html = `<!DOCTYPE html><html><head><title>Vault — Sign In</title>
+<meta http-equiv="refresh" content="2;url=${authUrl}">
+<style nonce="${nonce}">
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+.card{background:rgba(30,30,50,.8);border:1px solid rgba(139,92,246,.3);border-radius:16px;padding:40px;text-align:center;max-width:400px}
+h2{color:#a78bfa;margin-bottom:8px}
+p{color:#94a3b8;font-size:14px}
+a{color:#a78bfa}
+</style>
+</head><body><div class="card">
+<h2>Sign in with Google</h2>
+<p>Redirecting to Google...</p>
+<p style="margin-top:12px;font-size:12px"><a href="${authUrl}">Click here if not redirected</a></p>
+</div></body></html>`;
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Security-Policy': "default-src 'none'; style-src 'nonce-" + nonce + "'; script-src 'nonce-" + nonce + "';"
+        });
+        res.end(html);
+        return;
+      }
+
       if (parsed.pathname !== '/oauth2callback') return;
 
       // Origin validation: the state parameter already provides CSRF protection.
@@ -292,7 +320,7 @@ setTimeout(()=>window.close(),5000);
     });
     oauthServer.listen(42813, '127.0.0.1', () => {
       logger.authLog('oauth', 'OAuth server listening on 127.0.0.1:42813');
-      shell.openExternal(authUrl);
+      shell.openExternal('http://localhost:42813');
     });
     setTimeout(() => {
       try {
