@@ -343,6 +343,11 @@ function showPinAccounts() {
   hide('pin-input-area');
   (document.getElementById('pin-code') as HTMLInputElement).value = '';
   (document.getElementById('pin-err') as HTMLElement).hidden = true;
+  // If there are saved accounts, hide PIN input until user selects one
+  const list = document.getElementById('pin-accounts-list') as HTMLElement;
+  if (list && list.children.length > 0) {
+    hide('pin-input-area');
+  }
 }
 
 function selectPinAccount(account: { googleId: string; email: string; name: string; avatar: string | null }) {
@@ -388,6 +393,11 @@ async function loadPinAccounts() {
       setTimeout(() => (document.getElementById('pin-code') as HTMLInputElement).focus(), 60);
       return;
     }
+    // Saved accounts exist — show account list, hide PIN input until account is selected
+    _selectedAccount = null;
+    hide('pin-input-area');
+    hide('pin-selected-account');
+    show('pin-user-label');
     const list = document.getElementById('pin-accounts-list') as HTMLElement;
     list.innerHTML = '';
     for (const acct of r.accounts) {
@@ -1596,13 +1606,13 @@ async function loadSettingsTab(): Promise<void> {
   _pinFileExists = pinStatusR.ok && pinStatusR.enabled;
 
   const pinEnabled = S.settings.pin_login_enabled;
-  // If PIN is enabled and file exists → show change + disable rows
-  // If PIN is enabled but no file → show setup row (first time)
-  // If PIN is disabled → hide all
-  if (pinSetupRow) pinSetupRow.hidden = !pinEnabled || _pinFileExists;
-  if (pinChangeRow) pinChangeRow.hidden = !pinEnabled || !_pinFileExists;
-  if (pinDeleteRow) pinDeleteRow.hidden = !pinEnabled || !_pinFileExists;
-  if (pinDeleteDivider) pinDeleteDivider.hidden = !pinEnabled || !_pinFileExists;
+  // If PIN file exists → show change + delete rows (regardless of toggle)
+  // If no PIN file → show setup row only when toggle is on
+  // If PIN is disabled and no file → hide all
+  if (pinSetupRow) pinSetupRow.hidden = _pinFileExists || !pinEnabled;
+  if (pinChangeRow) pinChangeRow.hidden = !_pinFileExists;
+  if (pinDeleteRow) pinDeleteRow.hidden = !_pinFileExists;
+  if (pinDeleteDivider) pinDeleteDivider.hidden = !_pinFileExists;
 
   // PIN enable toggle handler
   const pinEnabledEl = document.getElementById('s-pin-enabled') as HTMLInputElement;
@@ -1611,12 +1621,20 @@ async function loadSettingsTab(): Promise<void> {
       const enabled = pinEnabledEl.checked;
       S.settings.pin_login_enabled = enabled;
       if (enabled) {
-        // When enabling, always show setup first (no "Current PIN" field)
-        if (pinSetupRow) pinSetupRow.hidden = false;
-        if (pinChangeRow) pinChangeRow.hidden = true;
-        if (pinDeleteRow) pinDeleteRow.hidden = true;
-        if (pinDeleteDivider) pinDeleteDivider.hidden = true;
-        _pinFileExists = false;
+        // When enabling, check if PIN file already exists
+        if (_pinFileExists) {
+          // PIN already set — show change/delete, hide setup
+          if (pinSetupRow) pinSetupRow.hidden = true;
+          if (pinChangeRow) pinChangeRow.hidden = false;
+          if (pinDeleteRow) pinDeleteRow.hidden = false;
+          if (pinDeleteDivider) pinDeleteDivider.hidden = false;
+        } else {
+          // No PIN yet — show setup
+          if (pinSetupRow) pinSetupRow.hidden = false;
+          if (pinChangeRow) pinChangeRow.hidden = true;
+          if (pinDeleteRow) pinDeleteRow.hidden = true;
+          if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+        }
       } else {
         // When disabling, hide all PIN rows
         if (pinSetupRow) pinSetupRow.hidden = true;
@@ -1647,7 +1665,20 @@ async function loadSettingsTab(): Promise<void> {
     logInfo('pin', 'Set PIN clicked');
     const r = await api.pin.setup(pinVal, S.settings.pin_allow_alpha);
     if (!r.ok) {
-      toast(r.error || 'Failed to set PIN');
+      // PIN already exists — make it obvious by showing change/delete rows
+      if (r.error?.includes('already set')) {
+        _pinFileExists = true;
+        S.settings.pin_login_enabled = true;
+        if (pinSetupRow) pinSetupRow.hidden = true;
+        if (pinChangeRow) pinChangeRow.hidden = false;
+        if (pinDeleteRow) pinDeleteRow.hidden = false;
+        if (pinDeleteDivider) pinDeleteDivider.hidden = false;
+        if (pinEnabledEl) pinEnabledEl.checked = true;
+        __saveSettings();
+        toast('PIN is already set — you can change or delete it below', 3000);
+      } else {
+        toast(r.error || 'Failed to set PIN');
+      }
       logWarn('pin', 'Set PIN failed', r.error);
       return;
     }
