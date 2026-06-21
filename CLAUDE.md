@@ -30,8 +30,8 @@ No tests, linting, or formatting tools exist.
 | File | Role |
 |---|---|
 | `src/main.ts` | Electron main process — entry point. Loads config, creates window, registers IPC, contains OAuth flow, Drive-backed data helpers, session management. |
-| `src/modules/auth.ts` | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` / `requireAdminNoArgs()` IPC guards, 2FA rate limiter. |
-| `src/modules/crypto.ts` | Key derivation (`SHA-256("vault:" + googleId)`), AES-256-CBC + HMAC-SHA256 encrypt-then-MAC, backward-compatible CryptoJS legacy decryption. |
+| `src/modules/auth.ts` | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` IPC guards, 2FA rate limiter. |
+| `src/modules/crypto.ts` | Key derivation (PBKDF2-SHA256, 600k iterations, per-account salt; legacy SHA-256 fallback), AES-256-CBC + HMAC-SHA256 encrypt-then-MAC, backward-compatible CryptoJS legacy decryption. |
 | `src/modules/validation.ts` | Shared validators: `sanitizeStr`, `validType`, `validEmail`, `validTotpSecret`, `validDomain`. |
 | `src/modules/jobs.ts` | Job tracker CRUD — registered via `register()` pattern. Jobs stored as plaintext columns. |
 | `src/modules/totp.ts` | TOTP secret management (encrypted) — registered via `register()` pattern. |
@@ -94,7 +94,6 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
 - **Session token**: 256-bit random hex string stored in a preload closure (inaccessible to renderer DOM). Auto-prepended to all sensitive IPC calls.
 - **Validation**: `crypto.timingSafeEqual()` with safe fallback buffers to prevent timing attacks. 12-hour max token age.
 - **Rotation**: Token is regenerated on every auth event (login, 2FA verify, reauth). Cleared on logout/lock.
-- **Admin guard**: `requireAdminNoArgs` checks `session.email === ADMIN_EMAIL` (`ysmagri@gmail.com`, overridable via env var).
 - **2FA rate limiting**: 5 attempts per 15-minute sliding window, 15-minute lockout.
 
 ### PIN Authentication
@@ -192,7 +191,6 @@ Required in `.env` (gitignored):
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `REDIRECT_URI` (optional, defaults to `http://localhost:42813/oauth2callback`)
-- `ADMIN_EMAIL` (optional, defaults to `ysmagri@gmail.com`)
 
 App exits with a dialog if any required var is missing.
 

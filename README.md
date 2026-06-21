@@ -249,7 +249,6 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 Optional:
 ```env
 REDIRECT_URI=http://localhost:42813/oauth2callback
-ADMIN_EMAIL=your-email@gmail.com
 ```
 
 ### Google Cloud Setup

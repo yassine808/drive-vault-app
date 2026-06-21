@@ -100,7 +100,6 @@ export interface UserProfile {
   name: string;
   email: string;
   avatar: string | null;
-  isAdmin?: boolean;
   created_at?: string;
   last_seen?: string;
 }
@@ -109,7 +108,7 @@ export interface UserProfile {
 export interface AuthResult {
   ok: boolean;
   token?: string;
-  user?: UserProfile & { isAdmin?: boolean };
+  user?: UserProfile;
   needs2fa?: boolean;
   error?: string;
   vault?: VaultData;

@@ -74,7 +74,7 @@ import type { Session } from './types';
 
 const {
   genSessionToken, clearSession, setSession, getSession,
-  requireAuth, requireAuthNoArgs, requireAdminNoArgs,
+  requireAuth, requireAuthNoArgs,
   isRateLimited, recordFailedAttempt, resetRateLimit,
 } = authModule;
 
@@ -405,8 +405,7 @@ ipcMain.handle('auth:login', async () => {
     setSession(sess);
     playSound('login');
     logger.authLog('auth:login', 'Login success', { email: profile.email });
-    const isAdmin = profile.email === authModule.ADMIN_EMAIL;
-    return { ok: true, needs2fa: false, user: { name: profile.name, email: profile.email, avatar: profile.avatar, isAdmin }, token, vault };
+    return { ok: true, needs2fa: false, user: { name: profile.name, email: profile.email, avatar: profile.avatar }, token, vault };
   } catch (e: unknown) {
     const err = e as Error;
     logger.authLog('auth:login', 'Login failed', { message: err.message });
@@ -448,9 +447,8 @@ ipcMain.handle('auth:verify2fa', requireAuth(async (_e: electron.IpcMainInvokeEv
     const newToken = genSessionToken();
     const vault = await driveLoadItems(s.encKey);
     playSound('login');
-    const isAdmin = s.email === authModule.ADMIN_EMAIL;
     logger.authLog('auth:verify2fa', '2FA verified successfully', { email: s.email });
-    return { ok: true, token: newToken, vault, user: { name: s.name, email: s.email, avatar: s.avatar, isAdmin } };
+    return { ok: true, token: newToken, vault, user: { name: s.name, email: s.email, avatar: s.avatar } };
   } catch (e: unknown) {
     const err = e as Error;
     logger.error('auth:verify2fa', '2FA verification error', err.message);
@@ -517,9 +515,8 @@ ipcMain.handle('auth:reauth', async () => {
     setSession(sess);
     const token = genSessionToken();
     playSound('login');
-    const isAdmin = profile.email === authModule.ADMIN_EMAIL;
     logger.authLog('auth:reauth', 'Re-authentication success', { email: profile.email });
-    return { ok: true, user: { name: profile.name, email: profile.email, avatar: profile.avatar, isAdmin }, token, vault };
+    return { ok: true, user: { name: profile.name, email: profile.email, avatar: profile.avatar }, token, vault };
   } catch (e: unknown) {
     const err = e as Error;
     logger.authLog('auth:reauth', 'Re-authentication failed', { message: err.message });
@@ -589,9 +586,8 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { ve
     setSession(sess);
     const token = genSessionToken();
     playSound('login');
-    const isAdmin = email === authModule.ADMIN_EMAIL;
     logger.authLog('auth:loginWithPin', 'PIN login success', { email });
-    return { ok: true, user: { name: sess.name, email, avatar: null, isAdmin }, token, vault };
+    return { ok: true, user: { name: sess.name, email, avatar: null }, token, vault };
   } catch (e: unknown) {
     const err = e as Error;
     logger.authLog('auth:loginWithPin', 'PIN login failed', { message: err.message });

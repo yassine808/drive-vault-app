@@ -20,7 +20,7 @@ interface AppSettings extends Settings {
 }
 
 interface AppState {
-  user: (UserProfile & { isAdmin?: boolean }) | null | undefined;
+  user: UserProfile | null | undefined;
   passwords: VaultItem[];
   notes: VaultItem[];
   trash: Array<(VaultItem & { _type: string; _deletedAt: string }) | (Job & { _type: string; _deletedAt: string })>;

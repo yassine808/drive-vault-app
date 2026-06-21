@@ -2,10 +2,6 @@ import crypto from 'crypto';
 import type { Session } from '../types';
 
 const SESSION_TOKEN_MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
-if (!ADMIN_EMAIL) {
-  throw new Error('ADMIN_EMAIL environment variable must be set');
-}
 
 interface RateLimitState {
   attempts: number[];
@@ -90,21 +86,6 @@ function requireAuthNoArgs(fn: IpcMainHandler): IpcMainHandler {
   };
 }
 
-function requireAdminNoArgs(fn: IpcMainHandler): IpcMainHandler {
-  return async (event: Electron.IpcMainInvokeEvent, token: string) => {
-    if (!validateToken(token)) {
-      return { ok: false, error: 'Not authenticated' };
-    }
-    if (!_session || _session.email !== ADMIN_EMAIL) {
-      return { ok: false, error: 'Admin access required' };
-    }
-    try {
-      return await fn(event);
-    } catch {
-      return { ok: false, error: 'Operation failed' };
-    }
-  };
-}
 
 const rateLimit: RateLimitState = {
   attempts: [],
@@ -140,7 +121,6 @@ function resetRateLimit(): void {
 
 export {
   SESSION_TOKEN_MAX_AGE,
-  ADMIN_EMAIL,
   genSessionToken,
   validateToken,
   clearSession,
@@ -148,7 +128,6 @@ export {
   getSession,
   requireAuth,
   requireAuthNoArgs,
-  requireAdminNoArgs,
   isRateLimited,
   recordFailedAttempt,
   resetRateLimit,
