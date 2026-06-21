@@ -1715,11 +1715,19 @@ async function loadSettingsTab(): Promise<void> {
     toast('PIN deleted');
     logOk('pin', 'PIN deleted');
     _pinFileExists = false;
-    // Keep PIN login enabled — user can set a new one
-    if (pinSetupRow) pinSetupRow.hidden = false;
+    // Disable PIN login setting and clear saved account
+    S.settings.pin_login_enabled = false;
+    if (pinEnabledEl) pinEnabledEl.checked = false;
+    // Remove the saved account for this PIN user
+    api.accounts.remove().catch(() => {});
+    // Update UI: show setup row, hide change/delete rows
+    if (pinSetupRow) pinSetupRow.hidden = true;
     if (pinChangeRow) pinChangeRow.hidden = true;
     if (pinDeleteRow) pinDeleteRow.hidden = true;
     if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+    // Update PIN indicator in sidebar
+    var pinIndicator = document.getElementById('pin-indicator');
+    if (pinIndicator) pinIndicator.hidden = true;
     __saveSettings();
   });
 
