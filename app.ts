@@ -709,8 +709,8 @@ function updateCounts(): void {
         if (!files || files.length === 0) return;
         const paths: string[] = [];
         for (let i = 0; i < files.length; i++) {
-          const f = files[i] as File & { path?: string };
-          if (f.path) paths.push(f.path);
+          const p = api.getFilePath(files[i]);
+          if (p) paths.push(p);
         }
         if (paths.length === 0) { toast('Drop not supported — try the Add folder button'); return; }
         logInfo('sync', 'OS drop: ' + paths.length + ' item(s)', paths);

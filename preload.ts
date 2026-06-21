@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 let sessionToken: string | null = null;
 
@@ -238,6 +238,11 @@ contextBridge.exposeInMainWorld('api', {
       bridgeLog('call', 'accounts:removeById', true);
       return ipcRenderer.invoke('accounts:removeById', { googleId });
     },
+  },
+
+  getFilePath: (file: File) => {
+    bridgeLog('call', 'getFilePath', true);
+    return webUtils.getPathForFile(file);
   },
 
   onPlaySound: (cb: (type: string) => void) => ipcRenderer.on('play-sound', (_e, type) => cb(type)),
