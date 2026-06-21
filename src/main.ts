@@ -285,7 +285,9 @@ a{color:#a78bfa}
 </style>
 </head><body><div class="card"><h2>Authenticated!</h2><p>You can close this window.</p>
 <script nonce="${nonce}">
-setTimeout(()=>window.close(),5000);
+// Clean the URL bar — remove all query params for security
+	try { history.replaceState({}, document.title, window.location.pathname); } catch(e) {}
+	setTimeout(()=>window.close(),5000);
 </script>
 </div></body></html>`);
 
@@ -320,7 +322,8 @@ setTimeout(()=>window.close(),5000);
     });
     oauthServer.listen(42813, '127.0.0.1', () => {
       logger.authLog('oauth', 'OAuth server listening on 127.0.0.1:42813');
-      shell.openExternal('http://localhost:42813');
+      // Open Google auth directly — skip the intermediate redirect page
+      shell.openExternal(authUrl);
     });
     setTimeout(() => {
       try {

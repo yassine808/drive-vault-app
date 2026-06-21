@@ -206,6 +206,14 @@ contextBridge.exposeInMainWorld('api', {
       bridgeLog('call', 'sync:browse-folder', true);
       return ipcRenderer.invoke('sync:browse-folder', sessionToken);
     },
+    handleDrop: (paths: string[]) => {
+      bridgeLog('call', 'sync:handle-drop', true);
+      return ipcRenderer.invoke('sync:handle-drop', sessionToken, { paths });
+    },
+    getFileStates: () => {
+      bridgeLog('call', 'sync:file-states', true);
+      return ipcRenderer.invoke('sync:file-states', sessionToken);
+    },
     onStatusUpdate: (cb: (config: unknown) => void) => ipcRenderer.on('sync:status-update', (_e, config) => cb(config)),
   },
 

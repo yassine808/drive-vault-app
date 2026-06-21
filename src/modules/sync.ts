@@ -580,6 +580,15 @@ class SyncEngine {
     return loadConfig();
   }
 
+  getFolderState(folderId: string): SyncFolderState | null {
+    const state = loadState();
+    return state[folderId] || null;
+  }
+
+  getAllFolderStates(): Record<string, SyncFolderState> {
+    return loadState();
+  }
+
   // Start watching all enabled folders
   startWatching(): void {
     const config = loadConfig();
@@ -719,6 +728,49 @@ export function register(
       return { ok: false, canceled: true };
     }
     return { ok: true, path: result.filePaths[0] };
+  }));
+
+  // Get per-file sync state for all folders (for expandable file tree)
+  ipcMain.handle('sync:file-states', requireAuthNoArgs(async () => {
+    try {
+      return { ok: true, states: engine.getAllFolderStates() };
+    } catch (e) {
+      logError('sync:file-states', e);
+      return { ok: false, error: 'Failed to get file states' };
+    }
+  }));
+
+  // Handle OS-level file/folder drops into the sync panel
+  // Expects paths[] — each is an absolute local filesystem path from Electron's drag-and-drop
+  ipcMain.handle('sync:handle-drop', requireAuth(async (_e, { paths }: { paths: string[] }) => {
+    logger.ipcLog('sync:handle-drop', 'Handling dropped paths', { paths });
+    try {
+      const results: { path: string; ok: boolean; folderId?: string; error?: string }[] = [];
+      for (const p of paths) {
+        try {
+          const stat = fs.statSync(p);
+          if (stat.isDirectory()) {
+            const folder = engine.addFolder(p, path.basename(p));
+            results.push({ path: p, ok: true, folderId: folder.id });
+          } else if (stat.isFile()) {
+            // For files: create/sync the parent directory
+            const parentDir = path.dirname(p);
+            const folder = engine.addFolder(parentDir, path.basename(parentDir));
+            results.push({ path: p, ok: true, folderId: folder.id });
+          } else {
+            results.push({ path: p, ok: false, error: 'Not a file or directory' });
+          }
+        } catch (e) {
+          results.push({ path: p, ok: false, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      const added = results.filter(r => r.ok).length;
+      logger.success('sync:handle-drop', `Processed ${results.length} paths, ${added} added`);
+      return { ok: true, results };
+    } catch (e) {
+      logError('sync:handle-drop', e);
+      return { ok: false, error: 'Failed to process dropped items' };
+    }
   }));
 
   // Start watching on init

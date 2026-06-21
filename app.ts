@@ -107,11 +107,11 @@ function toast(msg: string, ms?: number): void {
 function show(id: string): void { (document.getElementById(id) as HTMLElement).hidden = false; }
 function hide(id: string): void { (document.getElementById(id) as HTMLElement).hidden = true; }
 
-// ── Modal blur: track overlay open/close to blur main content ──
+// ── Modal blur: track overlay open/close to blur sidebar + main (not titlebar) ──
 const _OVERLAY_IDS = ['modal-overlay', 'gen-overlay', 'job-overlay', 'totp-overlay', 'twofa-overlay', 'confirm-overlay'];
 function _updateModalBlur(): void {
   const anyOpen = _OVERLAY_IDS.some((id) => !(document.getElementById(id) as HTMLElement).hidden);
-  document.querySelector('.main')?.classList.toggle('modal-open', anyOpen);
+  document.querySelector('.screen')?.classList.toggle('modal-open', anyOpen);
 }
 function showOverlay(id: string): void { show(id); _updateModalBlur(); }
 function hideOverlay(id: string): void { hide(id); _updateModalBlur(); }
@@ -375,7 +375,7 @@ function selectPinAccount(account: { googleId: string; email: string; name: stri
   if (account.avatar && account.avatar.startsWith('https://')) {
     const img = document.createElement('img');
     img.className = 'pin-selected-avatar';
-    img.src = account.avatar;
+    img.src = account.avatar.split('?')[0];
     img.addEventListener('error', () => { img.remove(); avatarEl.className = 'pin-selected-avatar-fb'; avatarEl.textContent = (account.name || '?')[0].toUpperCase(); });
     avatarEl.appendChild(img);
   } else {
@@ -420,7 +420,7 @@ async function loadPinAccounts() {
       if (acct.avatar && acct.avatar.startsWith('https://')) {
         const img = document.createElement('img');
         img.className = 'pin-account-avatar';
-        img.src = acct.avatar;
+        img.src = acct.avatar.split('?')[0];
         img.addEventListener('error', () => {
           img.remove();
           const fb = document.createElement('div');
@@ -589,9 +589,14 @@ function enterApp(): void {
 function renderUserChip(): void {
   const u = S.user!; const init = (u.name || u.email || '?')[0].toUpperCase();
   const chip = document.getElementById('user-chip') as HTMLElement; chip.innerHTML = '';
-  if (u.avatar) {
+  if (u.avatar && u.avatar.startsWith('https://')) {
     const img = document.createElement('img'); img.className = 'avatar';
-    if (u.avatar.startsWith('https://') && (u.avatar.includes('googleusercontent.com') || u.avatar.includes('google.com'))) img.src = u.avatar;
+    img.src = u.avatar.split('?')[0];
+    img.addEventListener('error', () => {
+      img.remove();
+      const fb = document.createElement('div'); fb.className = 'avatar-fb'; fb.textContent = init;
+      chip.insertBefore(fb, chip.firstChild);
+    });
     chip.appendChild(img);
   } else {
     const fb = document.createElement('div'); fb.className = 'avatar-fb'; fb.textContent = init;
@@ -649,94 +654,171 @@ function updateCounts(): void {
     async function loadSyncTab() {
       logInfo('sync', 'Loading sync tab');
       await Promise.all([loadSyncFolders(), loadSyncActivity()]);
+      initSyncDropZone();
     }
+
+    // ── OS-level drag-and-drop: drop files/folders from Explorer onto sync panel ──
+    let _syncDropZoneInit = false;
+    function initSyncDropZone(): void {
+      if (_syncDropZoneInit) return;
+      _syncDropZoneInit = true;
+      const panel = document.querySelector('#tab-sync .sync-body') as HTMLElement;
+      if (!panel) return;
+      let dragCounter = 0;      // track nested dragenter/dragleave
+      let dropOverlay: HTMLElement | null = null;
+
+      panel.addEventListener('dragover', (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        return false;
+      });
+
+      // Use window-level dragenter/dragleave so we can detect when the drag leaves the tab entirely
+      window.addEventListener('dragenter', (e: DragEvent) => {
+        // Only activate when files are being dragged (not internal row reordering)
+        if (!e.dataTransfer || e.dataTransfer.types.indexOf('Files') === -1) return;
+        dragCounter++;
+        if (dragCounter === 1) {
+          // Create overlay
+          dropOverlay = document.createElement('div');
+          dropOverlay.className = 'sync-drop-overlay';
+          dropOverlay.innerHTML = '<div class="sync-drop-message"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px;color:var(--accent)"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg><strong>Drop to sync</strong><br/>Folders will be added as sync folders<br/>Files will sync from their parent directory</div>';
+          panel.appendChild(dropOverlay);
+        }
+      });
+
+      window.addEventListener('dragleave', (e: DragEvent) => {
+        if (!e.dataTransfer || e.dataTransfer.types.indexOf('Files') === -1) return;
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          if (dropOverlay) { dropOverlay.remove(); dropOverlay = null; }
+        }
+      });
+
+      window.addEventListener('drop', async (e: DragEvent) => {
+        // Clean up overlay
+        dragCounter = 0;
+        if (dropOverlay) { dropOverlay.remove(); dropOverlay = null; }
+        // Only handle file drops (not internal row reordering)
+        if (!e.dataTransfer || e.dataTransfer.types.indexOf('Files') === -1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const files = e.dataTransfer.files;
+        if (!files || files.length === 0) return;
+        const paths: string[] = [];
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i] as File & { path?: string };
+          if (f.path) paths.push(f.path);
+        }
+        if (paths.length === 0) { toast('Drop not supported — try the Add folder button'); return; }
+        logInfo('sync', 'OS drop: ' + paths.length + ' item(s)', paths);
+        const r = await api.sync.handleDrop(paths);
+        if (r.ok) {
+          const added = (r.results as { ok: boolean }[]).filter((x: { ok: boolean }) => x.ok).length;
+          toast(added + ' sync folder(s) added — syncing...');
+          loadSyncFolders();
+          api.sync.syncNow().then(() => { loadSyncFolders(); loadSyncActivity(); });
+        } else {
+          toast('Failed: ' + r.error);
+        }
+      });
+    }
+
+    // Per-file status cache (refreshed on each loadSyncFolders call)
+    let _fileStates: Record<string, Record<string, { conflict: string; localHash: string | null; driveHash: string | null }>> = {};
 
     async function loadSyncFolders() {
       const r = await api.sync.foldersList();
       if (!r.ok) { toast('Failed to load sync folders'); return; }
+      // Also fetch per-file states
+      const sr = await api.sync.getFileStates();
+      _fileStates = {};
+      if (sr.ok && sr.states) {
+        for (const [fid, fs] of Object.entries(sr.states as Record<string, { files: Record<string, { conflict: string; localHash: string | null; driveHash: string | null }> }>)) {
+          _fileStates[fid] = fs.files || {};
+        }
+      }
       const list = document.getElementById('sync-folders-list');
       const empty = document.getElementById('sync-empty');
       list.innerHTML = '';
       if (!r.folders.length) { empty.hidden = false; list.hidden = true; return; }
       empty.hidden = true; list.hidden = false;
       for (const folder of r.folders) {
-        const row = document.createElement('div');
-        row.className = 'sync-folder-row';
-        row.id = 'sync-folder-' + folder.id;
-        row.setAttribute('draggable', 'true');
-        row.dataset.folderId = folder.id;
-        const sc = folder.status === 'syncing' ? 'syncing' : folder.status === 'error' ? 'err' : folder.status === 'conflict' ? 'conflict' : 'idle';
-        const st = folder.status === 'syncing' ? 'Syncing...' : folder.status === 'error' ? (folder.errorMessage || 'Error') : folder.status === 'conflict' ? 'Conflict' : (folder.lastSyncedAt ? 'Synced ' + timeAgo(folder.lastSyncedAt) : 'Never synced');
+        const files = _fileStates[folder.id] || {};
+        const fileCount = Object.keys(files).length;
+        // Aggregate status from files
+        const hasConflict = Object.values(files).some(f => f.conflict && f.conflict !== 'none');
+        const allSynced = fileCount > 0 && Object.values(files).every(f => f.localHash && f.driveHash && f.localHash === f.driveHash);
+        const sc = folder.status === 'syncing' ? 'syncing' : folder.status === 'error' ? 'err' : hasConflict ? 'conflict' : 'idle';
+        const st = folder.status === 'syncing' ? 'Syncing...' : folder.status === 'error' ? (folder.errorMessage || 'Error') : hasConflict ? 'Conflict' : (folder.lastSyncedAt ? 'Synced ' + timeAgo(folder.lastSyncedAt) : 'Never synced');
         let statusIcon;
         if (folder.status === 'syncing') {
           statusIcon = '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
         } else if (folder.status === 'error') {
           statusIcon = '<span class="sync-status-icon sync-status-error">✗</span>';
-        } else if (folder.status === 'conflict') {
+        } else if (hasConflict) {
           statusIcon = '<span class="sync-status-icon sync-status-conflict">⚡</span>';
-        } else if (folder.lastSyncedAt) {
+        } else if (allSynced || folder.lastSyncedAt) {
           statusIcon = '<span class="sync-status-icon sync-status-synced">✓</span>';
         } else {
           statusIcon = '<span class="sync-status-icon"></span>';
         }
-        row.innerHTML = '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div class="sync-folder-info"><div class="sync-folder-path" title="' + escHtml(folder.localPath) + '">' + escHtml(folder.localPath) + '</div><div class="sync-folder-detail">→ Vault/' + escHtml(folder.driveFolderName) + '/ · <span class="sync-status ' + sc + '">' + escHtml(st) + '</span></div></div>' + statusIcon + '<div class="sync-folder-actions"><label class="toggle toggle-sm"><input type="checkbox" class="sync-folder-toggle" ' + (folder.enabled ? 'checked' : '') + ' data-folder-id="' + folder.id + '" /><span class="toggle-track"></span></label><button class="icon-btn sync-folder-remove" data-folder-id="' + folder.id + '" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
-        list.appendChild(row);
-      }
-      var dragSrcRow: HTMLElement | null = null;
-      list.querySelectorAll('.sync-folder-row').forEach(function(row) {
-        row.addEventListener('dragstart', function(e) {
-          dragSrcRow = row;
-          row.classList.add('dragging');
-          if (e.dataTransfer) {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', row.dataset.folderId || '');
-          }
-        });
-        row.addEventListener('dragover', function(e) {
-          if (e.preventDefault) e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-          if (dragSrcRow && dragSrcRow !== row) {
-            row.classList.add('drag-over');
-          }
-          return false;
-        });
-        row.addEventListener('dragleave', function() {
-          row.classList.remove('drag-over');
-        });
-        row.addEventListener('drop', function(e) {
-          if (e.preventDefault) e.preventDefault();
-          if (e.stopPropagation) e.stopPropagation();
-          row.classList.remove('drag-over');
-          if (!dragSrcRow || dragSrcRow === row) return;
-          var rect = row.getBoundingClientRect();
-          var midY = rect.top + rect.height / 2;
-          var listEl = row.parentElement;
-          if (e.clientY < midY) {
-            listEl.insertBefore(dragSrcRow, row);
+        const row = document.createElement('div');
+        row.className = 'sync-folder-row';
+        row.id = 'sync-folder-' + folder.id;
+        row.dataset.folderId = folder.id;
+        // Build folder row with expandable file tree
+        const expandId = 'sync-files-' + folder.id;
+        row.innerHTML = '<div class="sync-folder-drag"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.3"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div>'
+          + '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>'
+          + '<div class="sync-folder-info"><div class="sync-folder-path" title="' + escHtml(folder.localPath) + '">' + escHtml(folder.localPath) + '</div><div class="sync-folder-detail">→ Vault/' + escHtml(folder.driveFolderName) + '/ · <span class="sync-status ' + sc + '">' + escHtml(st) + '</span>' + (fileCount ? ' · ' + fileCount + ' file' + (fileCount !== 1 ? 's' : '') : '') + '</div></div>'
+          + statusIcon
+          + '<div class="sync-folder-actions"><button class="icon-btn sync-folder-expand" data-expand="' + expandId + '" title="Show files"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button><label class="toggle toggle-sm"><input type="checkbox" class="sync-folder-toggle" ' + (folder.enabled ? 'checked' : '') + ' data-folder-id="' + folder.id + '" /><span class="toggle-track"></span></label><button class="icon-btn sync-folder-remove" data-folder-id="' + folder.id + '" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
+        // File tree container (hidden by default)
+        const fileTree = document.createElement('div');
+        fileTree.className = 'sync-file-tree';
+        fileTree.id = expandId;
+        fileTree.hidden = true;
+        // Build file rows
+        const sortedFiles = Object.entries(files).sort((a, b) => a[0].localeCompare(b[0]));
+        for (const [relPath, fs] of sortedFiles) {
+          const fileRow = document.createElement('div');
+          fileRow.className = 'sync-file-row';
+          const fileName = relPath.split('/').pop() || relPath;
+          let fileIcon;
+          if (fs.conflict && fs.conflict !== 'none') {
+            fileIcon = '<span class="sync-status-icon sync-status-conflict">⚡</span>';
+          } else if (fs.localHash && fs.driveHash && fs.localHash === fs.driveHash) {
+            fileIcon = '<span class="sync-status-icon sync-status-synced">✓</span>';
+          } else if (fs.localHash || fs.driveHash) {
+            fileIcon = '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
           } else {
-            var next = row.nextSibling;
-            if (next) {
-              listEl.insertBefore(dragSrcRow, next);
-            } else {
-              listEl.appendChild(dragSrcRow);
-            }
+            fileIcon = '<span class="sync-status-icon"></span>';
           }
-          var newOrder: string[] = [];
-          listEl.querySelectorAll('.sync-folder-row').forEach(function(r) {
-            newOrder.push(r.dataset.folderId || '');
-          });
-          logInfo('sync', 'Folder reorder: ' + newOrder.join(', '));
-          dragSrcRow = null;
-          return false;
-        });
-        row.addEventListener('dragend', function() {
-          row.classList.remove('dragging');
-          list.querySelectorAll('.sync-folder-row').forEach(function(r) {
-            r.classList.remove('drag-over');
-          });
-          dragSrcRow = null;
+          fileRow.innerHTML = '<div class="sync-file-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="sync-file-name" title="' + escHtml(relPath) + '">' + escHtml(fileName) + '</div><div class="sync-file-detail">' + escHtml(relPath.includes('/') ? relPath.split('/').slice(0, -1).join('/') : '') + '</div>' + fileIcon;
+          fileTree.appendChild(fileRow);
+        }
+        if (!sortedFiles.length) {
+          fileTree.innerHTML = '<div class="sync-file-empty">No files synced yet</div>';
+        }
+        list.appendChild(row);
+        list.appendChild(fileTree);
+      }
+      // Expand/collapse handlers
+      list.querySelectorAll('.sync-folder-expand').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var expandId = btn.dataset.expand;
+          var tree = document.getElementById(expandId);
+          if (tree) {
+            var isOpen = !tree.hidden;
+            tree.hidden = isOpen;
+            btn.classList.toggle('expanded', !isOpen);
+          }
         });
       });
+      // Remove handlers
       list.querySelectorAll('.sync-folder-remove').forEach(function(btn) {
         btn.addEventListener('click', async function() {
           var id = btn.dataset.folderId;
@@ -749,9 +831,7 @@ function updateCounts(): void {
               okClass: 'btn-danger',
               onOk: function() { resolve(true); }
             });
-            // Wire cancel to resolve(false)
             var cancelBtn = document.getElementById('confirm-cancel');
-            var origOnclick = cancelBtn.onclick;
             cancelBtn.addEventListener('click', function handler() {
               cancelBtn.removeEventListener('click', handler);
               resolve(false);
@@ -762,14 +842,63 @@ function updateCounts(): void {
           if (res.ok) { toast('Folder removed'); loadSyncFolders(); } else { toast('Failed: ' + res.error); }
         });
       });
+      // Toggle handlers
       list.querySelectorAll('.sync-folder-toggle').forEach(function(input) {
-            input.addEventListener('change', async function() {
-              var folderId = input.dataset.folderId;
+        input.addEventListener('change', async function() {
+          var folderId = input.dataset.folderId;
           var toggleRes = await api.sync.foldersToggle(folderId, input.checked);
           if (toggleRes.ok) { toast(input.checked ? 'Folder enabled' : 'Folder disabled'); }
           else { toast('Failed: ' + toggleRes.error); input.checked = !input.checked; }
-            });
-          });
+        });
+      });
+      // Row reordering via drag handle
+      var dragSrcRow: HTMLElement | null = null;
+      list.querySelectorAll('.sync-folder-drag').forEach(function(handle) {
+        handle.addEventListener('dragstart', function(e) {
+          var row = handle.closest('.sync-folder-row') as HTMLElement;
+          dragSrcRow = row;
+          row.classList.add('dragging');
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.dataset.folderId || '');
+          }
+        });
+      });
+      list.querySelectorAll('.sync-folder-row').forEach(function(row) {
+        row.addEventListener('dragover', function(e) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          if (dragSrcRow && dragSrcRow !== row) row.classList.add('drag-over');
+          return false;
+        });
+        row.addEventListener('dragleave', function() { row.classList.remove('drag-over'); });
+        row.addEventListener('drop', function(e) {
+          if (e.preventDefault) e.preventDefault();
+          if (e.stopPropagation) e.stopPropagation();
+          row.classList.remove('drag-over');
+          if (!dragSrcRow || dragSrcRow === row) return;
+          var rect = row.getBoundingClientRect();
+          var listEl = row.parentElement;
+          if (e.clientY < rect.top + rect.height / 2) {
+            listEl.insertBefore(dragSrcRow, row);
+          } else {
+            var next = row.nextSibling as HTMLElement | null;
+            // Skip file-tree siblings
+            if (next && next.classList.contains('sync-file-tree')) next = next.nextSibling as HTMLElement | null;
+            if (next) { listEl.insertBefore(dragSrcRow, next); } else { listEl.appendChild(dragSrcRow); }
+          }
+          // Also move the file-tree after its folder row
+          var srcTree = document.getElementById('sync-files-' + dragSrcRow.dataset.folderId);
+          if (srcTree) { listEl.insertBefore(srcTree, dragSrcRow.nextSibling); }
+          dragSrcRow = null;
+          return false;
+        });
+        row.addEventListener('dragend', function() {
+          row.classList.remove('dragging');
+          list.querySelectorAll('.sync-folder-row').forEach(function(r) { r.classList.remove('drag-over'); });
+          dragSrcRow = null;
+        });
+      });
     }
 
     async function loadSyncActivity() {
@@ -893,15 +1022,18 @@ async function getLogo(site: string): Promise<string | null> {
 }
 
 // HIBP breach check — k-anonymity model with proper line-by-line suffix matching.
-// Cache stores parsed suffix sets (not raw text) to avoid false-positive substring matches.
-const breachCache: Record<string, Set<string>> = {};
-async function checkBreach(password: string): Promise<boolean> {
+// Cache stores parsed suffix maps (suffix → count) to avoid false-positive substring matches.
+const breachCache: Record<string, Map<string, number>> = {};
+async function checkBreach(password: string): Promise<{ breached: boolean; count: number }> {
   try {
     const sha1 = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(password));
     const hex = Array.from(new Uint8Array(sha1)).map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
     const prefix = hex.slice(0, 5), suffix = hex.slice(5);
     // Use cached result if available
-    if (breachCache[prefix] !== undefined) return breachCache[prefix].has(suffix);
+    if (breachCache[prefix] !== undefined) {
+      const count = breachCache[prefix].get(suffix) || 0;
+      return { breached: count > 0, count };
+    }
     // Fetch with retry for transient failures
     let text = '';
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -912,24 +1044,29 @@ async function checkBreach(password: string): Promise<boolean> {
         if (res.ok) { text = await res.text(); break; }
         if (res.status === 429) { await new Promise((r) => setTimeout(r, 1500 * (attempt + 1))); continue; }
         console.warn(`[breach] HIBP returned ${res.status} for prefix ${prefix}`);
-        return false;
+        return { breached: false, count: 0 };
       } catch (e) {
         if (attempt === 2) throw e;
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
-    // Parse response into a Set of suffixes for exact matching.
+    // Parse response into a Map of suffix → count.
     // Response format: each line is "SUFFIX:COUNT" where SUFFIX is 35 hex chars.
-    const suffixes = new Set<string>();
+    const suffixMap = new Map<string, number>();
     for (const line of text.split('\n')) {
       const idx = line.indexOf(':');
-      if (idx > 0) suffixes.add(line.slice(0, idx).trim().toUpperCase());
+      if (idx > 0) {
+        const s = line.slice(0, idx).trim().toUpperCase();
+        const count = parseInt(line.slice(idx + 1).trim(), 10) || 0;
+        suffixMap.set(s, count);
+      }
     }
-    breachCache[prefix] = suffixes;
-    return suffixes.has(suffix);
+    breachCache[prefix] = suffixMap;
+    const count = suffixMap.get(suffix) || 0;
+    return { breached: count > 0, count };
   } catch (e) {
     console.warn('[breach] checkBreach failed:', e);
-    return false;
+    return { breached: false, count: 0 };
   }
 }
 
@@ -994,9 +1131,15 @@ function renderPasswords(): void {
       });
       el.appendChild(img);
     });
-    checkBreach(pw.password || '').then((breached) => {
+    checkBreach(pw.password || '').then(({ breached, count }) => {
       const b = document.getElementById('breach-' + pw.id) as HTMLElement;
-      if (b) b.hidden = !breached;
+      if (b) {
+        b.hidden = !breached;
+        if (breached && count > 0) {
+          b.textContent = count >= 100000 ? '⚠️ breached (100k+ times)' : `⚠️ breached (${count.toLocaleString()} times)`;
+          b.title = `This password has appeared ${count.toLocaleString()} times in known data breaches`;
+        }
+      }
     });
     eyeBtn.addEventListener('mousedown', () => {
       hidSpan.hidden = true; revSpan.hidden = false; smWrap.hidden = false;
