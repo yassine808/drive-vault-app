@@ -107,8 +107,25 @@ function dec(str: string, key: string): Record<string, unknown> | null {
   } catch { return null; }
 }
 
+/**
+ * Decrypt with automatic fallback: tries the PBKDF2 key first, then falls
+ * back to the legacy SHA-256 key. This allows reading data that was
+ * encrypted before per-account salts were introduced.
+ */
+function decWithFallback(str: string, googleId: string, userSaltHex?: string): Record<string, unknown> | null {
+  // Try strong key first (PBKDF2 with salt)
+  if (userSaltHex) {
+    const strongKey = deriveKey(googleId, userSaltHex);
+    const result = dec(str, strongKey);
+    if (result) return result;
+  }
+  // Fallback: legacy SHA-256 key (no salt)
+  const legacyKey = deriveKey(googleId);
+  return dec(str, legacyKey);
+}
+
 function derivePinKey(pin: string, salt: Buffer, iterations: number = 600000): string {
   return crypto.pbkdf2Sync(pin, salt, iterations, 32, 'sha256').toString('hex');
 }
 
-export { deriveKey, generateUserSalt, derivePinKey, enc, dec, setCryptoJS };
+export { deriveKey, generateUserSalt, derivePinKey, enc, dec, decWithFallback, setCryptoJS };

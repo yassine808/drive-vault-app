@@ -68,7 +68,7 @@ let oauth2Client: any = null;
 import { consumePinVerify } from './modules/pin';
 
 import * as authModule from './modules/auth';
-import { deriveKey, generateUserSalt, enc, dec, setCryptoJS } from './modules/crypto';
+import { deriveKey, generateUserSalt, enc, dec, decWithFallback, setCryptoJS } from './modules/crypto';
 import * as validation from './modules/validation';
 import type { Session } from './types';
 
@@ -92,24 +92,33 @@ type GoogleProfile = {
 
 // ── Drive-backed data operations ──
 
-async function driveLoadItems(encKey: string): Promise<{ passwords: Record<string, unknown>[]; notes: Record<string, unknown>[] }> {
+async function driveLoadItems(encKey: string, googleId?: string, userSalt?: string): Promise<{ passwords: Record<string, unknown>[]; notes: Record<string, unknown>[] }> {
   logger.db('driveLoadItems', 'Loading vault items from cache');
   if (!driveClient) throw new Error('Drive not initialized');
 
   // Force-flush any pending changes first
   await driveClient.syncToDrive();
 
+  // Use decWithFallback if we have salt info — tries PBKDF2 key first,
+  // falls back to legacy SHA-256 key for items encrypted before salt was added.
+  const decryptFn = (data: string) => {
+    if (googleId && userSalt) {
+      return decWithFallback(data, googleId, userSalt);
+    }
+    return dec(data, encKey);
+  };
+
   const passwords: Record<string, unknown>[] = [], notes: Record<string, unknown>[] = [];
 
   for (const item of driveClient.loadItems('password')) {
-    const decrypted = dec(item.encryptedData, encKey);
+    const decrypted = decryptFn(item.encryptedData);
     if (!decrypted) { logger.warn('driveLoadItems', 'Failed to decrypt password', { id: item.id }); continue; }
     (decrypted as Record<string, unknown>)._localId = item.id;
     (decrypted as Record<string, unknown>)._sort = item.sortOrder;
     passwords.push(decrypted as Record<string, unknown>);
   }
   for (const item of driveClient.loadItems('note')) {
-    const decrypted = dec(item.encryptedData, encKey);
+    const decrypted = decryptFn(item.encryptedData);
     if (!decrypted) { logger.warn('driveLoadItems', 'Failed to decrypt note', { id: item.id }); continue; }
     (decrypted as Record<string, unknown>)._localId = item.id;
     (decrypted as Record<string, unknown>)._sort = item.sortOrder;
@@ -400,7 +409,7 @@ ipcMain.handle('auth:login', async () => {
       return { ok: true, needs2fa: true, user: { name: profile.name, email: profile.email, avatar: profile.avatar } };
     }
     const token = genSessionToken();
-    const vault = await driveLoadItems(encKey);
+    const vault = await driveLoadItems(encKey, profile.googleId, userSalt);
     const sess = { ...profile, userId: profile.googleId, encKey, pending2fa: false };
     setSession(sess);
     playSound('login');
@@ -445,7 +454,7 @@ ipcMain.handle('auth:verify2fa', requireAuth(async (_e: electron.IpcMainInvokeEv
     s.pending2fa = false;
     setSession(s);
     const newToken = genSessionToken();
-    const vault = await driveLoadItems(s.encKey);
+    const vault = await driveLoadItems(s.encKey, s.googleId);
     playSound('login');
     logger.authLog('auth:verify2fa', '2FA verified successfully', { email: s.email });
     return { ok: true, token: newToken, vault, user: { name: s.name, email: s.email, avatar: s.avatar } };
@@ -510,7 +519,7 @@ ipcMain.handle('auth:reauth', async () => {
     driveClient.cache.settings = { ...driveClient.cache.settings, userSalt: userSalt2 };
     cacheMod2.saveCache(driveClient.cache);
 
-    const vault = await driveLoadItems(encKey);
+    const vault = await driveLoadItems(encKey, profile.googleId, userSalt2);
     const sess = { ...profile, userId: profile.googleId, encKey, pending2fa: false };
     setSession(sess);
     const token = genSessionToken();
@@ -581,7 +590,7 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { ve
     driveClient.cache.settings = { ...driveClient.cache.settings, userSalt: pinSalt };
     pinCacheMod.saveCache(driveClient.cache);
 
-    const vault = await driveLoadItems(encKey);
+    const vault = await driveLoadItems(encKey, googleId, pinSalt);
     const sess: Session = { googleId, email, name: email.split('@')[0], avatar: null as string | null, userId: googleId, encKey, pending2fa: false };
     setSession(sess);
     const token = genSessionToken();
@@ -623,7 +632,10 @@ ipcMain.handle('vault:sync', requireAuthNoArgs(async () => {
   logger.ipcLog('vault:sync', 'Syncing vault');
   try {
     if (driveClient) await driveClient.syncToDrive();
-    const vault = await driveLoadItems(s.encKey);
+    const syncCacheMod = await import('./modules/cache');
+    const syncCached = syncCacheMod.loadCache(s.googleId);
+    const syncSalt = (syncCached.settings as Record<string, unknown>)?.userSalt as string | undefined;
+    const vault = await driveLoadItems(s.encKey, s.googleId, syncSalt);
     logger.success('vault:sync', 'Vault synced', { passwords: vault.passwords.length, notes: vault.notes.length });
     return { ok: true, vault };
   } catch (e: unknown) { logError('vault:sync', e); return { ok: false, error: 'Operation failed' }; }
