@@ -104,6 +104,41 @@ function fileExists(): boolean {
   try { return fs.existsSync(getKeyfilePath()); } catch { return false; }
 }
 
+// ── PIN meta file (stores which googleId has a PIN, unencrypted) ──
+// This is not sensitive — it only records that a PIN exists for a given googleId.
+// The actual PIN hash and user key remain encrypted in vault_user_key.
+function getMetafilePath(): string {
+  const userData = _userDataPath
+    || process.env.APPDATA
+    || (process.platform === 'darwin'
+      ? path.join(process.env.HOME || '', 'Library', 'Application Support')
+      : path.join(process.env.HOME || '', '.config'));
+  const dir = path.join(userData, 'Vault');
+  try { fs.mkdirSync(dir, { recursive: true }); } catch { /* noop */ }
+  return path.join(dir, 'vault_pin_meta');
+}
+
+function getPinGoogleId(): string | null {
+  try {
+    const raw = fs.readFileSync(getMetafilePath(), 'utf8');
+    const data = JSON.parse(raw);
+    return typeof data.googleId === 'string' ? data.googleId : null;
+  } catch { return null; }
+}
+
+function setPinGoogleId(googleId: string): void {
+  try {
+    fs.writeFileSync(getMetafilePath(), JSON.stringify({ googleId }));
+  } catch { /* noop */ }
+}
+
+function clearPinGoogleId(): void {
+  try {
+    const p = getMetafilePath();
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  } catch { /* noop */ }
+}
+
 // ── PIN validation ──
 function validatePin(pin: string, allowAlpha: boolean): string | null {
   if (!pin || typeof pin !== 'string') return 'PIN is required';
@@ -161,6 +196,7 @@ function register(
 
       const fileData = JSON.stringify({ version: 1, salt: salt.toString('base64'), data: encrypted });
       fs.writeFileSync(getKeyfilePath(), fileData);
+      setPinGoogleId(session.googleId);
 
       logger.authLog('pin:setup', 'PIN configured successfully', { email: session.email });
       logger.success('pin:setup', 'User key file created');
@@ -310,6 +346,7 @@ function register(
       const session = getSession();
       if (fileExists()) {
         fs.unlinkSync(getKeyfilePath());
+        clearPinGoogleId();
         logger.authLog('pin:disable', 'PIN disabled', { email: session?.email });
         logger.success('pin:disable', 'User key file deleted');
       } else {
@@ -339,4 +376,4 @@ function register(
 
 }
 
-export { register, fileExists, setUserDataPath, consumePinVerify };
+export { register, fileExists, setUserDataPath, consumePinVerify, getPinGoogleId, setPinGoogleId, clearPinGoogleId };

@@ -1006,6 +1006,33 @@ html, body {
   transition: all var(--t-base);
   animation: fadeUp var(--t-base) ease;
   min-width: 80px;
+  position: relative;
+}
+.pin-account-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--red-dim);
+  border: 1px solid oklch(0.72 0.14 25 / 0.3);
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t-fast), background var(--t-fast);
+  z-index: 2;
+  padding: 0;
+}
+.pin-account-item:hover .pin-account-remove {
+  opacity: 1;
+}
+.pin-account-remove:hover {
+  background: var(--red);
+  color: var(--bg);
 }
 .pin-account-item:hover {
   background: var(--bg-raised);

@@ -226,6 +226,10 @@ contextBridge.exposeInMainWorld('api', {
       bridgeLog('call', 'accounts:touch', true);
       return ipcRenderer.invoke('accounts:touch', { googleId });
     },
+    removeById: (googleId: string) => {
+      bridgeLog('call', 'accounts:removeById', true);
+      return ipcRenderer.invoke('accounts:removeById', { googleId });
+    },
   },
 
   onPlaySound: (cb: (type: string) => void) => ipcRenderer.on('play-sound', (_e, type) => cb(type)),

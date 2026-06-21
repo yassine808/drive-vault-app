@@ -420,6 +420,55 @@ async function loadPinAccounts() {
       emailEl.className = 'pin-account-email';
       emailEl.textContent = acct.email;
       item.appendChild(emailEl);
+      // Add remove button (X) on the account avatar
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'pin-account-remove';
+      removeBtn.title = 'Remove account';
+      removeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      removeBtn.addEventListener('click', async function(e: Event) {
+        e.stopPropagation();
+        e.preventDefault();
+        var confirmed = await new Promise<boolean>(function(resolve) {
+          var overlay = document.getElementById('confirm-overlay');
+          var title = document.getElementById('confirm-title');
+          var msg = document.getElementById('confirm-msg');
+          var okBtn = document.getElementById('confirm-ok');
+          var cancelBtn = document.getElementById('confirm-cancel');
+          var icon = document.getElementById('confirm-icon');
+          title.textContent = 'Remove account?';
+          msg.textContent = 'Remove ' + acct.email + ' from the quick login list?';
+          icon.textContent = '✕';
+          okBtn.textContent = 'Remove';
+          okBtn.className = 'btn-danger';
+          overlay.hidden = false;
+          var cleanup = function() {
+            overlay.hidden = true;
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+          };
+          var onOk = function() { cleanup(); resolve(true); };
+          var onCancel = function() { cleanup(); resolve(false); };
+          okBtn.addEventListener('click', onOk);
+          cancelBtn.addEventListener('click', onCancel);
+        });
+        if (!confirmed) return;
+        var res = await api.accounts.removeById(acct.googleId);
+        if (res.ok) {
+          item.remove();
+          toast('Account removed');
+          // Check if no accounts left
+          var remaining = list.querySelectorAll('.pin-account-item');
+          if (remaining.length === 0) {
+            hide('pin-accounts');
+            show('pin-user-label');
+            show('pin-input-area');
+            _selectedAccount = null;
+          }
+        } else {
+          toast('Failed to remove account');
+        }
+      });
+      item.appendChild(removeBtn);
       item.addEventListener('click', () => selectPinAccount(acct));
       list.appendChild(item);
     }
@@ -509,8 +558,10 @@ function enterApp(): void {
   logInfo('app', 'Entering app screen');
   screen('s-app'); renderUserChip();
   switchTab('passwords'); armLock();
-  // Save account for quick PIN login
-  api.accounts.save().catch(() => {});
+  // Save account for quick PIN login — only if PIN login is enabled
+  if (S.settings.pin_login_enabled) {
+    api.accounts.save().catch(() => {});
+  }
 }
 function renderUserChip(): void {
   const u = S.user!; const init = (u.name || u.email || '?')[0].toUpperCase();
@@ -597,17 +648,36 @@ function updateCounts(): void {
 	  list.querySelectorAll('.sync-folder-remove').forEach(function(btn) {
 	    btn.addEventListener('click', async function() {
 	      var id = btn.dataset.folderId;
-	      var ok = await confirm('Remove this sync folder? Files on your PC and Drive will NOT be deleted.');
-	      if (!ok) return;
+	      var confirmed = await new Promise<boolean>(function(resolve) {
+	        confirm({
+	          title: 'Remove sync folder?',
+	          msg: 'Files on your PC and Drive will NOT be deleted. Only the sync mapping will be removed.',
+	          icon: '⚠️',
+	          okLabel: 'Remove',
+	          okClass: 'btn-danger',
+	          onOk: function() { resolve(true); }
+	        });
+	        // Wire cancel to resolve(false)
+	        var cancelBtn = document.getElementById('confirm-cancel');
+	        var origOnclick = cancelBtn.onclick;
+	        cancelBtn.addEventListener('click', function handler() {
+	          cancelBtn.removeEventListener('click', handler);
+	          resolve(false);
+	        });
+	      });
+	      if (!confirmed) return;
 	      var res = await api.sync.foldersRemove(id);
 	      if (res.ok) { toast('Folder removed'); loadSyncFolders(); } else { toast('Failed: ' + res.error); }
 	    });
 	  });
 	  list.querySelectorAll('.sync-folder-toggle').forEach(function(input) {
-	    input.addEventListener('change', async function() {
-	      toast(input.checked ? 'Folder enabled' : 'Folder disabled');
-	    });
-	  });
+		    input.addEventListener('change', async function() {
+		      var folderId = input.dataset.folderId;
+	      var toggleRes = await api.sync.foldersToggle(folderId, input.checked);
+	      if (toggleRes.ok) { toast(input.checked ? 'Folder enabled' : 'Folder disabled'); }
+	      else { toast('Failed: ' + toggleRes.error); input.checked = !input.checked; }
+		    });
+		  });
 	}
 
 	async function loadSyncActivity() {
@@ -666,10 +736,51 @@ function updateCounts(): void {
 	  logInfo('sync', 'Add folder clicked');
 	  var res = await api.sync.browseFolder();
 	  if (!res.ok || !res.path) return;
-	  var defaultName = res.path.split(/[\\/]/).filter(Boolean).pop() || 'Folder';
-	  var driveName = prompt('Name for this folder on Drive:', defaultName);
+	  var defaultName = res.path.split(/[\/]/).filter(Boolean).pop() || 'Folder';
+	  // Use custom confirm modal with an inline input instead of window.prompt
+	  var driveName = await new Promise<string | null>(function(resolve) {
+	    var overlay = document.getElementById('confirm-overlay');
+	    var title = document.getElementById('confirm-title');
+	    var msg = document.getElementById('confirm-msg');
+	    var okBtn = document.getElementById('confirm-ok');
+	    var cancelBtn = document.getElementById('confirm-cancel');
+	    var icon = document.getElementById('confirm-icon');
+	    title.textContent = 'Name on Drive';
+	    msg.textContent = 'Choose a name for this folder on Google Drive:';
+	    icon.textContent = '📁';
+	    okBtn.textContent = 'Add folder';
+	    okBtn.className = 'btn-primary';
+	    var inputId = 'sync-folder-name-input';
+	    var existing = document.getElementById(inputId);
+	    if (existing) existing.remove();
+	    var inp = document.createElement('input');
+	    inp.id = inputId;
+	    inp.className = 'fi';
+	    inp.style.cssText = 'width:100%;margin-top:10px;text-align:center;font-size:14px;';
+	    inp.value = defaultName;
+	    inp.placeholder = 'Folder name';
+	    msg.appendChild(inp);
+	    overlay.hidden = false;
+	    setTimeout(function() { inp.focus(); inp.select(); }, 60);
+	    var cleanup = function() {
+	      overlay.hidden = true;
+	      inp.remove();
+	      okBtn.removeEventListener('click', onOk);
+	      cancelBtn.removeEventListener('click', onCancel);
+	      document.removeEventListener('keydown', onKey);
+	    };
+	    var onOk = function() { cleanup(); resolve(inp.value.trim() || defaultName); };
+	    var onCancel = function() { cleanup(); resolve(null); };
+	    var onKey = function(e: KeyboardEvent) {
+	      if (e.key === 'Enter') onOk();
+	      if (e.key === 'Escape') onCancel();
+	    };
+	    okBtn.addEventListener('click', onOk);
+	    cancelBtn.addEventListener('click', onCancel);
+	    document.addEventListener('keydown', onKey);
+	  });
 	  if (driveName === null) return;
-	  var addRes = await api.sync.foldersAdd(res.path, driveName || defaultName);
+	  var addRes = await api.sync.foldersAdd(res.path, driveName);
 	  if (addRes.ok) { toast('Folder added — syncing...'); api.sync.syncNow().then(function() { loadSyncFolders(); loadSyncActivity(); }); loadSyncFolders(); }
 	  else { toast('Failed: ' + addRes.error); }
 	});

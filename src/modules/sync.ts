@@ -677,6 +677,18 @@ export function register(
     }
   }));
 
+  ipcMain.handle('sync:folders:toggle', requireAuth(async (_e, { folderId, enabled }: { folderId: string; enabled: boolean }) => {
+    logger.ipcLog('sync:folders:toggle', 'Toggling sync folder', { folderId, enabled });
+    try {
+      engine.toggleFolder(folderId, enabled);
+      logger.success('sync:folders:toggle', 'Sync folder toggled');
+      return { ok: true };
+    } catch (e) {
+      logError('sync:folders:toggle', e);
+      return { ok: false, error: 'Failed to toggle sync folder' };
+    }
+  }));
+
   ipcMain.handle('sync:status', requireAuthNoArgs(async () => {
     try {
       return { ok: true, config: engine.getConfig() };

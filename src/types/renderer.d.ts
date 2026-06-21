@@ -60,6 +60,7 @@ export interface PreloadApi {
     save(): Promise<{ ok: boolean; error?: string }>;
     remove(): Promise<{ ok: boolean; error?: string }>;
     touch(googleId: string): Promise<{ ok: boolean }>;
+    removeById(googleId: string): Promise<{ ok: boolean; error?: string }>;
   };
 
   onPlaySound(cb: (type: string) => void): void;

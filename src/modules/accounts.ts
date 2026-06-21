@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import type Electron from 'electron';
+import { getPinGoogleId } from './pin';
 
 type Logger = {
   dbLog: (ctx: string, msg: string, data?: unknown) => void;
@@ -71,13 +72,21 @@ function register(
   logError: LogError,
 ) {
   // ── accounts:list — no auth required (shown on PIN screen)
+  // Only returns accounts that have a PIN configured
   ipcMain.handle('accounts:list', async () => {
     logger.ipcLog('accounts:list', 'Listing saved accounts');
     try {
       const accounts = loadAccounts();
       // Sort by lastUsed descending
       accounts.sort((a, b) => b.lastUsed - a.lastUsed);
-      return { ok: true, accounts };
+      // Filter: only show accounts that have a PIN set
+      const pinGoogleId = getPinGoogleId();
+      if (pinGoogleId) {
+        const filtered = accounts.filter(a => a.googleId === pinGoogleId);
+        return { ok: true, accounts: filtered };
+      }
+      // No PIN configured — return empty list
+      return { ok: true, accounts: [] };
     } catch (e: unknown) {
       const err = e as Error;
       logger.error('accounts:list', 'Failed', err.message);
@@ -151,6 +160,30 @@ function register(
       return { ok: false, error: 'Failed to remove account' };
     }
   }));
+
+  // ── accounts:removeById — no auth (removes a saved account by googleId from PIN screen)
+  ipcMain.handle('accounts:removeById', async (_e: Electron.IpcMainInvokeEvent, { googleId }: { googleId: string }) => {
+    logger.ipcLog('accounts:removeById', 'Removing account by ID', { googleId: googleId?.slice(0, 8) });
+    try {
+      if (typeof googleId !== 'string' || !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)) {
+        return { ok: false, error: 'Invalid account ID' };
+      }
+      let accounts = loadAccounts();
+      const before = accounts.length;
+      accounts = accounts.filter(a => a.googleId !== googleId);
+      if (accounts.length === before) {
+        return { ok: false, error: 'Account not found' };
+      }
+      writeAccounts(accounts);
+      logger.success('accounts:removeById', 'Account removed', { googleId: googleId.slice(0, 8) });
+      return { ok: true };
+    } catch (e: unknown) {
+      const err = e as Error;
+      logger.error('accounts:removeById', 'Failed', err.message);
+      logError('accounts:removeById', err);
+      return { ok: false, error: 'Failed to remove account' };
+    }
+  });
 
   // ── accounts:touch — no auth (updates lastUsed when PIN login succeeds)
   ipcMain.handle('accounts:touch', async (_e: Electron.IpcMainInvokeEvent, { googleId }: { googleId: string }) => {
