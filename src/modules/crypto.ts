@@ -17,8 +17,34 @@ function setCryptoJS(lib: typeof globalThis.CryptoJS): void {
   _CryptoJS = lib;
 }
 
-function deriveKey(googleId: string): string {
+/**
+ * Derive encryption key from googleId + optional per-account salt.
+ *
+ * Migration:
+ *   - Old accounts (no salt): single SHA-256 hash — fast but weak.
+ *   - New accounts (with salt): PBKDF2-SHA256, 600k iterations, 32-byte key.
+ *   On first login after salt is introduced, the salt is generated, stored
+ *   inside the encrypted user metadata (settings), and all data is
+ *   re-encrypted lazily on next save. The deriveKey function detects
+ *   the old format by checking whether a salt is available.
+ */
+const KEY_DERIVE_ITERATIONS = 600_000;
+
+function deriveKey(googleId: string, userSaltHex?: string): string {
+  if (userSaltHex) {
+    // PBKDF2 path — strong
+    const saltBuf = Buffer.from(userSaltHex, 'hex');
+    return crypto.pbkdf2Sync(googleId, saltBuf, KEY_DERIVE_ITERATIONS, 32, 'sha256').toString('hex');
+  }
+  // Legacy path — single SHA-256 (kept for backward compat during migration)
   return crypto.createHash('sha256').update('vault:' + googleId).digest('hex').slice(0, 32);
+}
+
+/**
+ * Generate a new per-account salt (32 bytes hex). Call once per account.
+ */
+function generateUserSalt(): string {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 interface DerivedKeys {
@@ -85,4 +111,4 @@ function derivePinKey(pin: string, salt: Buffer, iterations: number = 600000): s
   return crypto.pbkdf2Sync(pin, salt, iterations, 32, 'sha256').toString('hex');
 }
 
-export { deriveKey, derivePinKey, enc, dec, setCryptoJS };
+export { deriveKey, generateUserSalt, derivePinKey, enc, dec, setCryptoJS };

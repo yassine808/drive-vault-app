@@ -2,7 +2,10 @@ import crypto from 'crypto';
 import type { Session } from '../types';
 
 const SESSION_TOKEN_MAX_AGE = 12 * 60 * 60 * 1000; // 12 hours
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'ysmagri@gmail.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+if (!ADMIN_EMAIL) {
+  throw new Error('ADMIN_EMAIL environment variable must be set');
+}
 
 interface RateLimitState {
   attempts: number[];
@@ -27,10 +30,13 @@ function validateToken(token: string): boolean {
   if (!_sessionToken) return false;
   if (typeof token !== 'string' || token.length !== 64) return false;
   try {
-    const a = Buffer.from(token, 'hex');
+    // Always create both buffers — use a dummy if token length is wrong
+    // so that timingSafeEqual always runs with same-length args.
+    const a = token.length === 64 ? Buffer.from(token, 'hex') : Buffer.alloc(32);
     const b = Buffer.from(_sessionToken, 'hex');
-    if (a.length !== b.length) return false;
-    if (!crypto.timingSafeEqual(a, b)) return false;
+    // Timing-safe comparison regardless of input length
+    const match = crypto.timingSafeEqual(a, b);
+    if (!match) return false;
     if (Date.now() - _sessionTokenCreated > SESSION_TOKEN_MAX_AGE) {
       _sessionToken = null;
       return false;

@@ -39,7 +39,7 @@ type SubfolderType = keyof typeof SUBFOLDERS;
  */
 export class DriveClient {
   private drive: drive_v3.Drive | null = null;
-  private cache: CacheData;
+  cache: CacheData;
   private cacheDirty = false;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncInProgress = false;
@@ -636,7 +636,15 @@ export class DriveClient {
         { fileId, alt: 'media' },
         { responseType: 'arraybuffer' }
       );
-      const data = JSON.parse(Buffer.from(res.data as ArrayBuffer).toString('utf8'));
+      const raw = Buffer.from(res.data as ArrayBuffer).toString('utf8');
+      // Support both plain JSON (new format) and base64-encoded JSON (legacy)
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        // Legacy: base64-encoded JSON
+        data = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+      }
       this.cache.settings = data;
       return data;
     } catch {
@@ -646,7 +654,7 @@ export class DriveClient {
 
   async saveSettings(settings: Record<string, unknown>): Promise<void> {
     this.cache.settings = settings;
-    const content = Buffer.from(JSON.stringify(settings, null, 2), 'utf8').toString('base64');
+    const content = JSON.stringify(settings, null, 2);
 
     if (!this.drive) {
       cache.saveCache(this.cache);

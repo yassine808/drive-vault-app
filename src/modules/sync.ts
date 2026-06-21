@@ -55,8 +55,88 @@ function shouldIgnore(fileName: string): boolean {
   return IGNORE_PATTERNS.some(p => p.test(fileName));
 }
 
+const RESERVED_NAMES_WINDOWS = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+
 function sanitizeDriveFolderName(name: string): string {
-  return name.replace(/[\/\\<>:|"?*\x00-\x1f]/g, '_').slice(0, 64);
+  if (typeof name !== 'string') {
+    throw new Error('Folder name must be a string');
+  }
+
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    throw new Error('Folder name cannot be empty');
+  }
+  if (trimmed.length > 128) {
+    throw new Error('Folder name cannot exceed 128 characters');
+  }
+
+  // Check for reserved names (Windows)
+  const baseName = trimmed.split('.')[0].toUpperCase();
+  if (RESERVED_NAMES_WINDOWS.includes(baseName)) {
+    throw new Error(`"${trimmed}" is a reserved folder name`);
+  }
+
+  // Remove dangerous characters
+  let sanitized = trimmed.replace(/[\/\\<>:|"?*\x00-\x1f]/g, '_');
+
+  // Prevent directory traversal patterns
+  sanitized = sanitized.replace(/\.{2,}/g, '_');
+
+  return sanitized;
+}
+
+/**
+ * Validate a sync folder path: resolve symlinks, check it's within the
+ * user's home directory, and block sensitive system paths.
+ */
+function validateSyncPath(inputPath: string): { ok: boolean; error?: string; realPath?: string } {
+  try {
+    // Resolve symlinks and normalize
+    const realPath = fs.realpathSync(inputPath);
+
+    // Check exists and is directory
+    const stat = fs.statSync(realPath);
+    if (!stat.isDirectory()) {
+      return { ok: false, error: 'Path must be a directory' };
+    }
+
+    // Whitelist: only home directory and common user folders
+    const homeDir = os.homedir();
+    if (!realPath.startsWith(homeDir)) {
+      return { ok: false, error: 'Can only sync folders within your home directory' };
+    }
+
+    // Blacklist: sensitive system paths (cross-platform)
+    const forbidden = process.platform === 'win32'
+      ? [
+          'C:\\Windows',
+          'C:\\Program Files',
+          'C:\\Program Files (x86)',
+          'C:\\ProgramData',
+          'C:\\$Recycle.Bin',
+          path.join(homeDir, 'AppData\\Roaming\\Microsoft'),
+          path.join(homeDir, 'AppData\\Local\\Temp'),
+        ]
+      : [
+          '/System',
+          '/Library',
+          '/etc',
+          '/var',
+          '/usr/bin',
+          '/usr/local/bin',
+          path.join(homeDir, '.ssh'),
+          path.join(homeDir, '.gnupg'),
+          path.join(homeDir, '.aws'),
+        ];
+
+    if (forbidden.some(f => realPath.startsWith(path.resolve(f)))) {
+      return { ok: false, error: 'Cannot sync restricted system directories' };
+    }
+
+    return { ok: true, realPath };
+  } catch (e) {
+    return { ok: false, error: 'Invalid path or access denied' };
+  }
 }
 
 async function computeFileHash(filePath: string): Promise<string> {
@@ -335,6 +415,9 @@ class SyncEngine {
             detail: 'Changed on both sides',
           });
           // Auto-resolve: keep both (download Drive version with suffix)
+          // If either step fails, mark the file as still in conflict so it
+          // will be retried on the next sync cycle instead of silently lost.
+          let conflictResolved = false;
           try {
             const conflictName = this.addConflictSuffix(relPath);
             await this.downloadFile(drive!.fileId, path.join(folder.localPath, conflictName));
@@ -355,6 +438,7 @@ class SyncEngine {
               filePath: conflictName,
               detail: 'Conflict: kept both versions',
             });
+            conflictResolved = true;
           } catch (e) {
             errors++;
             this.addActivity({
@@ -379,6 +463,17 @@ class SyncEngine {
             });
           } catch (e) {
             errors++;
+            this.addActivity({
+              ts: Date.now(),
+              folderId,
+              action: 'error',
+              filePath: relPath,
+              detail: `Conflict upload failed: ${e instanceof Error ? e.message : String(e)}`,
+            });
+          }
+          if (!conflictResolved) {
+            // Keep conflict flag so next sync retries
+            newState.files[relPath].conflict = 'both';
           }
         } else if (localChanged && localExists) {
           // Upload new/changed local file
@@ -506,11 +601,23 @@ class SyncEngine {
   }
 
   private async downloadFile(fileId: string, localPath: string): Promise<void> {
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit
+
     const drive = (this.drive as any).drive;
     const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+    const data = Buffer.from(res.data as ArrayBuffer);
+
+    if (data.length > MAX_FILE_SIZE) {
+      throw new Error(`File size ${data.length} exceeds maximum ${MAX_FILE_SIZE}`);
+    }
+
     const dir = path.dirname(localPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(localPath, Buffer.from(res.data as ArrayBuffer));
+
+    // Write to temp file first, then atomic rename
+    const tempPath = `${localPath}.tmp`;
+    fs.writeFileSync(tempPath, data);
+    fs.renameSync(tempPath, localPath);
   }
 
   private cleanupEmptyDirs(dir: string): void {
@@ -637,22 +744,21 @@ export function register(
   ipcMain.handle('sync:folders:add', requireAuth(async (_e, { localPath, driveFolderName }: { localPath: string; driveFolderName: string }) => {
     logger.ipcLog('sync:folders:add', 'Adding sync folder', { localPath, driveFolderName });
     try {
-      // Validate local path
-      if (!fs.existsSync(localPath) || !fs.statSync(localPath).isDirectory()) {
-        return { ok: false, error: 'Path does not exist or is not a directory' };
+      // Validate and sanitize folder name
+      const sanitizedName = sanitizeDriveFolderName(driveFolderName || path.basename(localPath));
+
+      // Validate path: resolve symlinks, check home dir, block system paths
+      const validation = validateSyncPath(localPath);
+      if (!validation.ok) {
+        return { ok: false, error: validation.error };
       }
-      // Validate not a system directory
-      const resolved = path.resolve(localPath);
-      const forbidden = ['/Windows', '/Program Files', '/System', 'C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)'];
-      if (forbidden.some(f => resolved.startsWith(f))) {
-        return { ok: false, error: 'Cannot sync system directories' };
-      }
-      const folder = engine.addFolder(localPath, driveFolderName || path.basename(localPath));
-      logger.success('sync:folders:add', 'Sync folder added', { id: folder.id, path: localPath });
+
+      const folder = engine.addFolder(validation.realPath!, sanitizedName);
+      logger.success('sync:folders:add', 'Sync folder added', { id: folder.id, path: validation.realPath });
       return { ok: true, folder };
     } catch (e) {
       logError('sync:folders:add', e);
-      return { ok: false, error: 'Failed to add sync folder' };
+      return { ok: false, error: e instanceof Error ? e.message : 'Failed to add sync folder' };
     }
   }));
 
@@ -748,18 +854,25 @@ export function register(
       const results: { path: string; ok: boolean; folderId?: string; error?: string }[] = [];
       for (const p of paths) {
         try {
-          const stat = fs.statSync(p);
-          if (stat.isDirectory()) {
-            const folder = engine.addFolder(p, path.basename(p));
-            results.push({ path: p, ok: true, folderId: folder.id });
-          } else if (stat.isFile()) {
-            // For files: create/sync the parent directory
+          // Validate path before processing
+          const validation = validateSyncPath(p);
+          if (!validation.ok) {
+            // For files, validate the parent directory instead
             const parentDir = path.dirname(p);
-            const folder = engine.addFolder(parentDir, path.basename(parentDir));
+            const parentValidation = validateSyncPath(parentDir);
+            if (!parentValidation.ok) {
+              results.push({ path: p, ok: false, error: validation.error });
+              continue;
+            }
+            const sanitizedName = sanitizeDriveFolderName(path.basename(parentDir));
+            const folder = engine.addFolder(parentValidation.realPath!, sanitizedName);
             results.push({ path: p, ok: true, folderId: folder.id });
-          } else {
-            results.push({ path: p, ok: false, error: 'Not a file or directory' });
+            continue;
           }
+
+          const sanitizedName = sanitizeDriveFolderName(path.basename(validation.realPath!));
+          const folder = engine.addFolder(validation.realPath!, sanitizedName);
+          results.push({ path: p, ok: true, folderId: folder.id });
         } catch (e) {
           results.push({ path: p, ok: false, error: e instanceof Error ? e.message : String(e) });
         }

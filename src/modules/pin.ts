@@ -56,20 +56,57 @@ function setUserDataPath(p: string): void {
 }
 
 // ── PIN rate limiter (5 attempts per 15-min window, 15-min lockout) ──
-const pinRateLimit = {
-  attempts: [] as number[],
-  lockoutUntil: 0,
-  MAX_ATTEMPTS: 5,
-  WINDOW_MS: 15 * 60 * 1000,
-  LOCKOUT_MS: 15 * 60 * 1000,
-};
+// Persisted to disk so rate limits survive app restarts.
+const PIN_RATE_LIMIT_FILE = 'vault_pin_rate_limit';
+
+interface PersistedRateLimit {
+  attempts: number[];
+  lockoutUntil: number;
+}
+
+function loadPersistedRateLimit(): PersistedRateLimit {
+  try {
+    const userData = _userDataPath
+      || process.env.APPDATA
+      || (process.platform === 'darwin'
+        ? path.join(process.env.HOME || '', 'Library', 'Application Support')
+        : path.join(process.env.HOME || '', '.config'));
+    const dir = path.join(userData, 'Vault');
+    const file = path.join(dir, PIN_RATE_LIMIT_FILE);
+    const raw = fs.readFileSync(file, 'utf8');
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.attempts) && typeof data.lockoutUntil === 'number') {
+      return data as PersistedRateLimit;
+    }
+  } catch { /* corrupt or missing — start fresh */ }
+  return { attempts: [], lockoutUntil: 0 };
+}
+
+function savePersistedRateLimit(data: PersistedRateLimit): void {
+  try {
+    const userData = _userDataPath
+      || process.env.APPDATA
+      || (process.platform === 'darwin'
+        ? path.join(process.env.HOME || '', 'Library', 'Application Support')
+        : path.join(process.env.HOME || '', '.config'));
+    const dir = path.join(userData, 'Vault');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, PIN_RATE_LIMIT_FILE), JSON.stringify(data));
+  } catch { /* ignore write errors */ }
+}
+
+const pinRateLimit: PersistedRateLimit = loadPersistedRateLimit();
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_WINDOW_MS = 15 * 60 * 1000;
+const PIN_LOCKOUT_MS = 15 * 60 * 1000;
 
 function isPinRateLimited(): boolean {
   const now = Date.now();
   if (now < pinRateLimit.lockoutUntil) return true;
-  pinRateLimit.attempts = pinRateLimit.attempts.filter(t => now - t < pinRateLimit.WINDOW_MS);
-  if (pinRateLimit.attempts.length >= pinRateLimit.MAX_ATTEMPTS) {
-    pinRateLimit.lockoutUntil = now + pinRateLimit.LOCKOUT_MS;
+  pinRateLimit.attempts = pinRateLimit.attempts.filter(t => now - t < PIN_WINDOW_MS);
+  if (pinRateLimit.attempts.length >= PIN_MAX_ATTEMPTS) {
+    pinRateLimit.lockoutUntil = now + PIN_LOCKOUT_MS;
+    savePersistedRateLimit(pinRateLimit);
     return true;
   }
   return false;
@@ -78,14 +115,16 @@ function isPinRateLimited(): boolean {
 function recordPinFailedAttempt(): void {
   const now = Date.now();
   pinRateLimit.attempts.push(now);
-  if (pinRateLimit.attempts.length >= pinRateLimit.MAX_ATTEMPTS) {
-    pinRateLimit.lockoutUntil = now + pinRateLimit.LOCKOUT_MS;
+  if (pinRateLimit.attempts.length >= PIN_MAX_ATTEMPTS) {
+    pinRateLimit.lockoutUntil = now + PIN_LOCKOUT_MS;
   }
+  savePersistedRateLimit(pinRateLimit);
 }
 
 function resetPinRateLimit(): void {
   pinRateLimit.attempts = [];
   pinRateLimit.lockoutUntil = 0;
+  savePersistedRateLimit(pinRateLimit);
 }
 
 // ── File path for encrypted user key ──
@@ -236,24 +275,35 @@ function register(
       const salt = Buffer.from(fileData.salt, 'base64');
       const pinKey = derivePinKey(pin, salt);
 
-      // Decrypt the payload
+      // Decrypt the payload — may be null if PIN is wrong
       const payload = dec(fileData.data, pinKey) as { pinHash: string; userKey: { googleId: string; email: string } } | null;
-      if (!payload || typeof payload.pinHash !== 'string' || !payload.userKey
-        || typeof payload.userKey.googleId !== 'string' || !payload.userKey.googleId
-        || typeof payload.userKey.email !== 'string') {
-        recordPinFailedAttempt();
-        logger.authLog('pin:verify', 'PIN verification failed — decryption or validation failed');
-        logger.warn('pin:verify', 'Incorrect PIN attempt');
-        return { ok: false, error: 'Invalid PIN' };
-      }
 
-      // Verify the pinHash matches — constant-time to prevent timing attacks
+      // Compute expected hash REGARDLESS of decryption success.
+      // This ensures the code path always takes the same amount of time,
+      // preventing timing-based distinction between "wrong PIN" and "decryption failed".
       const computedHash = crypto.pbkdf2Sync(pin, salt, 600000, 32, 'sha256').toString('hex');
       const computedBuf = Buffer.from(computedHash, 'hex');
-      const storedBuf = Buffer.from(payload.pinHash, 'hex');
-      if (computedBuf.length !== storedBuf.length || !crypto.timingSafeEqual(computedBuf, storedBuf)) {
+
+      // Use a dummy buffer if payload is null — same length (32 bytes) for timing safety
+      const storedBuf = payload?.pinHash
+        ? Buffer.from(payload.pinHash, 'hex')
+        : Buffer.alloc(32);
+
+      // Timing-safe comparison FIRST — no early returns before this
+      const hashMatch = crypto.timingSafeEqual(computedBuf, storedBuf);
+
+      // ONLY NOW validate payload structure
+      const payloadValid = payload
+        && typeof payload.pinHash === 'string'
+        && payload.userKey
+        && typeof payload.userKey.googleId === 'string'
+        && payload.userKey.googleId.length > 0
+        && typeof payload.userKey.email === 'string';
+
+      // Single failure path — identical timing for all failure modes
+      if (!hashMatch || !payloadValid) {
         recordPinFailedAttempt();
-        logger.authLog('pin:verify', 'PIN verification failed — hash mismatch');
+        logger.authLog('pin:verify', 'PIN verification failed');
         logger.warn('pin:verify', 'Incorrect PIN attempt');
         return { ok: false, error: 'Invalid PIN' };
       }
@@ -299,13 +349,22 @@ function register(
         return { ok: false, error: 'Too many attempts. Try again in 15 minutes.' };
       }
 
-      // Verify old PIN first
+      // Verify old PIN first — constant-time to prevent timing attacks
       const fileContent = fs.readFileSync(getKeyfilePath(), 'utf8');
       const fileData = JSON.parse(fileContent);
       const salt = Buffer.from(fileData.salt, 'base64');
       const oldPinKey = derivePinKey(oldPin, salt);
       const payload = dec(fileData.data, oldPinKey) as { pinHash: string; userKey: { googleId: string; email: string }; allowAlpha?: boolean } | null;
-      if (!payload) {
+
+      const oldComputedHash = crypto.pbkdf2Sync(oldPin, salt, 600000, 32, 'sha256').toString('hex');
+      const oldComputedBuf = Buffer.from(oldComputedHash, 'hex');
+      const oldStoredBuf = payload?.pinHash
+        ? Buffer.from(payload.pinHash, 'hex')
+        : Buffer.alloc(32);
+      const oldHashMatch = crypto.timingSafeEqual(oldComputedBuf, oldStoredBuf);
+      const oldPayloadValid = payload && typeof payload.pinHash === 'string' && !!payload.userKey;
+
+      if (!oldHashMatch || !oldPayloadValid) {
         recordPinFailedAttempt();
         logger.warn('pin:change', 'Old PIN verification failed');
         return { ok: false, error: 'Current PIN is incorrect' };

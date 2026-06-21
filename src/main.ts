@@ -68,7 +68,7 @@ let oauth2Client: any = null;
 import { consumePinVerify } from './modules/pin';
 
 import * as authModule from './modules/auth';
-import { deriveKey, enc, dec, setCryptoJS } from './modules/crypto';
+import { deriveKey, generateUserSalt, enc, dec, setCryptoJS } from './modules/crypto';
 import * as validation from './modules/validation';
 import type { Session } from './types';
 
@@ -262,13 +262,33 @@ a{color:#a78bfa}
         res.end('OAuth session expired or already used');
         return;
       }
+
+      // Validate state and code FIRST (before expiration check) — prevents
+      // race conditions where a stale callback with valid state could replay
+      // after a new flow has started.
+      if (!parsed.query.code || parsed.query.state !== state) {
+        logger.authLog('oauth', 'OAuth state mismatch or missing code');
+        oauthInProgress = false;
+        oauthServer!.close(); oauthServer = null;
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('OAuth state mismatch');
+        return reject(new Error('OAuth state mismatch'));
+      }
+
+      // Now check expiration — state is valid, so this is a real timeout
       if (Date.now() - stateCreatedAt > 5 * 60 * 1000) {
         logger.authLog('oauth', 'OAuth state expired');
-        oauthServer!.close(); oauthServer = null; oauthInProgress = false;
+        oauthInProgress = false;
+        oauthServer!.close(); oauthServer = null;
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('OAuth state expired');
         return reject(new Error('OAuth state expired'));
       }
+
+      // Consume the state immediately — prevents replay attacks
+      oauthInProgress = false;
+      oauthServer!.close();
+      oauthServer = null;
 
       const nonce = crypto.randomBytes(16).toString('base64');
       res.writeHead(200, {
@@ -291,16 +311,7 @@ a{color:#a78bfa}
 </script>
 </div></body></html>`);
 
-      oauthServer!.close();
-      oauthServer = null;
-      oauthInProgress = false;
-
       if (win) { win.show(); win.focus(); if (win.isMinimized()) win.restore(); }
-
-      if (!parsed.query.code || parsed.query.state !== state) {
-        logger.authLog('oauth', 'OAuth state mismatch or missing code');
-        return reject(new Error('OAuth state mismatch'));
-      }
       logger.authLog('oauth', 'OAuth callback received, exchanging code for tokens');
       try {
         const { tokens } = await oauth2Client.getToken(parsed.query.code as string);
@@ -359,11 +370,27 @@ ipcMain.handle('auth:login', async () => {
   }
   try {
     const profile = await googleOAuth();
-    const encKey = deriveKey(profile.googleId);
+
+    // Load or generate per-account salt for strong key derivation.
+    // Try the local cache file first — if the user has logged in before
+    // (even on another machine that synced the cache), the salt will be there.
+    const cacheMod = await import('./modules/cache');
+    const cachedData = cacheMod.loadCache(profile.googleId);
+    let userSalt = (cachedData.settings as Record<string, unknown>)?.userSalt as string | undefined;
+    if (!userSalt) {
+      userSalt = generateUserSalt();
+      logger.info('crypto', 'Generated new per-account salt', { email: profile.email });
+    }
+
+    const encKey = deriveKey(profile.googleId, userSalt);
 
     // Initialize Drive client with the OAuth2 credentials
     driveClient = new DriveClient(profile.googleId, encKey, logger as any);
     await driveClient.init(oauth2Client);
+
+    // Persist salt in settings so future logins use strong derivation
+    driveClient.cache.settings = { ...driveClient.cache.settings, userSalt };
+    cacheMod.saveCache(driveClient.cache);
 
     const twofa = await drive2faGet();
     if (twofa?.enabled) {
@@ -468,11 +495,22 @@ ipcMain.handle('auth:reauth', async () => {
       logger.warn('auth:reauth', 'Reauth rejected — different account', { expected: prevSession.googleId, got: profile.googleId });
       return { ok: false, error: 'Different account' };
     }
-    const encKey = deriveKey(profile.googleId);
+    const cacheMod2 = await import('./modules/cache');
+    const cachedData2 = cacheMod2.loadCache(profile.googleId);
+    let userSalt2 = (cachedData2.settings as Record<string, unknown>)?.userSalt as string | undefined;
+    if (!userSalt2) {
+      userSalt2 = generateUserSalt();
+      logger.info('crypto', 'Generated new per-account salt (reauth)', { email: profile.email });
+    }
+
+    const encKey = deriveKey(profile.googleId, userSalt2);
 
     // Re-init Drive client
     driveClient = new DriveClient(profile.googleId, encKey, logger as any);
     await driveClient.init(oauth2Client);
+
+    driveClient.cache.settings = { ...driveClient.cache.settings, userSalt: userSalt2 };
+    cacheMod2.saveCache(driveClient.cache);
 
     const vault = await driveLoadItems(encKey);
     const sess = { ...profile, userId: profile.googleId, encKey, pending2fa: false };
@@ -514,7 +552,17 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { ve
       return { ok: false, error: 'Invalid session' };
     }
 
-    const encKey = deriveKey(googleId);
+    // Load or generate per-account salt for PIN login
+    const pinCacheMod = await import('./modules/cache');
+    const pinCached = pinCacheMod.loadCache(googleId);
+    let pinSalt = (pinCached.settings as Record<string, unknown>)?.userSalt as string | undefined;
+    if (!pinSalt) {
+      // First PIN login on this machine — generate and persist
+      pinSalt = generateUserSalt();
+      logger.info('crypto', 'Generated new per-account salt (PIN login)', { email });
+    }
+
+    const encKey = deriveKey(googleId, pinSalt);
 
     // Try to initialize Drive client if we have OAuth tokens
     if (oauth2Client) {
@@ -531,6 +579,10 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { ve
     if (!driveClient) {
       driveClient = new DriveClient(googleId, encKey, logger as any);
     }
+
+    // Ensure salt is persisted in cache settings
+    driveClient.cache.settings = { ...driveClient.cache.settings, userSalt: pinSalt };
+    pinCacheMod.saveCache(driveClient.cache);
 
     const vault = await driveLoadItems(encKey);
     const sess: Session = { googleId, email, name: email.split('@')[0], avatar: null as string | null, userId: googleId, encKey, pending2fa: false };
