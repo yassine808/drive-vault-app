@@ -732,6 +732,8 @@ export function register(
   // Store reference for later updates
   (global as any).__syncEngine = engine;
 
+  return { updateDriveClient };
+
   ipcMain.handle('sync:folders:list', requireAuthNoArgs(async () => {
     try {
       return { ok: true, folders: engine.getConfig().folders };

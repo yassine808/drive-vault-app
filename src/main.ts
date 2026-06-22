@@ -57,6 +57,7 @@ logger.info('main', 'Global error handlers registered');
 
 let win: electron.BrowserWindow | null = null;
 let driveClient: import('./modules/drive').DriveClient | null = null;
+let updateDriveClient: (dc: import('./modules/drive').DriveClient | null) => void = () => {};
 let CryptoJS: any = null;
 let speakeasy: any = null;
 let tray: electron.Tray | null = null;
@@ -396,6 +397,7 @@ ipcMain.handle('auth:login', async () => {
     // Initialize Drive client with the OAuth2 credentials
     driveClient = new DriveClient(profile.googleId, encKey, logger as any);
     await driveClient.init(oauth2Client);
+    updateDriveClient(driveClient);
 
     // Persist salt in settings so future logins use strong derivation
     driveClient.cache.settings = { ...driveClient.cache.settings, userSalt };
@@ -474,6 +476,7 @@ ipcMain.handle('auth:logout', requireAuthNoArgs(async () => {
   if (driveClient) {
     try { await driveClient.close(); } catch { /* noop */ }
     driveClient = null;
+    updateDriveClient(null);
   }
   clearSession();
   logger.authLog('auth:logout', 'Session cleared');
@@ -515,6 +518,7 @@ ipcMain.handle('auth:reauth', async () => {
     // Re-init Drive client
     driveClient = new DriveClient(profile.googleId, encKey, logger as any);
     await driveClient.init(oauth2Client);
+    updateDriveClient(driveClient);
 
     driveClient.cache.settings = { ...driveClient.cache.settings, userSalt: userSalt2 };
     cacheMod2.saveCache(driveClient.cache);
@@ -575,6 +579,7 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { ve
       try {
         driveClient = new DriveClient(googleId, encKey, logger as any);
         await driveClient.init(oauth2Client);
+        updateDriveClient(driveClient);
       } catch (driveErr) {
         logger.warn('auth:loginWithPin', 'Drive init failed, using local cache only', { error: driveErr instanceof Error ? driveErr.message : String(driveErr) });
         driveClient = null;
@@ -584,6 +589,7 @@ ipcMain.handle('auth:loginWithPin', async (_e: electron.IpcMainInvokeEvent, { ve
     // If driveClient is null (no OAuth or init failed), create a cache-only instance
     if (!driveClient) {
       driveClient = new DriveClient(googleId, encKey, logger as any);
+      updateDriveClient(driveClient);
     }
 
     // Ensure salt is persisted in cache settings
@@ -836,7 +842,7 @@ app.whenReady().then(() => {
   setUserDataPathAccounts(app.getPath('userData'));
   registerPin(ipcMain, requireAuth, requireAuthNoArgs, getSessionFn, logger as any, logError, driveClient);
   registerAccounts(ipcMain, requireAuthNoArgs, getSessionFn, logger as any, logError);
-  registerSync(ipcMain, requireAuth, requireAuthNoArgs, driveClient, getSessionFn, logger as any, logError);
+  updateDriveClient = registerSync(ipcMain, requireAuth, requireAuthNoArgs, driveClient, getSessionFn, logger as any, logError).updateDriveClient;
 
   createWindow();
 });
