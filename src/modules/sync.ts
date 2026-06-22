@@ -846,6 +846,17 @@ export function register(
         totalErrors += result.errors;
       }
       logger.success('sync:now', 'Sync complete', { uploaded: totalUploaded, downloaded: totalDownloaded, conflicts: totalConflicts, errors: totalErrors });
+      if (totalErrors > 0) {
+        const errored = config.folders.find(f => f.status === 'error');
+        return {
+          ok: false,
+          error: errored?.errorMessage || `Sync failed with ${totalErrors} error(s)`,
+          uploaded: totalUploaded,
+          downloaded: totalDownloaded,
+          conflicts: totalConflicts,
+          errors: totalErrors,
+        };
+      }
       return { ok: true, uploaded: totalUploaded, downloaded: totalDownloaded, conflicts: totalConflicts, errors: totalErrors };
     } catch (e) {
       logError('sync:now', e);

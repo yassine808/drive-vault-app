@@ -719,7 +719,10 @@ function updateCounts(): void {
           const added = (r.results as { ok: boolean }[]).filter((x: { ok: boolean }) => x.ok).length;
           toast(added + ' sync folder(s) added — syncing...');
           loadSyncFolders();
-          api.sync.syncNow().then(() => { loadSyncFolders(); loadSyncActivity(); });
+          syncNowWithDriveRetry().then((syncResult) => {
+            if (!syncResult.ok) toast('Sync error: ' + syncResult.error);
+            loadSyncFolders(); loadSyncActivity();
+          });
         } else {
           toast('Failed: ' + r.error);
         }
@@ -935,12 +938,25 @@ function updateCounts(): void {
       var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
     }
 
+    async function syncNowWithDriveRetry(): Promise<any> {
+      let r = await api.sync.syncNow();
+      if (!r.ok && typeof r.error === 'string' && r.error.includes('Drive not initialized')) {
+        toast('Google Drive connection needed — signing in...');
+        const auth = await api.reauth();
+        if (!auth.ok) return { ok: false, error: auth.error || 'Google sign-in required' };
+        if (auth.token) window.__vaultToken.set(auth.token);
+        if (auth.user) S.user = auth.user;
+        if (auth.vault) loadVault(auth.vault);
+        r = await api.sync.syncNow();
+      }
+      return r;
+    }
 
     document.getElementById('btn-sync-now') && document.getElementById('btn-sync-now').addEventListener('click', async function() {
       var btn = document.getElementById('btn-sync-now');
       btn.style.opacity = '.5'; btn.style.pointerEvents = 'none'; btn.textContent = 'Syncing...';
       logInfo('sync', 'Manual sync triggered');
-      var r = await api.sync.syncNow();
+      var r = await syncNowWithDriveRetry();
       btn.style.opacity = ''; btn.style.pointerEvents = '';
       btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Sync now';
       if (r.ok) {
@@ -948,6 +964,7 @@ function updateCounts(): void {
         if (r.uploaded) parts.push(r.uploaded + ' uploaded');
         if (r.downloaded) parts.push(r.downloaded + ' downloaded');
         if (r.conflicts) parts.push(r.conflicts + ' conflicts');
+        if (r.errors) parts.push(r.errors + ' errors');
         toast(parts.length ? 'Sync complete: ' + parts.join(', ') : 'Everything up to date');
         logOk('sync', 'Sync complete', r);
       } else { toast('Sync error: ' + r.error); logErr('sync', 'Sync failed', r.error); }
