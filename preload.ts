@@ -198,10 +198,6 @@ contextBridge.exposeInMainWorld('api', {
       bridgeLog('call', 'sync:now', true);
       return ipcRenderer.invoke('sync:now', sessionToken);
     },
-    getActivityLog: () => {
-      bridgeLog('call', 'sync:log', true);
-      return ipcRenderer.invoke('sync:log', sessionToken);
-    },
     browseFolder: () => {
       bridgeLog('call', 'sync:browse-folder', true);
       return ipcRenderer.invoke('sync:browse-folder', sessionToken);

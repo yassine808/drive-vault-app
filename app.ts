@@ -653,7 +653,7 @@ function updateCounts(): void {
     (document.getElementById('btn-add-pw') as HTMLButtonElement).addEventListener('click', () => { logInfo('password', 'Add password clicked'); openPwModal(); });
     async function loadSyncTab() {
       logInfo('sync', 'Loading sync tab');
-      await Promise.all([loadSyncFolders(), loadSyncActivity()]);
+      await loadSyncFolders();
       initSyncDropZone();
     }
 
@@ -721,7 +721,7 @@ function updateCounts(): void {
           loadSyncFolders();
           syncNowWithDriveRetry().then((syncResult) => {
             if (!syncResult.ok) toast('Sync error: ' + syncResult.error);
-            loadSyncFolders(); loadSyncActivity();
+            loadSyncFolders();
           });
         } else {
           toast('Failed: ' + r.error);
@@ -905,24 +905,6 @@ function updateCounts(): void {
       });
     }
 
-    async function loadSyncActivity() {
-      var r = await api.sync.getActivityLog();
-      var list = document.getElementById('sync-activity-list');
-      var section = document.getElementById('sync-activity');
-      if (!r.ok || !r.entries.length) { section.hidden = true; return; }
-      section.hidden = false; list.innerHTML = '';
-      for (var i = 0; i < Math.min(r.entries.length, 50); i++) {
-        var entry = r.entries[i];
-        var el = document.createElement('div');
-        el.className = 'sync-activity-entry';
-        var icon = entry.action === 'upload' ? '↑' : entry.action === 'download' ? '↓' : entry.action === 'conflict' ? '⚡' : entry.action === 'error' ? '✗' : '•';
-        var color = entry.action === 'error' ? 'var(--red)' : entry.action === 'conflict' ? 'var(--amber)' : 'var(--txt-muted)';
-        el.innerHTML = '<span class="sync-activity-icon" style="color:' + color + '">' + icon + '</span><span class="sync-activity-file">' + escHtml(entry.filePath) + '</span><span class="sync-activity-time">' + timeAgo(entry.ts) + '</span>';
-        if (entry.detail) el.title = entry.detail;
-        list.appendChild(el);
-      }
-    }
-
     function timeAgo(ts) {
       if (!ts) return 'never';
       var s = Math.floor((Date.now() - ts) / 1000);
@@ -968,7 +950,7 @@ function updateCounts(): void {
         toast(parts.length ? 'Sync complete: ' + parts.join(', ') : 'Everything up to date');
         logOk('sync', 'Sync complete', r);
       } else { toast('Sync error: ' + r.error); logErr('sync', 'Sync failed', r.error); }
-      loadSyncFolders(); loadSyncActivity();
+      loadSyncFolders();
     });
 
     document.getElementById('btn-sync-add') && document.getElementById('btn-sync-add').addEventListener('click', async function() {
@@ -1020,7 +1002,7 @@ function updateCounts(): void {
       });
       if (driveName === null) return;
       var addRes = await api.sync.foldersAdd(res.path, driveName);
-      if (addRes.ok) { toast('Folder added — syncing...'); api.sync.syncNow().then(function() { loadSyncFolders(); loadSyncActivity(); }); loadSyncFolders(); }
+      if (addRes.ok) { toast('Folder added — syncing...'); api.sync.syncNow().then(function() { loadSyncFolders(); }); loadSyncFolders(); }
       else { toast('Failed: ' + addRes.error); }
     });
 

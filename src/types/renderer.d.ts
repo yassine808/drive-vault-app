@@ -5,7 +5,7 @@ import type {
   VaultItem, Job, TotpItem, Settings, UserProfile,
   VaultData, LogEntry, DriveStats, ConfirmOpts, TotpConfig,
   AuthResult, PinStatus, PinVerifyResult,
-  SyncFolder, SyncConfig, SyncActivityEntry
+  SyncFolder, SyncConfig
 } from './index';
 
 export type { ConfirmOpts, TotpConfig, AuthResult, PreloadApi };
@@ -83,7 +83,6 @@ export interface PreloadApi {
     foldersRemove(folderId: string): Promise<{ ok: boolean; error?: string }>;
     status(): Promise<{ ok: boolean; config: SyncConfig; error?: string }>;
     syncNow(): Promise<{ ok: boolean; uploaded?: number; downloaded?: number; conflicts?: number; errors?: number; error?: string }>;
-    getActivityLog(): Promise<{ ok: boolean; entries: SyncActivityEntry[]; error?: string }>;
     browseFolder(): Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
     onStatusUpdate(cb: (config: SyncConfig) => void): void;
   };

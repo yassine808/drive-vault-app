@@ -170,7 +170,6 @@ export type AppHoverTone = AppSoundTone | 'click' | 'tap' | 'pop' | 'none';
 
 export type SyncFolderStatus = 'idle' | 'syncing' | 'error' | 'conflict';
 export type SyncConflictType = 'none' | 'local_newer' | 'drive_newer' | 'both';
-export type SyncActionType = 'upload' | 'download' | 'delete_local' | 'delete_drive' | 'conflict' | 'error' | 'skip';
 
 export interface SyncFolder {
   id: string;
@@ -204,10 +203,3 @@ export interface SyncConfig {
   lastFullSyncAt: number | null;
 }
 
-export interface SyncActivityEntry {
-  ts: number;
-  folderId: string;
-  action: SyncActionType;
-  filePath: string;
-  detail?: string;
-}

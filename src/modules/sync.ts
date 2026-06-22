@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import os from 'os';
 import type { DriveClient } from './drive';
-import type { Session, SyncFolder, SyncFileState, SyncFolderState, SyncConfig, SyncActivityEntry, SyncConflictType } from '../types';
+import type { Session, SyncFolder, SyncFileState, SyncFolderState, SyncConfig, SyncConflictType } from '../types';
 import type Electron from 'electron';
 
 type Logger = {
@@ -22,7 +22,6 @@ type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 const SYNC_CONFIG_FILE = 'sync_config.json';
 const SYNC_STATE_FILE = 'sync_state.json';
 const SYNC_DRIVE_FOLDER = 'sync';
-const MAX_ACTIVITY_LOG = 200;
 const FILE_WATCH_DEBOUNCE_MS = 2000;
 
 // Files to ignore during sync
@@ -277,7 +276,6 @@ class FileWatcher {
 class SyncEngine {
   private drive: DriveClient | null = null;
   private syncFolderId: string | null = null;
-  private activityLog: SyncActivityEntry[] = [];
   private fileWatcher: FileWatcher;
   private syncingFolders: Set<string> = new Set();
 
@@ -350,17 +348,6 @@ class SyncEngine {
       fields: 'id',
     });
     return created.data.id!;
-  }
-
-  private addActivity(entry: SyncActivityEntry): void {
-    this.activityLog.unshift(entry);
-    if (this.activityLog.length > MAX_ACTIVITY_LOG) {
-      this.activityLog = this.activityLog.slice(0, MAX_ACTIVITY_LOG);
-    }
-  }
-
-  getActivityLog(): SyncActivityEntry[] {
-    return [...this.activityLog];
   }
 
   // ── Two-way sync for one folder ──
@@ -443,13 +430,6 @@ class SyncEngine {
           // Both changed → conflict
           newState.files[relPath].conflict = 'both';
           conflicts++;
-          this.addActivity({
-            ts: Date.now(),
-            folderId,
-            action: 'conflict',
-            filePath: relPath,
-            detail: 'Changed on both sides',
-          });
           // Auto-resolve: keep both (download Drive version with suffix)
           // If either step fails, mark the file as still in conflict so it
           // will be retried on the next sync cycle instead of silently lost.
@@ -467,45 +447,17 @@ class SyncEngine {
               conflict: 'none',
             };
             downloaded++;
-            this.addActivity({
-              ts: Date.now(),
-              folderId,
-              action: 'download',
-              filePath: conflictName,
-              detail: 'Conflict: kept both versions',
-            });
             conflictResolved = true;
           } catch (e) {
             errors++;
-            this.addActivity({
-              ts: Date.now(),
-              folderId,
-              action: 'error',
-              filePath: relPath,
-              detail: `Conflict resolution failed: ${e instanceof Error ? e.message : String(e)}`,
-            });
           }
           // Upload local version as-is
           try {
             const fileHash = local!.hash;
             await this.uploadFile(path.join(folder.localPath, relPath), relPath, driveSubfolderId, fileHash);
             uploaded++;
-            this.addActivity({
-              ts: Date.now(),
-              folderId,
-              action: 'upload',
-              filePath: relPath,
-              detail: 'Conflict: uploaded local version',
-            });
           } catch (e) {
             errors++;
-            this.addActivity({
-              ts: Date.now(),
-              folderId,
-              action: 'error',
-              filePath: relPath,
-              detail: `Conflict upload failed: ${e instanceof Error ? e.message : String(e)}`,
-            });
           }
           if (!conflictResolved) {
             // Keep conflict flag so next sync retries
@@ -522,32 +474,21 @@ class SyncEngine {
               await this.uploadFile(path.join(folder.localPath, relPath), relPath, driveSubfolderId, fileHash);
             }
             uploaded++;
-            this.addActivity({ ts: Date.now(), folderId, action: 'upload', filePath: relPath });
           } catch (e) {
             errors++;
-            this.addActivity({
-              ts: Date.now(), folderId, action: 'error', filePath: relPath,
-              detail: `Upload failed: ${e instanceof Error ? e.message : String(e)}`,
-            });
           }
         } else if (driveChanged && driveExists) {
           // Download new/changed Drive file
           try {
             await this.downloadFile(drive!.fileId, path.join(folder.localPath, relPath));
             downloaded++;
-            this.addActivity({ ts: Date.now(), folderId, action: 'download', filePath: relPath });
           } catch (e) {
             errors++;
-            this.addActivity({
-              ts: Date.now(), folderId, action: 'error', filePath: relPath,
-              detail: `Download failed: ${e instanceof Error ? e.message : String(e)}`,
-            });
           }
         } else if (!localExists && driveExists && prev) {
           // Deleted locally → delete on Drive
           try {
             await (this.drive as any).drive.files.delete({ fileId: drive!.fileId });
-            this.addActivity({ ts: Date.now(), folderId, action: 'delete_drive', filePath: relPath });
           } catch (e) {
             errors++;
           }
@@ -556,7 +497,6 @@ class SyncEngine {
           // Deleted on Drive → delete locally
           try {
             await fs.promises.unlink(path.join(folder.localPath, relPath));
-            this.addActivity({ ts: Date.now(), folderId, action: 'delete_local', filePath: relPath });
           } catch (e) {
             errors++;
           }
@@ -588,10 +528,6 @@ class SyncEngine {
       folder.errorMessage = e instanceof Error ? e.message : String(e);
       folder.lastSyncAt = Date.now();
       saveConfig(config);
-      this.addActivity({
-        ts: Date.now(), folderId, action: 'error', filePath: '/',
-        detail: e instanceof Error ? e.message : String(e),
-      });
     } finally {
       this.syncingFolders.delete(folderId);
     }
@@ -861,15 +797,6 @@ export function register(
     } catch (e) {
       logError('sync:now', e);
       return { ok: false, error: 'Sync failed' };
-    }
-  }));
-
-  ipcMain.handle('sync:log', requireAuthNoArgs(async () => {
-    try {
-      return { ok: true, entries: engine.getActivityLog() };
-    } catch (e) {
-      logError('sync:log', e);
-      return { ok: false, error: 'Failed to get activity log' };
     }
   }));
 

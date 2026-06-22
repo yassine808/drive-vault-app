@@ -1207,13 +1207,6 @@ html, body {
 	.sync-empty svg { margin: 0 auto 12px; display: block; }
 	.sync-empty p { font-size: 13px; line-height: 1.6; }
 	.sync-add-btn { align-self: flex-start; }
-	.sync-activity { border-top: 1px solid var(--border); padding-top: 16px; }
-	.sync-activity-title { font-size: 12px; font-weight: 600; color: var(--txt-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
-	.sync-activity-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
-	.sync-activity-entry { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
-	.sync-activity-icon { width: 16px; text-align: center; flex-shrink: 0; }
-	.sync-activity-file { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--txt); }
-	.sync-activity-time { color: var(--txt-muted); flex-shrink: 0; }
 
 
 /* ═══════════════════════════════════════════════════════════════
