@@ -176,6 +176,7 @@ export interface SyncFolder {
   id: string;
   localPath: string;
   driveFolderName: string;
+  includePaths?: string[];
   enabled: boolean;
   lastSyncAt: number | null;
   status: SyncFolderStatus;

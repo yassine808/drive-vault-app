@@ -21,7 +21,7 @@ type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 // ── Constants ──
 const SYNC_CONFIG_FILE = 'sync_config.json';
 const SYNC_STATE_FILE = 'sync_state.json';
-const SYNC_DRIVE_FOLDER = ''; // sync folders go directly under Vault/ (no subfolder)
+const SYNC_DRIVE_FOLDER = 'sync';
 const MAX_ACTIVITY_LOG = 200;
 const FILE_WATCH_DEBOUNCE_MS = 2000;
 
@@ -149,17 +149,26 @@ async function computeFileHash(filePath: string): Promise<string> {
   });
 }
 
-async function walkLocalFiles(localPath: string): Promise<Map<string, { hash: string; mtime: number }>> {
+async function walkLocalFiles(localPath: string, includePaths?: string[]): Promise<Map<string, { hash: string; mtime: number }>> {
   const result = new Map<string, { hash: string; mtime: number }>();
+  const includeSet = includePaths?.length
+    ? new Set(includePaths.map(p => p.replace(/\\/g, '/')))
+    : null;
   async function walk(dir: string): Promise<void> {
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       if (shouldIgnore(entry.name)) continue;
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (includeSet) {
+          const relDir = path.relative(localPath, fullPath).replace(/\\/g, '/');
+          const prefix = relDir ? relDir + '/' : '';
+          if (![...includeSet].some(p => p.startsWith(prefix))) continue;
+        }
         await walk(fullPath);
       } else if (entry.isFile()) {
         const relPath = path.relative(localPath, fullPath).replace(/\\/g, '/');
+        if (includeSet && !includeSet.has(relPath)) continue;
         try {
           const stat = await fs.promises.stat(fullPath);
           const hash = await computeFileHash(fullPath);
@@ -174,6 +183,10 @@ async function walkLocalFiles(localPath: string): Promise<Map<string, { hash: st
   return result;
 }
 
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 // ── State persistence ──
 
 function loadConfig(): SyncConfig {
@@ -181,7 +194,10 @@ function loadConfig(): SyncConfig {
     const raw = fs.readFileSync(getConfigPath(), 'utf8');
     const parsed = JSON.parse(raw);
     return {
-      folders: parsed.folders || [],
+        folders: (parsed.folders || []).map((folder: SyncFolder) => ({
+          ...folder,
+          includePaths: Array.isArray(folder.includePaths) ? folder.includePaths : undefined,
+        })),
       globalState: 'idle',
       lastFullSyncAt: parsed.lastFullSyncAt || null,
     };
@@ -276,7 +292,7 @@ class SyncEngine {
     this.drive = driveClient;
   }
 
-  // Get the Vault folder ID on Drive (sync folders go directly under Vault/)
+  // Get or create the Vault/sync folder on Drive.
   private async getSyncFolderId(): Promise<string | null> {
     if (!this.drive || !(this.drive as any).drive) return null;
     if (this.syncFolderId) return this.syncFolderId;
@@ -284,8 +300,27 @@ class SyncEngine {
     const vaultFolderId = (this.drive as any).vaultFolderId;
     if (!vaultFolderId) return null;
 
-    // Sync folders are placed directly inside Vault/ — no intermediate subfolder needed.
-    this.syncFolderId = vaultFolderId;
+    const drive = (this.drive as any).drive;
+    const res = await drive.files.list({
+      q: `name='${escapeDriveQueryValue(SYNC_DRIVE_FOLDER)}' and mimeType='application/vnd.google-apps.folder' and '${vaultFolderId}' in parents and trashed=false`,
+      spaces: 'drive',
+      fields: 'files(id, name)',
+    });
+
+    if (res.data.files && res.data.files.length > 0) {
+      this.syncFolderId = res.data.files[0].id!;
+      return this.syncFolderId;
+    }
+
+    const created = await drive.files.create({
+      requestBody: {
+        name: SYNC_DRIVE_FOLDER,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [vaultFolderId],
+      },
+      fields: 'id',
+    });
+    this.syncFolderId = created.data.id!;
     return this.syncFolderId;
   }
 
@@ -293,10 +328,11 @@ class SyncEngine {
   private async getDriveSubfolderId(driveFolderName: string): Promise<string | null> {
     const syncFolderId = await this.getSyncFolderId();
     if (!syncFolderId || !this.drive) return null;
+    if (!driveFolderName) return syncFolderId;
 
     const drive = (this.drive as any).drive;
     const res = await drive.files.list({
-      q: `name='${driveFolderName}' and mimeType='application/vnd.google-apps.folder' and '${syncFolderId}' in parents and trashed=false`,
+      q: `name='${escapeDriveQueryValue(driveFolderName)}' and mimeType='application/vnd.google-apps.folder' and '${syncFolderId}' in parents and trashed=false`,
       spaces: 'drive',
       fields: 'files(id, name)',
     });
@@ -349,7 +385,7 @@ class SyncEngine {
       if (!driveSubfolderId) throw new Error('Could not access Drive sync folder');
 
       // 1. Scan local files
-      const localFiles = await walkLocalFiles(folder.localPath);
+      const localFiles = await walkLocalFiles(folder.localPath, folder.includePaths);
 
       // 2. Scan Drive files
       const driveFiles = new Map<string, { fileId: string; modifiedTime: string; hash: string | null }>();
@@ -639,12 +675,13 @@ class SyncEngine {
 
   // ── Folder management ──
 
-  addFolder(localPath: string, driveFolderName: string): SyncFolder {
+  addFolder(localPath: string, driveFolderName: string, includePaths?: string[]): SyncFolder {
     const config = loadConfig();
     const folder: SyncFolder = {
       id: crypto.randomUUID(),
       localPath: path.resolve(localPath),
-      driveFolderName: sanitizeDriveFolderName(driveFolderName),
+      driveFolderName: driveFolderName ? sanitizeDriveFolderName(driveFolderName) : '',
+      includePaths,
       enabled: true,
       lastSyncAt: null,
       status: 'idle',
@@ -731,8 +768,6 @@ export function register(
   };
   // Store reference for later updates
   (global as any).__syncEngine = engine;
-
-  return { updateDriveClient };
 
   ipcMain.handle('sync:folders:list', requireAuthNoArgs(async () => {
     try {
@@ -856,19 +891,24 @@ export function register(
       const results: { path: string; ok: boolean; folderId?: string; error?: string }[] = [];
       for (const p of paths) {
         try {
-          // Validate path before processing
-          const validation = validateSyncPath(p);
-          if (!validation.ok) {
-            // For files, validate the parent directory instead
+          const stat = fs.statSync(p);
+          if (stat.isFile()) {
             const parentDir = path.dirname(p);
             const parentValidation = validateSyncPath(parentDir);
             if (!parentValidation.ok) {
-              results.push({ path: p, ok: false, error: validation.error });
+              results.push({ path: p, ok: false, error: parentValidation.error });
               continue;
             }
-            const sanitizedName = sanitizeDriveFolderName(path.basename(parentDir));
-            const folder = engine.addFolder(parentValidation.realPath!, sanitizedName);
+            const relFile = path.relative(parentValidation.realPath!, fs.realpathSync(p)).replace(/\\/g, '/');
+            const folder = engine.addFolder(parentValidation.realPath!, '', [relFile]);
             results.push({ path: p, ok: true, folderId: folder.id });
+            continue;
+          }
+
+          // Validate path before processing
+          const validation = validateSyncPath(p);
+          if (!validation.ok) {
+            results.push({ path: p, ok: false, error: validation.error });
             continue;
           }
 
@@ -892,4 +932,6 @@ export function register(
   if (driveClient) {
     engine.startWatching();
   }
+
+  return { updateDriveClient };
 }
