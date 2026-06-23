@@ -63,9 +63,9 @@ jobs:
       - run: npm run build:all
       - name: Disable Automatic Analysis
         run: |
-          curl -s -X POST "https://sonarcloud.io/api/project_audit/set_auto_scan" \
+          curl -s -X POST "https://sonarcloud.io/api/autoscan/activation" \
             -u "${{ secrets.SONAR_TOKEN }}:" \
-            -d "project=yassine808_vault-app&autoScan=false"
+            -d "projectKey=yassine808_vault-app&enabled=false"
       - uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
