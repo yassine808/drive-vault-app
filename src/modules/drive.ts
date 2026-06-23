@@ -1,9 +1,9 @@
-import https from 'https';
-import crypto from 'crypto';
-import type { OAuth2Client } from 'googleapis-common';
-import type { drive_v3 } from 'googleapis';
-import * as cache from './cache';
-import type { CacheData, CacheItem, DirtyItem } from './cache';
+import https from "https";
+import crypto from "crypto";
+import type { OAuth2Client } from "googleapis-common";
+import type { drive_v3 } from "googleapis";
+import * as cache from "./cache";
+import type { CacheData, CacheItem, DirtyItem } from "./cache";
 
 type Logger = {
   dbLog: (ctx: string, msg: string, data?: unknown) => void;
@@ -15,18 +15,18 @@ type Logger = {
 };
 
 // ── Google Drive folder/file constants ──
-const VAULT_FOLDER_NAME = 'Vault';
-const SETTINGS_FILE_NAME = 'vault_settings';
-const TWOFA_FILE_NAME = 'vault_2fa';
-const LOGOS_FILE_NAME = 'vault_logos';
+const VAULT_FOLDER_NAME = "Vault";
+const SETTINGS_FILE_NAME = "vault_settings";
+const TWOFA_FILE_NAME = "vault_2fa";
+const LOGOS_FILE_NAME = "vault_logos";
 
 const SUBFOLDERS = {
-  password: 'passwords',
-  note: 'notes',
-  job: 'jobs',
-  totp: 'totp',
-  settings: 'settings',
-  sync: 'sync',
+  password: "passwords",
+  note: "notes",
+  job: "jobs",
+  totp: "totp",
+  settings: "settings",
+  sync: "sync",
 } as const;
 
 type SubfolderType = keyof typeof SUBFOLDERS;
@@ -68,9 +68,9 @@ export class DriveClient {
    * Must be called after Google OAuth succeeds.
    */
   async init(authClient: OAuth2Client): Promise<void> {
-    const { google } = await import('googleapis');
-    this.drive = google.drive({ version: 'v3', auth: authClient });
-    this.logger.dbLog('drive:init', 'Drive client initialized');
+    const { google } = await import("googleapis");
+    this.drive = google.drive({ version: "v3", auth: authClient });
+    this.logger.dbLog("drive:init", "Drive client initialized");
 
     // Ensure the Vault folder exists on Drive
     await this.ensureVaultFolder();
@@ -87,7 +87,7 @@ export class DriveClient {
     // On startup: diff local cache vs Drive, resolve conflicts via ETag
     await this.resolveConflicts();
 
-    this.logger.success('drive:init', 'Drive client ready', {
+    this.logger.success("drive:init", "Drive client ready", {
       vaultFolderId: this.vaultFolderId,
       cachedFiles: this.fileIdCache.size,
     });
@@ -102,7 +102,9 @@ export class DriveClient {
     if (this.closed) return;
     this.syncTimer = setTimeout(() => {
       this.syncToDrive().catch((e: unknown) => {
-        this.logger.warn('drive:sync', 'Debounced sync failed', { error: e instanceof Error ? e.message : String(e) });
+        this.logger.warn("drive:sync", "Debounced sync failed", {
+          error: e instanceof Error ? e.message : String(e),
+        });
       });
     }, this.SYNC_DEBOUNCE_MS);
   }
@@ -126,18 +128,27 @@ export class DriveClient {
       const remaining: DirtyItem[] = [];
 
       for (const item of queue) {
-        if (this.closed) { remaining.push(item); continue; }
+        if (this.closed) {
+          remaining.push(item);
+          continue;
+        }
         try {
           await this.processDirtyItem(item);
         } catch (e: unknown) {
           const err = e instanceof Error ? e.message : String(e);
-          this.logger.warn('drive:sync', `Failed to sync item ${item.id}`, { error: err });
+          this.logger.warn("drive:sync", `Failed to sync item ${item.id}`, {
+            error: err,
+          });
           item.retryCount++;
           item.lastAttempt = Date.now();
           if (item.retryCount < this.MAX_RETRIES) {
             remaining.push(item);
           } else {
-            this.logger.error('drive:sync', `Dropping item after ${this.MAX_RETRIES} retries`, { itemId: item.id });
+            this.logger.error(
+              "drive:sync",
+              `Dropping item after ${this.MAX_RETRIES} retries`,
+              { itemId: item.id },
+            );
           }
         }
       }
@@ -147,21 +158,26 @@ export class DriveClient {
       cache.saveCache(this.cache);
 
       if (queue.length > 0) {
-        this.logger.dbLog('drive:sync', 'Sync complete', { processed: queue.length, remaining: remaining.length });
+        this.logger.dbLog("drive:sync", "Sync complete", {
+          processed: queue.length,
+          remaining: remaining.length,
+        });
       }
     } catch (e: unknown) {
-      this.logger.error('drive:sync', 'Sync error', { error: e instanceof Error ? e.message : String(e) });
+      this.logger.error("drive:sync", "Sync error", {
+        error: e instanceof Error ? e.message : String(e),
+      });
     } finally {
       this.syncInProgress = false;
     }
   }
 
   private async processDirtyItem(item: DirtyItem): Promise<void> {
-    if (!this.drive) throw new Error('Drive not initialized');
+    if (!this.drive) throw new Error("Drive not initialized");
 
     switch (item.action) {
-      case 'create':
-      case 'update': {
+      case "create":
+      case "update": {
         const cacheItem = this.findCacheItem(item.id, item.type);
         if (!cacheItem) throw new Error(`Cache item not found: ${item.id}`);
         const fileName = this.itemFileName(item.id, item.type);
@@ -171,29 +187,31 @@ export class DriveClient {
           // Update existing file
           await this.drive.files.update({
             fileId: item.driveFileId,
-            media: { mimeType: 'application/octet-stream', body: content },
-            fields: 'id, name, modifiedTime',
+            media: { mimeType: "application/octet-stream", body: content },
+            fields: "id, name, modifiedTime",
           });
           this.fileIdCache.set(fileName, item.driveFileId);
         } else {
           // Create new file in the correct subfolder
-          const subfolderId = await this.ensureSubfolder(SUBFOLDERS[item.type as SubfolderType]);
+          const subfolderId = await this.ensureSubfolder(
+            SUBFOLDERS[item.type as SubfolderType],
+          );
           const created = await this.drive.files.create({
             requestBody: {
               name: fileName,
               parents: [subfolderId],
-              mimeType: 'application/octet-stream',
+              mimeType: "application/octet-stream",
               appProperties: { itemId: item.id, itemType: item.type },
             },
-            media: { mimeType: 'application/octet-stream', body: content },
-            fields: 'id, name, modifiedTime',
+            media: { mimeType: "application/octet-stream", body: content },
+            fields: "id, name, modifiedTime",
           });
           item.driveFileId = created.data.id || undefined;
-          this.fileIdCache.set(fileName, item.driveFileId || '');
+          this.fileIdCache.set(fileName, item.driveFileId || "");
         }
         break;
       }
-      case 'delete': {
+      case "delete": {
         if (item.driveFileId) {
           await this.drive.files.delete({ fileId: item.driveFileId });
           const fileName = this.itemFileName(item.id, item.type);
@@ -206,16 +224,21 @@ export class DriveClient {
 
   private findCacheItem(id: string, type: string): CacheItem | null {
     const arr = this.getCacheArray(type);
-    return arr.find(i => i.id === id) || null;
+    return arr.find((i) => i.id === id) || null;
   }
 
   private getCacheArray(type: string): CacheItem[] {
     switch (type) {
-      case 'password': return this.cache.passwords;
-      case 'note': return this.cache.notes;
-      case 'job': return this.cache.jobs;
-      case 'totp': return this.cache.totp;
-      default: return [];
+      case "password":
+        return this.cache.passwords;
+      case "note":
+        return this.cache.notes;
+      case "job":
+        return this.cache.jobs;
+      case "totp":
+        return this.cache.totp;
+      default:
+        return [];
     }
   }
 
@@ -232,29 +255,33 @@ export class DriveClient {
   // ── Vault folder management ──
 
   private async ensureVaultFolder(): Promise<void> {
-    if (!this.drive) throw new Error('Drive not initialized');
+    if (!this.drive) throw new Error("Drive not initialized");
 
     // Search for existing Vault folder
     const res = await this.drive.files.list({
       q: `name='${VAULT_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      spaces: 'drive',
-      fields: 'files(id, name)',
+      spaces: "drive",
+      fields: "files(id, name)",
     });
 
     if (res.data.files && res.data.files.length > 0) {
       this.vaultFolderId = res.data.files[0].id || null;
-      this.logger.dbLog('drive:folder', 'Found existing Vault folder', { folderId: this.vaultFolderId });
+      this.logger.dbLog("drive:folder", "Found existing Vault folder", {
+        folderId: this.vaultFolderId,
+      });
     } else {
       // Create the Vault folder
       const created = await this.drive.files.create({
         requestBody: {
           name: VAULT_FOLDER_NAME,
-          mimeType: 'application/vnd.google-apps.folder',
+          mimeType: "application/vnd.google-apps.folder",
         },
-        fields: 'id',
+        fields: "id",
       });
       this.vaultFolderId = created.data.id || null;
-      this.logger.dbLog('drive:folder', 'Created Vault folder', { folderId: this.vaultFolderId });
+      this.logger.dbLog("drive:folder", "Created Vault folder", {
+        folderId: this.vaultFolderId,
+      });
     }
   }
 
@@ -262,23 +289,27 @@ export class DriveClient {
     if (this.subfolderIds[name]) return this.subfolderIds[name];
     const res = await this.drive!.files.list({
       q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
-      spaces: 'drive',
-      fields: 'files(id, name)',
+      spaces: "drive",
+      fields: "files(id, name)",
     });
     if (res.data.files && res.data.files.length > 0) {
       this.subfolderIds[name] = res.data.files[0].id!;
-      this.logger.dbLog('drive:folder', `Found existing subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+      this.logger.dbLog("drive:folder", `Found existing subfolder: ${name}`, {
+        folderId: this.subfolderIds[name],
+      });
     } else {
       const created = await this.drive!.files.create({
         requestBody: {
           name,
-          mimeType: 'application/vnd.google-apps.folder',
+          mimeType: "application/vnd.google-apps.folder",
           parents: [this.vaultFolderId!],
         },
-        fields: 'id',
+        fields: "id",
       });
       this.subfolderIds[name] = created.data.id!;
-      this.logger.dbLog('drive:folder', `Created subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+      this.logger.dbLog("drive:folder", `Created subfolder: ${name}`, {
+        folderId: this.subfolderIds[name],
+      });
     }
     return this.subfolderIds[name];
   }
@@ -288,23 +319,27 @@ export class DriveClient {
       if (this.subfolderIds[name]) continue;
       const res = await this.drive!.files.list({
         q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
-        spaces: 'drive',
-        fields: 'files(id, name)',
+        spaces: "drive",
+        fields: "files(id, name)",
       });
       if (res.data.files && res.data.files.length > 0) {
         this.subfolderIds[name] = res.data.files[0].id!;
-        this.logger.dbLog('drive:folder', `Found existing subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+        this.logger.dbLog("drive:folder", `Found existing subfolder: ${name}`, {
+          folderId: this.subfolderIds[name],
+        });
       } else {
         const created = await this.drive!.files.create({
           requestBody: {
             name,
-            mimeType: 'application/vnd.google-apps.folder',
+            mimeType: "application/vnd.google-apps.folder",
             parents: [this.vaultFolderId!],
           },
-          fields: 'id',
+          fields: "id",
         });
         this.subfolderIds[name] = created.data.id!;
-        this.logger.dbLog('drive:folder', `Created subfolder: ${name}`, { folderId: this.subfolderIds[name] });
+        this.logger.dbLog("drive:folder", `Created subfolder: ${name}`, {
+          folderId: this.subfolderIds[name],
+        });
       }
     }
   }
@@ -318,15 +353,15 @@ export class DriveClient {
 
     const res = await this.drive.files.list({
       q: `'${this.vaultFolderId}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`,
-      spaces: 'drive',
-      fields: 'files(id, name)',
+      spaces: "drive",
+      fields: "files(id, name)",
     });
 
     const files = res.data.files || [];
     if (files.length === 0) return;
 
     for (const f of files) {
-      const name = f.name || '';
+      const name = f.name || "";
       // Check if it's an item file (password/note/job/totp)
       const parsed = this.parseItemFileName(name);
       if (parsed) {
@@ -337,9 +372,9 @@ export class DriveClient {
           fileId: f.id!,
           addParents: subfolderId,
           removeParents: this.vaultFolderId!,
-          fields: 'id, parents',
+          fields: "id, parents",
         });
-        this.logger.dbLog('drive:migrate', `Moved ${name} → ${subfolderName}/`);
+        this.logger.dbLog("drive:migrate", `Moved ${name} → ${subfolderName}/`);
         continue;
       }
       // Check if it's a settings/2fa file
@@ -350,18 +385,24 @@ export class DriveClient {
           fileId: f.id!,
           addParents: subfolderId,
           removeParents: this.vaultFolderId!,
-          fields: 'id, parents',
+          fields: "id, parents",
         });
-        this.logger.dbLog('drive:migrate', `Moved ${name} → settings/`);
+        this.logger.dbLog("drive:migrate", `Moved ${name} → settings/`);
         continue;
       }
       // Check if it's a legacy subfolder (already migrated)
       if (Object.values(SUBFOLDERS).includes(name as any)) {
-        this.logger.dbLog('drive:migrate', `Skipping existing subfolder: ${name}`);
+        this.logger.dbLog(
+          "drive:migrate",
+          `Skipping existing subfolder: ${name}`,
+        );
         continue;
       }
       // Unknown file — log but don't move
-      this.logger.dbLog('drive:migrate', `Unknown file in Vault root, leaving in place: ${name}`);
+      this.logger.dbLog(
+        "drive:migrate",
+        `Unknown file in Vault root, leaving in place: ${name}`,
+      );
     }
 
     // Flush any dirty items generated by the cache after migration
@@ -379,13 +420,13 @@ export class DriveClient {
       do {
         const res = await this.drive.files.list({
           q: `'${subfolderId}' in parents and trashed=false`,
-          spaces: 'drive',
-          fields: 'nextPageToken, files(id, name, modifiedTime, appProperties)',
+          spaces: "drive",
+          fields: "nextPageToken, files(id, name, modifiedTime, appProperties)",
           pageSize: 1000,
           pageToken,
         });
 
-        for (const f of (res.data.files || [])) {
+        for (const f of res.data.files || []) {
           if (f.name && f.id) {
             this.fileIdCache.set(f.name, f.id);
             // Store ETag for conflict resolution
@@ -398,7 +439,9 @@ export class DriveClient {
       } while (pageToken);
     }
 
-    this.logger.dbLog('drive:cache', 'File ID cache built', { count: this.fileIdCache.size });
+    this.logger.dbLog("drive:cache", "File ID cache built", {
+      count: this.fileIdCache.size,
+    });
   }
 
   /**
@@ -408,7 +451,7 @@ export class DriveClient {
   private async resolveConflicts(): Promise<void> {
     if (!this.drive || !this.vaultFolderId) return;
 
-    this.logger.dbLog('drive:conflict', 'Checking for conflicts', {
+    this.logger.dbLog("drive:conflict", "Checking for conflicts", {
       lastSyncedAt: this.cache.lastSyncedAt,
       cachedFiles: this.fileIdCache.size,
     });
@@ -424,27 +467,35 @@ export class DriveClient {
       const localItem = this.findCacheItem(parsed.id, parsed.type);
       if (!localItem) {
         // File exists on Drive but not in local cache — download it
-        this.logger.dbLog('drive:conflict', 'Downloading missing local item', { fileName });
+        this.logger.dbLog("drive:conflict", "Downloading missing local item", {
+          fileName,
+        });
         await this.downloadAndCacheItem(fileId, parsed.id, parsed.type);
       }
     }
 
     // Process any remaining dirty items from previous session
     if (this.cache.dirtyQueue.length > 0) {
-      this.logger.dbLog('drive:conflict', 'Processing leftover dirty queue', { count: this.cache.dirtyQueue.length });
+      this.logger.dbLog("drive:conflict", "Processing leftover dirty queue", {
+        count: this.cache.dirtyQueue.length,
+      });
       await this.syncToDrive();
     }
   }
 
-  private async downloadAndCacheItem(fileId: string, id: string, type: string): Promise<void> {
+  private async downloadAndCacheItem(
+    fileId: string,
+    id: string,
+    type: string,
+  ): Promise<void> {
     if (!this.drive) return;
 
     const res = await this.drive.files.get(
-      { fileId, alt: 'media' },
-      { responseType: 'arraybuffer' }
+      { fileId, alt: "media" },
+      { responseType: "arraybuffer" },
     );
 
-    const encryptedData = Buffer.from(res.data as ArrayBuffer).toString('utf8');
+    const encryptedData = Buffer.from(res.data as ArrayBuffer).toString("utf8");
     const now = new Date().toISOString();
     const item: CacheItem = {
       id,
@@ -465,27 +516,32 @@ export class DriveClient {
   /**
    * Load all non-deleted items of a given type from local cache.
    */
-  loadItems(type: 'password' | 'note' | 'job' | 'totp'): CacheItem[] {
+  loadItems(type: "password" | "note" | "job" | "totp"): CacheItem[] {
     const arr = this.getCacheArray(type);
     return arr
-      .filter(i => !i.deletedAt)
+      .filter((i) => !i.deletedAt)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }
 
   /**
    * Load all soft-deleted items of a given type from local cache.
    */
-  loadTrash(type: 'password' | 'note' | 'job'): CacheItem[] {
+  loadTrash(type: "password" | "note" | "job"): CacheItem[] {
     const arr = this.getCacheArray(type);
     return arr
-      .filter(i => !!i.deletedAt)
-      .sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+      .filter((i) => !!i.deletedAt)
+      .sort((a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || ""));
   }
 
   /**
    * Save (create or update) an item. Adds to dirty queue for Drive sync.
    */
-  saveItem(type: 'password' | 'note' | 'job' | 'totp', encryptedData: string, existingId?: string, sortOrder?: number): string {
+  saveItem(
+    type: "password" | "note" | "job" | "totp",
+    encryptedData: string,
+    existingId?: string,
+    sortOrder?: number,
+  ): string {
     const now = new Date().toISOString();
 
     let returnId: string;
@@ -493,7 +549,7 @@ export class DriveClient {
       // Update existing
       returnId = existingId;
       const arr = this.getCacheArray(type);
-      const idx = arr.findIndex(i => i.id === existingId);
+      const idx = arr.findIndex((i) => i.id === existingId);
       if (idx >= 0) {
         arr[idx].encryptedData = encryptedData;
         arr[idx].updatedAt = now;
@@ -502,8 +558,10 @@ export class DriveClient {
       this.cache.dirtyQueue.push({
         id: existingId,
         type,
-        action: 'update',
-        driveFileId: this.fileIdCache.get(this.itemFileName(existingId, type)) || undefined,
+        action: "update",
+        driveFileId:
+          this.fileIdCache.get(this.itemFileName(existingId, type)) ||
+          undefined,
         retryCount: 0,
         lastAttempt: 0,
       });
@@ -523,7 +581,7 @@ export class DriveClient {
       this.cache.dirtyQueue.push({
         id: returnId,
         type,
-        action: 'create',
+        action: "create",
         retryCount: 0,
         lastAttempt: 0,
       });
@@ -537,17 +595,18 @@ export class DriveClient {
   /**
    * Soft-delete an item.
    */
-  softDelete(type: 'password' | 'note' | 'job', id: string): void {
+  softDelete(type: "password" | "note" | "job", id: string): void {
     const arr = this.getCacheArray(type);
-    const item = arr.find(i => i.id === id);
+    const item = arr.find((i) => i.id === id);
     if (item) {
       item.deletedAt = new Date().toISOString();
       item.updatedAt = item.deletedAt;
       this.cache.dirtyQueue.push({
         id,
         type,
-        action: 'update', // Soft delete = update with deletedAt set
-        driveFileId: this.fileIdCache.get(this.itemFileName(id, type)) || undefined,
+        action: "update", // Soft delete = update with deletedAt set
+        driveFileId:
+          this.fileIdCache.get(this.itemFileName(id, type)) || undefined,
         retryCount: 0,
         lastAttempt: 0,
       });
@@ -559,17 +618,18 @@ export class DriveClient {
   /**
    * Restore a soft-deleted item.
    */
-  restore(type: 'password' | 'note' | 'job', id: string): void {
+  restore(type: "password" | "note" | "job", id: string): void {
     const arr = this.getCacheArray(type);
-    const item = arr.find(i => i.id === id);
+    const item = arr.find((i) => i.id === id);
     if (item) {
       item.deletedAt = null;
       item.updatedAt = new Date().toISOString();
       this.cache.dirtyQueue.push({
         id,
         type,
-        action: 'update',
-        driveFileId: this.fileIdCache.get(this.itemFileName(id, type)) || undefined,
+        action: "update",
+        driveFileId:
+          this.fileIdCache.get(this.itemFileName(id, type)) || undefined,
         retryCount: 0,
         lastAttempt: 0,
       });
@@ -581,16 +641,17 @@ export class DriveClient {
   /**
    * Permanently delete an item.
    */
-  permDelete(type: 'password' | 'note' | 'job' | 'totp', id: string): void {
+  permDelete(type: "password" | "note" | "job" | "totp", id: string): void {
     const arr = this.getCacheArray(type);
-    const idx = arr.findIndex(i => i.id === id);
+    const idx = arr.findIndex((i) => i.id === id);
     if (idx >= 0) {
       arr.splice(idx, 1);
       this.cache.dirtyQueue.push({
         id,
         type,
-        action: 'delete',
-        driveFileId: this.fileIdCache.get(this.itemFileName(id, type)) || undefined,
+        action: "delete",
+        driveFileId:
+          this.fileIdCache.get(this.itemFileName(id, type)) || undefined,
         retryCount: 0,
         lastAttempt: 0,
       });
@@ -602,19 +663,23 @@ export class DriveClient {
   /**
    * Update sort order for a list of items.
    */
-  updateSortOrder(type: 'password' | 'note' | 'job', items: Array<{ id?: string }>): void {
+  updateSortOrder(
+    type: "password" | "note" | "job",
+    items: Array<{ id?: string }>,
+  ): void {
     const arr = this.getCacheArray(type);
     for (let i = 0; i < items.length; i++) {
       if (!items[i].id) continue;
-      const item = arr.find(it => it.id === items[i].id);
+      const item = arr.find((it) => it.id === items[i].id);
       if (item) {
         item.sortOrder = i;
         item.updatedAt = new Date().toISOString();
         this.cache.dirtyQueue.push({
           id: item.id,
           type,
-          action: 'update',
-          driveFileId: this.fileIdCache.get(this.itemFileName(item.id, type)) || undefined,
+          action: "update",
+          driveFileId:
+            this.fileIdCache.get(this.itemFileName(item.id, type)) || undefined,
           retryCount: 0,
           lastAttempt: 0,
         });
@@ -633,17 +698,17 @@ export class DriveClient {
 
     try {
       const res = await this.drive.files.get(
-        { fileId, alt: 'media' },
-        { responseType: 'arraybuffer' }
+        { fileId, alt: "media" },
+        { responseType: "arraybuffer" },
       );
-      const raw = Buffer.from(res.data as ArrayBuffer).toString('utf8');
+      const raw = Buffer.from(res.data as ArrayBuffer).toString("utf8");
       // Support both plain JSON (new format) and base64-encoded JSON (legacy)
       let data;
       try {
         data = JSON.parse(raw);
       } catch {
         // Legacy: base64-encoded JSON
-        data = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
+        data = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
       }
       this.cache.settings = data;
       return data;
@@ -665,7 +730,7 @@ export class DriveClient {
     if (fileId) {
       await this.drive.files.update({
         fileId,
-        media: { mimeType: 'application/json', body: content },
+        media: { mimeType: "application/json", body: content },
       });
     } else {
       const subfolderId = await this.ensureSubfolder(SUBFOLDERS.settings);
@@ -673,10 +738,10 @@ export class DriveClient {
         requestBody: {
           name: SETTINGS_FILE_NAME,
           parents: [subfolderId],
-          mimeType: 'application/json',
+          mimeType: "application/json",
         },
-        media: { mimeType: 'application/json', body: content },
-        fields: 'id',
+        media: { mimeType: "application/json", body: content },
+        fields: "id",
       });
       if (created.data.id) {
         this.fileIdCache.set(SETTINGS_FILE_NAME, created.data.id);
@@ -689,19 +754,29 @@ export class DriveClient {
 
   async load2fa(): Promise<{ secret: string; enabled: boolean } | null> {
     const fileId = this.fileIdCache.get(TWOFA_FILE_NAME);
-    if (!fileId) return this.cache.twofa ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled } : null;
-    if (!this.drive) return this.cache.twofa ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled } : null;
+    if (!fileId)
+      return this.cache.twofa
+        ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled }
+        : null;
+    if (!this.drive)
+      return this.cache.twofa
+        ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled }
+        : null;
 
     try {
       const res = await this.drive.files.get(
-        { fileId, alt: 'media' },
-        { responseType: 'arraybuffer' }
+        { fileId, alt: "media" },
+        { responseType: "arraybuffer" },
       );
-      const data = JSON.parse(Buffer.from(res.data as ArrayBuffer).toString('utf8'));
+      const data = JSON.parse(
+        Buffer.from(res.data as ArrayBuffer).toString("utf8"),
+      );
       this.cache.twofa = { secret: data.secret, enabled: data.enabled };
       return data;
     } catch {
-      return this.cache.twofa ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled } : null;
+      return this.cache.twofa
+        ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled }
+        : null;
     }
   }
 
@@ -718,7 +793,7 @@ export class DriveClient {
     if (fileId) {
       await this.drive.files.update({
         fileId,
-        media: { mimeType: 'application/json', body: content },
+        media: { mimeType: "application/json", body: content },
       });
     } else {
       const subfolderId = await this.ensureSubfolder(SUBFOLDERS.settings);
@@ -726,10 +801,10 @@ export class DriveClient {
         requestBody: {
           name: TWOFA_FILE_NAME,
           parents: [subfolderId],
-          mimeType: 'application/json',
+          mimeType: "application/json",
         },
-        media: { mimeType: 'application/json', body: content },
-        fields: 'id',
+        media: { mimeType: "application/json", body: content },
+        fields: "id",
       });
       if (created.data.id) {
         this.fileIdCache.set(TWOFA_FILE_NAME, created.data.id);
@@ -746,7 +821,7 @@ export class DriveClient {
 
   async saveLogo(domain: string, url: string): Promise<void> {
     const now = new Date().toISOString();
-    const idx = this.cache.logos.findIndex(l => l.domain === domain);
+    const idx = this.cache.logos.findIndex((l) => l.domain === domain);
     if (idx >= 0) {
       this.cache.logos[idx] = { domain, url, cachedAt: now };
     } else {

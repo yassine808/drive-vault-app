@@ -1,5 +1,5 @@
-import path from 'path';
-import fs from 'fs';
+import path from "path";
+import fs from "fs";
 
 /**
  * Local file-based cache for all vault data.
@@ -7,25 +7,30 @@ import fs from 'fs';
  * Provides offline support and fast local reads.
  */
 
-let _userDataPath: string = '';
+let _userDataPath: string = "";
 
 export function setUserDataPath(p: string): void {
   _userDataPath = p;
 }
 
 function getCacheDir(): string {
-  const userData = _userDataPath
-    || process.env.APPDATA
-    || (process.platform === 'darwin'
-      ? path.join(process.env.HOME || '', 'Library', 'Application Support')
-      : path.join(process.env.HOME || '', '.config'));
-  const dir = path.join(userData, 'Vault', 'Cache');
-  try { fs.mkdirSync(dir, { recursive: true }); } catch { /* noop */ }
+  const userData =
+    _userDataPath ||
+    process.env.APPDATA ||
+    (process.platform === "darwin"
+      ? path.join(process.env.HOME || "", "Library", "Application Support")
+      : path.join(process.env.HOME || "", ".config"));
+  const dir = path.join(userData, "Vault", "Cache");
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    /* noop */
+  }
   return dir;
 }
 
 function getCacheFilePath(): string {
-  return path.join(getCacheDir(), 'vault_cache.json');
+  return path.join(getCacheDir(), "vault_cache.json");
 }
 
 export interface CacheData {
@@ -46,7 +51,7 @@ export interface CacheData {
 }
 
 export interface CacheItem {
-  id: string;           // local UUID
+  id: string; // local UUID
   sortOrder: number;
   encryptedData: string; // AES-256-CBC + HMAC encrypted JSON
   createdAt: string;
@@ -67,8 +72,8 @@ export interface CacheLogo {
 
 export interface DirtyItem {
   id: string;
-  type: 'password' | 'note' | 'job' | 'totp' | 'settings' | 'logo';
-  action: 'create' | 'update' | 'delete';
+  type: "password" | "note" | "job" | "totp" | "settings" | "logo";
+  action: "create" | "update" | "delete";
   driveFileId?: string;
   retryCount: number;
   lastAttempt: number;
@@ -95,7 +100,7 @@ export function loadCache(googleId: string): CacheData {
   try {
     const file = getCacheFilePath();
     if (!fs.existsSync(file)) return defaultCache(googleId);
-    const raw = fs.readFileSync(file, 'utf8');
+    const raw = fs.readFileSync(file, "utf8");
     const data = JSON.parse(raw) as CacheData;
     if (data.googleId !== googleId) return defaultCache(googleId);
     // Ensure all fields exist (forward compat)
@@ -109,7 +114,9 @@ export function loadCache(googleId: string): CacheData {
 export function saveCache(cache: CacheData): void {
   try {
     fs.writeFileSync(getCacheFilePath(), JSON.stringify(cache, null, 2));
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
 }
 
 export function getCacheDir_(): string {

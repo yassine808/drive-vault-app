@@ -2,11 +2,22 @@
 // These extend the global Window interface for the preload bridge
 
 import type {
-  VaultItem, Job, TotpItem, Settings, UserProfile,
-  VaultData, LogEntry, DriveStats, ConfirmOpts, TotpConfig,
-  AuthResult, PinStatus, PinVerifyResult,
-  SyncFolder, SyncConfig
-} from './index';
+  VaultItem,
+  Job,
+  TotpItem,
+  Settings,
+  UserProfile,
+  VaultData,
+  LogEntry,
+  DriveStats,
+  ConfirmOpts,
+  TotpConfig,
+  AuthResult,
+  PinStatus,
+  PinVerifyResult,
+  SyncFolder,
+  SyncConfig,
+} from "./index";
 
 export type { ConfirmOpts, TotpConfig, AuthResult, PreloadApi };
 
@@ -18,19 +29,28 @@ export interface PreloadApi {
   reauth(): Promise<AuthResult>;
   verify2fa(code: string): Promise<AuthResult>;
 
-  save(type: string, item: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }>;
+  save(
+    type: string,
+    item: Record<string, unknown>,
+  ): Promise<{ ok: boolean; id?: string; error?: string }>;
   delete(id: string, type: string): Promise<{ ok: boolean; error?: string }>;
   vaultSync(): Promise<{ ok: boolean; vault?: VaultData; error?: string }>;
   reorder(type: string, items: unknown[]): Promise<{ ok: boolean }>;
 
-  trashLoad(): Promise<{ ok: boolean; items: Array<VaultItem & { _type: string; _deletedAt: string }>; error?: string }>;
+  trashLoad(): Promise<{
+    ok: boolean;
+    items: Array<VaultItem & { _type: string; _deletedAt: string }>;
+    error?: string;
+  }>;
   trashRestore(id: string, type: string): Promise<{ ok: boolean }>;
   trashPurge(id: string, type: string): Promise<{ ok: boolean }>;
 
   logoFetch(site: string): Promise<{ ok: boolean; url?: string }>;
 
   jobsLoad(): Promise<{ ok: boolean; jobs: Job[]; error?: string }>;
-  jobsSave(job: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }>;
+  jobsSave(
+    job: Record<string, unknown>,
+  ): Promise<{ ok: boolean; id?: string; error?: string }>;
   jobsDelete(id: string): Promise<{ ok: boolean; error?: string }>;
   jobsReorder(jobs: unknown[]): Promise<{ ok: boolean }>;
   jobsTrash: {
@@ -40,12 +60,19 @@ export interface PreloadApi {
   };
 
   totpLoad(): Promise<{ ok: boolean; items: TotpItem[]; error?: string }>;
-  totpSave(item: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }>;
+  totpSave(
+    item: Record<string, unknown>,
+  ): Promise<{ ok: boolean; id?: string; error?: string }>;
   totpDelete(id: string): Promise<{ ok: boolean; error?: string }>;
 
   twofa: {
     status(): Promise<{ enabled: boolean }>;
-    setup(): Promise<{ ok: boolean; secret?: string; otpauth?: string; error?: string }>;
+    setup(): Promise<{
+      ok: boolean;
+      secret?: string;
+      otpauth?: string;
+      error?: string;
+    }>;
     enable(token: string): Promise<{ ok: boolean; error?: string }>;
     disable(token: string): Promise<{ ok: boolean; error?: string }>;
   };
@@ -56,7 +83,16 @@ export interface PreloadApi {
   };
 
   accounts: {
-    list(): Promise<{ ok: boolean; accounts: Array<{ googleId: string; email: string; name: string; avatar: string | null; lastUsed: number }> }>;
+    list(): Promise<{
+      ok: boolean;
+      accounts: Array<{
+        googleId: string;
+        email: string;
+        name: string;
+        avatar: string | null;
+        lastUsed: number;
+      }>;
+    }>;
     save(): Promise<{ ok: boolean; error?: string }>;
     remove(): Promise<{ ok: boolean; error?: string }>;
     touch(googleId: string): Promise<{ ok: boolean }>;
@@ -70,23 +106,67 @@ export interface PreloadApi {
   onTrayLogout(cb: () => void): void;
 
   pin: {
-    setup(pin: string, allowAlpha: boolean): Promise<{ ok: boolean; error?: string }>;
+    setup(
+      pin: string,
+      allowAlpha: boolean,
+    ): Promise<{ ok: boolean; error?: string }>;
     verify(pin: string): Promise<PinVerifyResult>;
-    change(oldPin: string, newPin: string, allowAlpha: boolean): Promise<{ ok: boolean; error?: string }>;
+    change(
+      oldPin: string,
+      newPin: string,
+      allowAlpha: boolean,
+    ): Promise<{ ok: boolean; error?: string }>;
     disable(): Promise<{ ok: boolean; error?: string }>;
     status(): Promise<PinStatus>;
   };
 
   sync: {
-    foldersList(): Promise<{ ok: boolean; folders: SyncFolder[]; error?: string }>;
-    foldersAdd(localPath: string, driveFolderName: string): Promise<{ ok: boolean; folder?: SyncFolder; error?: string }>;
+    foldersList(): Promise<{
+      ok: boolean;
+      folders: SyncFolder[];
+      error?: string;
+    }>;
+    foldersAdd(
+      localPath: string,
+      driveFolderName: string,
+    ): Promise<{ ok: boolean; folder?: SyncFolder; error?: string }>;
     foldersRemove(folderId: string): Promise<{ ok: boolean; error?: string }>;
-    foldersToggle(folderId: string, enabled: boolean): Promise<{ ok: boolean; error?: string }>;
+    foldersToggle(
+      folderId: string,
+      enabled: boolean,
+    ): Promise<{ ok: boolean; error?: string }>;
     status(): Promise<{ ok: boolean; config: SyncConfig; error?: string }>;
-    syncNow(): Promise<{ ok: boolean; uploaded?: number; downloaded?: number; conflicts?: number; errors?: number; error?: string }>;
+    syncNow(): Promise<{
+      ok: boolean;
+      uploaded?: number;
+      downloaded?: number;
+      conflicts?: number;
+      errors?: number;
+      error?: string;
+    }>;
     browseFolder(): Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
-    getFileStates(): Promise<{ ok: boolean; states: Record<string, { files: Record<string, { conflict: string; localHash: string | null; driveHash: string | null }> }>; error?: string }>;
-    handleDrop(paths: string[]): Promise<{ ok: boolean; results: Array<{ ok: boolean }>; error?: string }>;
+    getFileStates(): Promise<{
+      ok: boolean;
+      states: Record<
+        string,
+        {
+          files: Record<
+            string,
+            {
+              conflict: string;
+              localHash: string | null;
+              driveHash: string | null;
+            }
+          >;
+        }
+      >;
+      error?: string;
+    }>;
+    handleDrop(paths: string[]): Promise<{
+      ok: boolean;
+      results: Array<{ ok: boolean }>;
+      error?: string;
+    }>;
     onStatusUpdate(cb: (config: SyncConfig) => void): void;
   };
 

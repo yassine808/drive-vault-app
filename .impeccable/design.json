@@ -96,25 +96,79 @@
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Login heading, 2FA heading. Once per screen maximum." },
-      "headline": { "displayName": "Headline", "purpose": "Tab titles. Screen-level identity." },
-      "title": { "displayName": "Title", "purpose": "Modal headings, settings section titles. Container-level identity." },
-      "body": { "displayName": "Body", "purpose": "All running text, nav labels, form values, descriptions." },
-      "label": { "displayName": "Label", "purpose": "Form labels, column headers, status words. Uppercase, tracked." },
-      "mono": { "displayName": "Mono", "purpose": "Passwords, codes, usernames, timestamps, metadata. Machine data only." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "Login heading, 2FA heading. Once per screen maximum."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Tab titles. Screen-level identity."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Modal headings, settings section titles. Container-level identity."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All running text, nav labels, form values, descriptions."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels, column headers, status words. Uppercase, tracked."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Passwords, codes, usernames, timestamps, metadata. Machine data only."
+      }
     },
     "shadows": [
-      { "name": "sm", "value": "0 1px 2px oklch(0 0 0 / 0.25), 0 1px 1px oklch(0 0 0 / 0.15)", "purpose": "List row hover, login card rest. Subtle ground-hugging." },
-      { "name": "md", "value": "0 4px 12px oklch(0 0 0 / 0.3), 0 1px 3px oklch(0 0 0 / 0.2)", "purpose": "Primary button hover, modal surfaces. Mid elevation." },
-      { "name": "lg", "value": "0 8px 32px oklch(0 0 0 / 0.4), 0 2px 8px oklch(0 0 0 / 0.25)", "purpose": "Login card, modals, confirm dialogs, toast. Deepest shadow — floating panels." },
-      { "name": "inset", "value": "inset 0 1px 0 oklch(1 0 0 / 0.04)", "purpose": "Top-edge highlight on login card and modals. Physical-object light catch." },
-      { "name": "focus-ring", "value": "0 0 0 3px oklch(0.72 0.06 70 / 0.12)", "purpose": "Focused inputs and hovered google button. Brass-tinted glow." },
-      { "name": "ambient-glow", "value": "0 0 40px oklch(0.72 0.06 70 / 0.06)", "purpose": "Login shield icon only. 6% opacity brass ambient glow." }
+      {
+        "name": "sm",
+        "value": "0 1px 2px oklch(0 0 0 / 0.25), 0 1px 1px oklch(0 0 0 / 0.15)",
+        "purpose": "List row hover, login card rest. Subtle ground-hugging."
+      },
+      {
+        "name": "md",
+        "value": "0 4px 12px oklch(0 0 0 / 0.3), 0 1px 3px oklch(0 0 0 / 0.2)",
+        "purpose": "Primary button hover, modal surfaces. Mid elevation."
+      },
+      {
+        "name": "lg",
+        "value": "0 8px 32px oklch(0 0 0 / 0.4), 0 2px 8px oklch(0 0 0 / 0.25)",
+        "purpose": "Login card, modals, confirm dialogs, toast. Deepest shadow — floating panels."
+      },
+      {
+        "name": "inset",
+        "value": "inset 0 1px 0 oklch(1 0 0 / 0.04)",
+        "purpose": "Top-edge highlight on login card and modals. Physical-object light catch."
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px oklch(0.72 0.06 70 / 0.12)",
+        "purpose": "Focused inputs and hovered google button. Brass-tinted glow."
+      },
+      {
+        "name": "ambient-glow",
+        "value": "0 0 40px oklch(0.72 0.06 70 / 0.06)",
+        "purpose": "Login shield icon only. 6% opacity brass ambient glow."
+      }
     ],
     "motion": [
-      { "name": "fast", "value": "120ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Nav hover, icon button hover, badge changes." },
-      { "name": "base", "value": "180ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Row hover, panel transitions, toast opacity." },
-      { "name": "slow", "value": "280ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "fadeUp animation — login card entrance, modal entrance, chip appearance." }
+      {
+        "name": "fast",
+        "value": "120ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Nav hover, icon button hover, badge changes."
+      },
+      {
+        "name": "base",
+        "value": "180ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Row hover, panel transitions, toast opacity."
+      },
+      {
+        "name": "slow",
+        "value": "280ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "fadeUp animation — login card entrance, modal entrance, chip appearance."
+      }
     ],
     "breakpoints": [
       { "name": "app-min", "value": "900px" },
@@ -214,12 +268,36 @@
       "Border-radius scale from 4px to 999px"
     ],
     "rules": [
-      { "name": "The One Voice Rule", "body": "The brass accent appears on ≤10% of any given screen. Its rarity is the point — when it glows, it means something.", "section": "colors" },
-      { "name": "The Nine-Five Rule", "body": "Neutral surfaces never reach pure black or pure white. The darkest surface is 14% lightness, not 0%. The brightest text is 92%, not 100%.", "section": "colors" },
-      { "name": "The Mono Boundary Rule", "body": "Monospace is used exclusively for data the user did not write in prose: passwords, usernames, emails, codes, timestamps, metadata tags. Never for headings, navigation, or body copy.", "section": "typography" },
-      { "name": "The Letter-Spacing Axis", "body": "Display sizes use negative tracking (tighter, more impactful). Labels use positive tracking (wider, more scannable). Body stays at zero.", "section": "typography" },
-      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Shadows appear only as response to state (hover → sm, floating → lg). If every card had a shadow at rest, nothing would feel elevated.", "section": "elevation" },
-      { "name": "The Inset Highlight Rule", "body": "Any surface that uses shadow-lg also gets shadow-in on the same element. The hairline of white at the top edge turns a dark rectangle into something that feels like a physical object.", "section": "elevation" }
+      {
+        "name": "The One Voice Rule",
+        "body": "The brass accent appears on ≤10% of any given screen. Its rarity is the point — when it glows, it means something.",
+        "section": "colors"
+      },
+      {
+        "name": "The Nine-Five Rule",
+        "body": "Neutral surfaces never reach pure black or pure white. The darkest surface is 14% lightness, not 0%. The brightest text is 92%, not 100%.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Boundary Rule",
+        "body": "Monospace is used exclusively for data the user did not write in prose: passwords, usernames, emails, codes, timestamps, metadata tags. Never for headings, navigation, or body copy.",
+        "section": "typography"
+      },
+      {
+        "name": "The Letter-Spacing Axis",
+        "body": "Display sizes use negative tracking (tighter, more impactful). Labels use positive tracking (wider, more scannable). Body stays at zero.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces are flat at rest. Shadows appear only as response to state (hover → sm, floating → lg). If every card had a shadow at rest, nothing would feel elevated.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Inset Highlight Rule",
+        "body": "Any surface that uses shadow-lg also gets shadow-in on the same element. The hairline of white at the top edge turns a dark rectangle into something that feels like a physical object.",
+        "section": "elevation"
+      }
     ],
     "dos": [
       "Do use the brass accent on ≤10% of any screen. Its scarcity creates meaning.",

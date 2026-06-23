@@ -27,26 +27,26 @@ No tests, linting, or formatting tools exist.
 
 ### File Structure
 
-| File | Role |
-|---|---|
-| `src/main.ts` | Electron main process — entry point. Loads config, creates window, registers IPC, contains OAuth flow, Drive-backed data helpers, session management. |
-| `src/modules/auth.ts` | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` IPC guards, 2FA rate limiter. |
-| `src/modules/crypto.ts` | Key derivation (PBKDF2-SHA256, 600k iterations, per-account salt; legacy SHA-256 fallback), AES-256-CBC + HMAC-SHA256 encrypt-then-MAC, backward-compatible CryptoJS legacy decryption. |
-| `src/modules/validation.ts` | Shared validators: `sanitizeStr`, `validType`, `validEmail`, `validTotpSecret`, `validDomain`. |
-| `src/modules/jobs.ts` | Job tracker CRUD — registered via `register()` pattern. Jobs stored as plaintext columns. |
-| `src/modules/totp.ts` | TOTP secret management (encrypted) — registered via `register()` pattern. |
-| `src/modules/settings.ts` | Settings load/save with validation — registered via `register()` pattern. |
-| `src/modules/cache.ts` | Local file-based cache for all vault data. Stores encrypted items as JSON on disk. Provides offline support and dirty tracking for Drive sync. |
-| `src/modules/logo.ts` | Favicon fetching + caching as data URLs — registered via `register()` pattern. |
-| `src/modules/drive.ts` | Google Drive storage client — per-item encrypted file CRUD, local cache, debounce sync, ETag-based conflict resolution, offline support. |
-| `src/modules/pin.ts` | PIN-based authentication — setup, verify, change, disable, status. Local file storage only. Rate limited. |
-| `src/modules/accounts.ts` | Saved accounts for quick PIN login — list, save, remove, touch. Stores account info (googleId, email, name, avatar) locally in `vault_accounts` file. Max 10 accounts, sorted by lastUsed. |
-| `src/types/index.ts` | Shared TypeScript interfaces (Session, VaultItem, Job, TotpItem, Settings, etc.) |
-| `src/logger.ts` | Structured logging to per-level files in `Logs/` directory. |
-| `preload.ts` | Context bridge — session token in closure, auto-prepended to sensitive IPC calls. |
-| `index.html` | All renderer UI (single file). |
-| `app.css` | Single stylesheet, `oklch()` color space, glassmorphism. |
-| `app.ts` | All renderer JS — event handlers, DOM manipulation, state, sounds. |
+| File                        | Role                                                                                                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/main.ts`               | Electron main process — entry point. Loads config, creates window, registers IPC, contains OAuth flow, Drive-backed data helpers, session management.                                      |
+| `src/modules/auth.ts`       | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` IPC guards, 2FA rate limiter.                                                                                 |
+| `src/modules/crypto.ts`     | Key derivation (PBKDF2-SHA256, 600k iterations, per-account salt; legacy SHA-256 fallback), AES-256-CBC + HMAC-SHA256 encrypt-then-MAC, backward-compatible CryptoJS legacy decryption.    |
+| `src/modules/validation.ts` | Shared validators: `sanitizeStr`, `validType`, `validEmail`, `validTotpSecret`, `validDomain`.                                                                                             |
+| `src/modules/jobs.ts`       | Job tracker CRUD — registered via `register()` pattern. Jobs stored as plaintext columns.                                                                                                  |
+| `src/modules/totp.ts`       | TOTP secret management (encrypted) — registered via `register()` pattern.                                                                                                                  |
+| `src/modules/settings.ts`   | Settings load/save with validation — registered via `register()` pattern.                                                                                                                  |
+| `src/modules/cache.ts`      | Local file-based cache for all vault data. Stores encrypted items as JSON on disk. Provides offline support and dirty tracking for Drive sync.                                             |
+| `src/modules/logo.ts`       | Favicon fetching + caching as data URLs — registered via `register()` pattern.                                                                                                             |
+| `src/modules/drive.ts`      | Google Drive storage client — per-item encrypted file CRUD, local cache, debounce sync, ETag-based conflict resolution, offline support.                                                   |
+| `src/modules/pin.ts`        | PIN-based authentication — setup, verify, change, disable, status. Local file storage only. Rate limited.                                                                                  |
+| `src/modules/accounts.ts`   | Saved accounts for quick PIN login — list, save, remove, touch. Stores account info (googleId, email, name, avatar) locally in `vault_accounts` file. Max 10 accounts, sorted by lastUsed. |
+| `src/types/index.ts`        | Shared TypeScript interfaces (Session, VaultItem, Job, TotpItem, Settings, etc.)                                                                                                           |
+| `src/logger.ts`             | Structured logging to per-level files in `Logs/` directory.                                                                                                                                |
+| `preload.ts`                | Context bridge — session token in closure, auto-prepended to sensitive IPC calls.                                                                                                          |
+| `index.html`                | All renderer UI (single file).                                                                                                                                                             |
+| `app.css`                   | Single stylesheet, `oklch()` color space, glassmorphism.                                                                                                                                   |
+| `app.ts`                    | All renderer JS — event handlers, DOM manipulation, state, sounds.                                                                                                                         |
 
 TypeScript is strict mode for main process (`tsconfig.json`) and renderer (`tsconfig.renderer.json` with `strictNullChecks: false`). Main process compiles to `dist/` via `tsc`; renderer bundles via Vite/esbuild.
 
@@ -73,19 +73,19 @@ Some modules with encrypted data (totp, settings, pin) also receive `enc`/`dec` 
 
 All async handlers use `ipcMain.handle`. Channels are namespaced:
 
-| Namespace | Auth | Description |
-|---|---|---|
-| `auth:` | No | Login, reauth, 2FA verify, logout, lock |
-| `vault:` | Yes | CRUD for passwords & notes |
-| `trash:` | Yes | Soft-delete restore & purge |
-| `jobs:` | Yes | CRUD for job applications (including `jobs:trash:*`) |
-| `totp:` | Yes | TOTP secret management |
-| `2fa:` | Yes | 2FA setup/enable/disable |
-| `settings:` | Yes | Settings read/write |
-| `logo:` | Yes | Favicon fetching & caching |
-| `win:` | Yes | Window minimize/maximize/close |
-| `pin:` | Mixed | PIN auth: `verify` is public; `setup`, `change`, `disable` require auth; `status` is public. `status` returns `{ ok, enabled, allowAlpha }`. PIN settings stored locally only. |
-| `accounts:` | Mixed | Saved accounts: `list` and `touch` are public; `save` and `remove` require auth. Used for quick PIN login screen. |
+| Namespace   | Auth  | Description                                                                                                                                                                    |
+| ----------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auth:`     | No    | Login, reauth, 2FA verify, logout, lock                                                                                                                                        |
+| `vault:`    | Yes   | CRUD for passwords & notes                                                                                                                                                     |
+| `trash:`    | Yes   | Soft-delete restore & purge                                                                                                                                                    |
+| `jobs:`     | Yes   | CRUD for job applications (including `jobs:trash:*`)                                                                                                                           |
+| `totp:`     | Yes   | TOTP secret management                                                                                                                                                         |
+| `2fa:`      | Yes   | 2FA setup/enable/disable                                                                                                                                                       |
+| `settings:` | Yes   | Settings read/write                                                                                                                                                            |
+| `logo:`     | Yes   | Favicon fetching & caching                                                                                                                                                     |
+| `win:`      | Yes   | Window minimize/maximize/close                                                                                                                                                 |
+| `pin:`      | Mixed | PIN auth: `verify` is public; `setup`, `change`, `disable` require auth; `status` is public. `status` returns `{ ok, enabled, allowAlpha }`. PIN settings stored locally only. |
+| `accounts:` | Mixed | Saved accounts: `list` and `touch` are public; `save` and `remove` require auth. Used for quick PIN login screen.                                                              |
 
 All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and returned as `{ ok: false, error: string }` — raw errors are never leaked to the renderer.
 
@@ -188,6 +188,7 @@ All user data is stored in the user's Google Drive inside a `Vault` folder. Each
 ### Environment Variables
 
 Required in `.env` (gitignored):
+
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `REDIRECT_URI` (optional, defaults to `http://localhost:42813/oauth2callback`)

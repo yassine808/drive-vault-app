@@ -1,11 +1,14 @@
-import crypto from 'crypto';
+import crypto from "crypto";
 
 // CryptoJS type declaration for legacy decryption
 declare global {
   // eslint-disable-next-line no-var
   var CryptoJS: {
     AES: {
-      decrypt(ciphertext: string, key: string): { toString(encoder: { enc: { Utf8: string } }): string };
+      decrypt(
+        ciphertext: string,
+        key: string,
+      ): { toString(encoder: { enc: { Utf8: string } }): string };
     };
     enc: { Utf8: string };
   };
@@ -33,18 +36,24 @@ const KEY_DERIVE_ITERATIONS = 600_000;
 function deriveKey(googleId: string, userSaltHex?: string): string {
   if (userSaltHex) {
     // PBKDF2 path — strong
-    const saltBuf = Buffer.from(userSaltHex, 'hex');
-    return crypto.pbkdf2Sync(googleId, saltBuf, KEY_DERIVE_ITERATIONS, 32, 'sha256').toString('hex');
+    const saltBuf = Buffer.from(userSaltHex, "hex");
+    return crypto
+      .pbkdf2Sync(googleId, saltBuf, KEY_DERIVE_ITERATIONS, 32, "sha256")
+      .toString("hex");
   }
   // Legacy path — single SHA-256 (kept for backward compat during migration)
-  return crypto.createHash('sha256').update('vault:' + googleId).digest('hex').slice(0, 32);
+  return crypto
+    .createHash("sha256")
+    .update("vault:" + googleId)
+    .digest("hex")
+    .slice(0, 32);
 }
 
 /**
  * Generate a new per-account salt (32 bytes hex). Call once per account.
  */
 function generateUserSalt(): string {
-  return crypto.randomBytes(32).toString('hex');
+  return crypto.randomBytes(32).toString("hex");
 }
 
 interface DerivedKeys {
@@ -53,19 +62,24 @@ interface DerivedKeys {
 }
 
 function _keysFromHexKey(hexKey: string): DerivedKeys {
-  const encKey = crypto.createHash('sha256').update(hexKey).digest();
-  const macKey = crypto.createHash('sha256').update(hexKey + 'mac').digest();
+  const encKey = crypto.createHash("sha256").update(hexKey).digest();
+  const macKey = crypto
+    .createHash("sha256")
+    .update(hexKey + "mac")
+    .digest();
   return { encKey, macKey };
 }
 
 function _isNewFormat(ciphertext: string): boolean {
-  if (!ciphertext || typeof ciphertext !== 'string') return false;
-  if (ciphertext.startsWith('U2FsdGVk')) return false;
+  if (!ciphertext || typeof ciphertext !== "string") return false;
+  if (ciphertext.startsWith("U2FsdGVk")) return false;
   if (ciphertext.length >= 64 && /^[A-Za-z0-9+/=]+$/.test(ciphertext)) {
     try {
-      const decoded = Buffer.from(ciphertext, 'base64');
+      const decoded = Buffer.from(ciphertext, "base64");
       return decoded.length >= 48;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
   return false;
 }
@@ -74,37 +88,49 @@ function enc(obj: object, key: string): string {
   const { encKey, macKey } = _keysFromHexKey(key);
   const plaintext = JSON.stringify(obj);
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-cbc', encKey, iv);
-  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const mac = crypto.createHmac('sha256', macKey).update(iv).update(ct).digest();
+  const cipher = crypto.createCipheriv("aes-256-cbc", encKey, iv);
+  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const mac = crypto
+    .createHmac("sha256", macKey)
+    .update(iv)
+    .update(ct)
+    .digest();
   const packed = Buffer.concat([mac, iv, ct]);
-  return packed.toString('base64');
+  return packed.toString("base64");
 }
 
 function dec(str: string, key: string): Record<string, unknown> | null {
   if (_isNewFormat(str)) {
     try {
       const { encKey, macKey } = _keysFromHexKey(key);
-      const packed = Buffer.from(str, 'base64');
+      const packed = Buffer.from(str, "base64");
       if (packed.length < 64) return null;
       const mac = packed.subarray(0, 32);
       const iv = packed.subarray(32, 48);
       const ct = packed.subarray(48);
-      const expectedMac = crypto.createHmac('sha256', macKey).update(iv).update(ct).digest();
+      const expectedMac = crypto
+        .createHmac("sha256", macKey)
+        .update(iv)
+        .update(ct)
+        .digest();
       if (!crypto.timingSafeEqual(mac, expectedMac)) {
         return null;
       }
-      const decipher = crypto.createDecipheriv('aes-256-cbc', encKey, iv);
+      const decipher = crypto.createDecipheriv("aes-256-cbc", encKey, iv);
       const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
-      return JSON.parse(pt.toString('utf8'));
+      return JSON.parse(pt.toString("utf8"));
     } catch {
       return null;
     }
   }
   if (!_CryptoJS) return null;
   try {
-    return JSON.parse(_CryptoJS.AES.decrypt(str, key).toString(_CryptoJS.enc.Utf8));
-  } catch { return null; }
+    return JSON.parse(
+      _CryptoJS.AES.decrypt(str, key).toString(_CryptoJS.enc.Utf8),
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -112,7 +138,11 @@ function dec(str: string, key: string): Record<string, unknown> | null {
  * back to the legacy SHA-256 key. This allows reading data that was
  * encrypted before per-account salts were introduced.
  */
-function decWithFallback(str: string, googleId: string, userSaltHex?: string): Record<string, unknown> | null {
+function decWithFallback(
+  str: string,
+  googleId: string,
+  userSaltHex?: string,
+): Record<string, unknown> | null {
   // Try strong key first (PBKDF2 with salt)
   if (userSaltHex) {
     const strongKey = deriveKey(googleId, userSaltHex);
@@ -124,8 +154,20 @@ function decWithFallback(str: string, googleId: string, userSaltHex?: string): R
   return dec(str, legacyKey);
 }
 
-function derivePinKey(pin: string, salt: Buffer, iterations: number = 600000): string {
-  return crypto.pbkdf2Sync(pin, salt, iterations, 32, 'sha256').toString('hex');
+function derivePinKey(
+  pin: string,
+  salt: Buffer,
+  iterations: number = 600000,
+): string {
+  return crypto.pbkdf2Sync(pin, salt, iterations, 32, "sha256").toString("hex");
 }
 
-export { deriveKey, generateUserSalt, derivePinKey, enc, dec, decWithFallback, setCryptoJS };
+export {
+  deriveKey,
+  generateUserSalt,
+  derivePinKey,
+  enc,
+  dec,
+  decWithFallback,
+  setCryptoJS,
+};

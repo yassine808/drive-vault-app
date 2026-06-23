@@ -17,6 +17,7 @@
 A comprehensive audit scanned every file across 5 attack surfaces:
 
 **IPC & Auth (7 fixes)**
+
 - Timing-safe token validation (`crypto.timingSafeEqual`, no early returns)
 - Session fixation prevention on login and reauth (token invalidated before OAuth flow)
 - Lock/logout now fully clears session state (`session = null`)
@@ -25,12 +26,14 @@ A comprehensive audit scanned every file across 5 attack surfaces:
 - 2FA disable now requires valid TOTP code + rate limiting
 
 **Cryptography & Secrets (4 fixes)**
+
 - AES-256-CBC + HMAC-SHA256 encrypt-then-MAC (replaces unauthenticated CryptoJS)
 - Dual key derivation: separate `encKey` and `macKey` from single hex key
 - Lock clears all sensitive data from renderer memory + DOM
 - Clipboard auto-clears after 30 seconds
 
 **Database & SQL (8 fixes)**
+
 - Generic error messages (no internal details leaked to renderer)
 - Explicit column SELECT statements instead of `SELECT *`
 - Domain validation on logo fetch (SSRF prevention)
@@ -39,6 +42,7 @@ A comprehensive audit scanned every file across 5 attack surfaces:
 - Admin error messages sanitized
 
 **Config & Electron (6 fixes)**
+
 - `will-navigate` blocks non-file: protocol navigation
 - `setWindowOpenHandler` denies child windows
 - OAuth pathname exact match + strict origin validation
@@ -46,6 +50,7 @@ A comprehensive audit scanned every file across 5 attack surfaces:
 - System font stack replaces external Google Fonts dependency
 
 **XSS & DOM Hardening (7 fixes)**
+
 - All `innerHTML` replaced with `createElement`/`textContent` for user-controlled data
 - QR code generation moved client-side (no secret sent to third-party server)
 - Avatar/image URLs validated (`https://` prefix)

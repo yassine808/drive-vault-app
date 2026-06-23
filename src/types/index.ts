@@ -42,11 +42,13 @@ export interface VaultItem {
   [key: string]: unknown;
 }
 
-export type TrashItem = (VaultItem & { _type: string; _deletedAt: string }) | (Job & { _type: string; _deletedAt: string });
+export type TrashItem =
+  | (VaultItem & { _type: string; _deletedAt: string })
+  | (Job & { _type: string; _deletedAt: string });
 
-export type ItemType = 'password' | 'note' | 'job' | 'totp';
+export type ItemType = "password" | "note" | "job" | "totp";
 
-export type JobStatus = 'wait' | 'accepted' | 'rejected';
+export type JobStatus = "wait" | "accepted" | "rejected";
 
 export interface Job {
   id?: string;
@@ -73,7 +75,7 @@ export interface TotpItem {
 
 export interface Settings {
   lock_timeout: number;
-  lock_action: 'lock' | 'exit';
+  lock_action: "lock" | "exit";
   lock_countdown: boolean;
   lock_on_minimize: boolean;
   compact: boolean;
@@ -126,7 +128,6 @@ export interface LogEntry {
   text: string;
 }
 
-
 export interface PinStatus {
   ok: boolean;
   enabled: boolean;
@@ -159,17 +160,27 @@ export interface TotpConfig {
 }
 
 export type AppAccent =
-  | 'violet' | 'blue' | 'teal' | 'green' | 'orange'
-  | 'rose' | 'red' | 'pink' | 'yellow' | 'amber'
-  | 'cyan' | 'indigo' | 'lime';
+  | "violet"
+  | "blue"
+  | "teal"
+  | "green"
+  | "orange"
+  | "rose"
+  | "red"
+  | "pink"
+  | "yellow"
+  | "amber"
+  | "cyan"
+  | "indigo"
+  | "lime";
 
-export type AppSoundTone = 'chime' | 'ding' | 'soft' | 'bright';
-export type AppHoverTone = AppSoundTone | 'click' | 'tap' | 'pop' | 'none';
+export type AppSoundTone = "chime" | "ding" | "soft" | "bright";
+export type AppHoverTone = AppSoundTone | "click" | "tap" | "pop" | "none";
 
 // ── Sync types ──
 
-export type SyncFolderStatus = 'idle' | 'syncing' | 'error' | 'conflict';
-export type SyncConflictType = 'none' | 'local_newer' | 'drive_newer' | 'both';
+export type SyncFolderStatus = "idle" | "syncing" | "error" | "conflict";
+export type SyncConflictType = "none" | "local_newer" | "drive_newer" | "both";
 
 export interface SyncFolder {
   id: string;
@@ -199,7 +210,6 @@ export interface SyncFolderState {
 
 export interface SyncConfig {
   folders: SyncFolder[];
-  globalState: 'idle' | 'syncing' | 'error';
+  globalState: "idle" | "syncing" | "error";
   lastFullSyncAt: number | null;
 }
-
