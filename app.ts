@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import type { PreloadApi } from './src/types/renderer.d.ts';
-import type { VaultItem, Job, TotpItem, Settings, UserProfile, VaultData, LogEntry, ConfirmOpts } from './src/types';
+import type { VaultItem, Job, TotpItem, Settings, UserProfile, VaultData, ConfirmOpts } from './src/types';
 
 // ── Global declarations from preload bridge ──
 declare global {
@@ -81,7 +81,6 @@ const uid  = (): string => Date.now().toString(36) + Math.random().toString(36).
 const wc   = (t: unknown): number => { const s = String(t || '').trim(); return s ? s.split(/\s+/).length : 0; };
 const days = (d: string): number => Math.max(0, Math.ceil((30 * 86400000 - (Date.now() - new Date(d).getTime())) / 86400000));
 
-function escapeHtml(t: unknown): string { const d = document.createElement('div'); d.textContent = String(t); return d.innerHTML; }
 function formatLockTimer(ms: number): string {
   const totalSec = Math.ceil(ms / 1000);
   if (totalSec <= 0) return '0s';
@@ -452,12 +451,12 @@ async function loadPinAccounts() {
         e.stopPropagation();
         e.preventDefault();
         var confirmed = await new Promise<boolean>(function(resolve) {
-          var overlay = document.getElementById('confirm-overlay');
-          var title = document.getElementById('confirm-title');
-          var msg = document.getElementById('confirm-msg');
-          var okBtn = document.getElementById('confirm-ok');
-          var cancelBtn = document.getElementById('confirm-cancel');
-          var icon = document.getElementById('confirm-icon');
+          var overlay = document.getElementById('confirm-overlay')!;
+          var title = document.getElementById('confirm-title')!;
+          var msg = document.getElementById('confirm-msg')!;
+          var okBtn = document.getElementById('confirm-ok')!;
+          var cancelBtn = document.getElementById('confirm-cancel')!;
+          var icon = document.getElementById('confirm-icon')!;
           title.textContent = 'Remove account?';
           msg.textContent = 'Remove ' + acct.email + ' from the quick login list?';
           icon.textContent = '✕';
@@ -743,8 +742,8 @@ function updateCounts(): void {
           _fileStates[fid] = fs.files || {};
         }
       }
-      const list = document.getElementById('sync-folders-list');
-      const empty = document.getElementById('sync-empty');
+      const list = document.getElementById('sync-folders-list')!;
+      const empty = document.getElementById('sync-empty')!;
       list.innerHTML = '';
       if (!r.folders.length) { empty.hidden = false; list.hidden = true; return; }
       empty.hidden = true; list.hidden = false;
@@ -755,7 +754,7 @@ function updateCounts(): void {
         const hasConflict = Object.values(files).some(f => f.conflict && f.conflict !== 'none');
         const allSynced = fileCount > 0 && Object.values(files).every(f => f.localHash && f.driveHash && f.localHash === f.driveHash);
         const sc = folder.status === 'syncing' ? 'syncing' : folder.status === 'error' ? 'err' : hasConflict ? 'conflict' : 'idle';
-        const st = folder.status === 'syncing' ? 'Syncing...' : folder.status === 'error' ? (folder.errorMessage || 'Error') : hasConflict ? 'Conflict' : (folder.lastSyncedAt ? 'Synced ' + timeAgo(folder.lastSyncedAt) : 'Never synced');
+        const st = folder.status === 'syncing' ? 'Syncing...' : folder.status === 'error' ? (folder.errorMessage || 'Error') : hasConflict ? 'Conflict' : (folder.lastSyncAt ? 'Synced ' + timeAgo(folder.lastSyncAt) : 'Never synced');
         let statusIcon;
         if (folder.status === 'syncing') {
           statusIcon = '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
@@ -763,7 +762,7 @@ function updateCounts(): void {
           statusIcon = '<span class="sync-status-icon sync-status-error">✗</span>';
         } else if (hasConflict) {
           statusIcon = '<span class="sync-status-icon sync-status-conflict">⚡</span>';
-        } else if (allSynced || folder.lastSyncedAt) {
+        } else if (allSynced || folder.lastSyncAt) {
           statusIcon = '<span class="sync-status-icon sync-status-synced">✓</span>';
         } else {
           statusIcon = '<span class="sync-status-icon"></span>';
@@ -813,8 +812,8 @@ function updateCounts(): void {
       // Expand/collapse handlers
       list.querySelectorAll('.sync-folder-expand').forEach(function(btn) {
         btn.addEventListener('click', function() {
-          var expandId = btn.dataset.expand;
-          var tree = document.getElementById(expandId);
+          var expandId = (btn as HTMLElement).dataset.expand;
+          var tree = document.getElementById(expandId!);
           if (tree) {
             var isOpen = !tree.hidden;
             tree.hidden = isOpen;
@@ -825,7 +824,7 @@ function updateCounts(): void {
       // Remove handlers
       list.querySelectorAll('.sync-folder-remove').forEach(function(btn) {
         btn.addEventListener('click', async function() {
-          var id = btn.dataset.folderId;
+          var id = (btn as HTMLElement).dataset.folderId!;
           var confirmed = await new Promise<boolean>(function(resolve) {
             confirm({
               title: 'Remove sync folder?',
@@ -835,7 +834,7 @@ function updateCounts(): void {
               okClass: 'btn-danger',
               onOk: function() { resolve(true); }
             });
-            var cancelBtn = document.getElementById('confirm-cancel');
+            var cancelBtn = document.getElementById('confirm-cancel')!;
             cancelBtn.addEventListener('click', function handler() {
               cancelBtn.removeEventListener('click', handler);
               resolve(false);
@@ -849,10 +848,11 @@ function updateCounts(): void {
       // Toggle handlers
       list.querySelectorAll('.sync-folder-toggle').forEach(function(input) {
         input.addEventListener('change', async function() {
-          var folderId = input.dataset.folderId;
-          var toggleRes = await api.sync.foldersToggle(folderId, input.checked);
-          if (toggleRes.ok) { toast(input.checked ? 'Folder enabled' : 'Folder disabled'); }
-          else { toast('Failed: ' + toggleRes.error); input.checked = !input.checked; }
+          var el = input as HTMLInputElement;
+          var folderId = (input as HTMLElement).dataset.folderId!;
+          var toggleRes = await api.sync.foldersToggle(folderId, el.checked);
+          if (toggleRes.ok) { toast(el.checked ? 'Folder enabled' : 'Folder disabled'); }
+          else { toast('Failed: ' + toggleRes.error); el.checked = !el.checked; }
         });
       });
       // Row reordering via drag handle
@@ -862,28 +862,31 @@ function updateCounts(): void {
           var row = handle.closest('.sync-folder-row') as HTMLElement;
           dragSrcRow = row;
           row.classList.add('dragging');
-          if (e.dataTransfer) {
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', row.dataset.folderId || '');
+          var de = e as DragEvent;
+          if (de.dataTransfer) {
+            de.dataTransfer.effectAllowed = 'move';
+            de.dataTransfer.setData('text/plain', row.dataset.folderId || '');
           }
         });
       });
       list.querySelectorAll('.sync-folder-row').forEach(function(row) {
         row.addEventListener('dragover', function(e) {
-          if (e.preventDefault) e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          var de = e as DragEvent;
+          if (de.preventDefault) de.preventDefault();
+          if (de.dataTransfer) de.dataTransfer.dropEffect = 'move';
           if (dragSrcRow && dragSrcRow !== row) row.classList.add('drag-over');
           return false;
         });
         row.addEventListener('dragleave', function() { row.classList.remove('drag-over'); });
         row.addEventListener('drop', function(e) {
-          if (e.preventDefault) e.preventDefault();
-          if (e.stopPropagation) e.stopPropagation();
+          var de = e as DragEvent;
+          if (de.preventDefault) de.preventDefault();
+          if (de.stopPropagation) de.stopPropagation();
           row.classList.remove('drag-over');
           if (!dragSrcRow || dragSrcRow === row) return;
           var rect = row.getBoundingClientRect();
-          var listEl = row.parentElement;
-          if (e.clientY < rect.top + rect.height / 2) {
+          var listEl = row.parentElement!;
+          if (de.clientY < rect.top + rect.height / 2) {
             listEl.insertBefore(dragSrcRow, row);
           } else {
             var next = row.nextSibling as HTMLElement | null;
@@ -905,7 +908,7 @@ function updateCounts(): void {
       });
     }
 
-    function timeAgo(ts) {
+    function timeAgo(ts: number) {
       if (!ts) return 'never';
       var s = Math.floor((Date.now() - ts) / 1000);
       if (s < 60) return 'just now';
@@ -916,7 +919,7 @@ function updateCounts(): void {
       return Math.floor(h / 24) + 'd ago';
     }
 
-    function escHtml(s) {
+    function escHtml(s: string) {
       var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
     }
 
@@ -934,8 +937,9 @@ function updateCounts(): void {
       return r;
     }
 
-    document.getElementById('btn-sync-now') && document.getElementById('btn-sync-now').addEventListener('click', async function() {
-      var btn = document.getElementById('btn-sync-now');
+    var _syncNowBtn = document.getElementById('btn-sync-now');
+    if (_syncNowBtn) _syncNowBtn.addEventListener('click', async function() {
+      var btn = document.getElementById('btn-sync-now') as HTMLButtonElement;
       btn.style.opacity = '.5'; btn.style.pointerEvents = 'none'; btn.textContent = 'Syncing...';
       logInfo('sync', 'Manual sync triggered');
       var r = await syncNowWithDriveRetry();
@@ -953,19 +957,20 @@ function updateCounts(): void {
       loadSyncFolders();
     });
 
-    document.getElementById('btn-sync-add') && document.getElementById('btn-sync-add').addEventListener('click', async function() {
+    var _syncAddBtn = document.getElementById('btn-sync-add');
+    if (_syncAddBtn) _syncAddBtn.addEventListener('click', async function() {
       logInfo('sync', 'Add folder clicked');
       var res = await api.sync.browseFolder();
       if (!res.ok || !res.path) return;
       var defaultName = res.path.split(/[\/]/).filter(Boolean).pop() || 'Folder';
       // Use custom confirm modal with an inline input instead of window.prompt
       var driveName = await new Promise<string | null>(function(resolve) {
-        var overlay = document.getElementById('confirm-overlay');
-        var title = document.getElementById('confirm-title');
-        var msg = document.getElementById('confirm-msg');
-        var okBtn = document.getElementById('confirm-ok');
-        var cancelBtn = document.getElementById('confirm-cancel');
-        var icon = document.getElementById('confirm-icon');
+        var overlay = document.getElementById('confirm-overlay')!;
+        var title = document.getElementById('confirm-title')!;
+        var msg = document.getElementById('confirm-msg')!;
+        var okBtn = document.getElementById('confirm-ok')!;
+        var cancelBtn = document.getElementById('confirm-cancel')!;
+        var icon = document.getElementById('confirm-icon')!;
         title.textContent = 'Name on Drive';
         msg.textContent = 'Choose a name for this folder on Google Drive:';
         icon.textContent = '📁';

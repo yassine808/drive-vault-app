@@ -81,11 +81,16 @@ export interface PreloadApi {
     foldersList(): Promise<{ ok: boolean; folders: SyncFolder[]; error?: string }>;
     foldersAdd(localPath: string, driveFolderName: string): Promise<{ ok: boolean; folder?: SyncFolder; error?: string }>;
     foldersRemove(folderId: string): Promise<{ ok: boolean; error?: string }>;
+    foldersToggle(folderId: string, enabled: boolean): Promise<{ ok: boolean; error?: string }>;
     status(): Promise<{ ok: boolean; config: SyncConfig; error?: string }>;
     syncNow(): Promise<{ ok: boolean; uploaded?: number; downloaded?: number; conflicts?: number; errors?: number; error?: string }>;
     browseFolder(): Promise<{ ok: boolean; path?: string; canceled?: boolean }>;
+    getFileStates(): Promise<{ ok: boolean; states: Record<string, { files: Record<string, { conflict: string; localHash: string | null; driveHash: string | null }> }>; error?: string }>;
+    handleDrop(paths: string[]): Promise<{ ok: boolean; results: Array<{ ok: boolean }>; error?: string }>;
     onStatusUpdate(cb: (config: SyncConfig) => void): void;
   };
+
+  getFilePath(file: File): string;
 
   minimize(): Promise<void>;
   maximize(): Promise<void>;
