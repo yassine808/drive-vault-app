@@ -701,13 +701,13 @@ async function loadPinAccounts() {
       removeBtn.addEventListener("click", async function (e: Event) {
         e.stopPropagation();
         e.preventDefault();
-        var confirmed = await new Promise<boolean>(function (resolve) {
-          var overlay = document.getElementById("confirm-overlay")!;
-          var title = document.getElementById("confirm-title")!;
-          var msg = document.getElementById("confirm-msg")!;
-          var okBtn = document.getElementById("confirm-ok")!;
-          var cancelBtn = document.getElementById("confirm-cancel")!;
-          var icon = document.getElementById("confirm-icon")!;
+        const confirmed = await new Promise<boolean>(function (resolve) {
+          const overlay = document.getElementById("confirm-overlay")!;
+          const title = document.getElementById("confirm-title")!;
+          const msg = document.getElementById("confirm-msg")!;
+          const okBtn = document.getElementById("confirm-ok")!;
+          const cancelBtn = document.getElementById("confirm-cancel")!;
+          const icon = document.getElementById("confirm-icon")!;
           title.textContent = "Remove account?";
           msg.textContent =
             "Remove " + acct.email + " from the quick login list?";
@@ -715,16 +715,16 @@ async function loadPinAccounts() {
           okBtn.textContent = "Remove";
           okBtn.className = "btn-danger";
           overlay.hidden = false;
-          var cleanup = function () {
+          const cleanup = function () {
             overlay.hidden = true;
             okBtn.removeEventListener("click", onOk);
             cancelBtn.removeEventListener("click", onCancel);
           };
-          var onOk = function () {
+          const onOk = function () {
             cleanup();
             resolve(true);
           };
-          var onCancel = function () {
+          const onCancel = function () {
             cleanup();
             resolve(false);
           };
@@ -732,12 +732,12 @@ async function loadPinAccounts() {
           cancelBtn.addEventListener("click", onCancel);
         });
         if (!confirmed) return;
-        var res = await api.accounts.removeById(acct.googleId);
+        const res = await api.accounts.removeById(acct.googleId);
         if (res.ok) {
           item.remove();
           toast("Account removed");
           // Check if no accounts left
-          var remaining = list.querySelectorAll(".pin-account-item");
+          const remaining = list.querySelectorAll(".pin-account-item");
           if (remaining.length === 0) {
             hide("pin-accounts");
             show("pin-user-label");
@@ -785,7 +785,12 @@ async function loadPinAccounts() {
     logErr("auth", "PIN login failed", r2.error);
     return;
   }
-  if (r2.token) window.__vaultToken.set(r2.token);
+  if (r2.token)
+    (
+      (globalThis as unknown as Record<string, unknown>).__vaultToken as {
+        set: (t: string) => void;
+      }
+    ).set(r2.token);
   S.user = r2.user;
   loadVault(r2.vault);
   await loadSettings();
@@ -866,7 +871,8 @@ async function loadSettings(): Promise<void> {
     "--transition",
     S.settings.animations ? "" : "0s",
   );
-  window.__soundsEnabled = S.settings.sounds !== false;
+  (globalThis as unknown as Record<string, unknown>).__soundsEnabled =
+    S.settings.sounds !== false;
   // Show PIN indicator in sidebar when PIN login is enabled
   const pinIndicator = document.getElementById("pin-indicator") as HTMLElement;
   if (pinIndicator) pinIndicator.hidden = !S.settings.pin_login_enabled;
@@ -888,7 +894,7 @@ function renderUserChip(): void {
   const init = (u.name || u.email || "?")[0].toUpperCase();
   const chip = document.getElementById("user-chip") as HTMLElement;
   chip.innerHTML = "";
-  if (u.avatar && u.avatar.startsWith("https://")) {
+  if (u.avatar?.startsWith("https://")) {
     const img = document.createElement("img");
     img.className = "avatar";
     img.src = u.avatar.split("?")[0];
@@ -930,11 +936,17 @@ function switchTab(tab: string): void {
     const el = b as HTMLElement;
     el.classList.toggle("active", el.dataset.tab === tab);
   });
-  ["passwords", "notes", "jobs", "totp", "trash", "sync", "settings"].forEach(
-    (t) => {
-      (document.getElementById("tab-" + t) as HTMLElement).hidden = t !== tab;
-    },
-  );
+  for (const t of [
+    "passwords",
+    "notes",
+    "jobs",
+    "totp",
+    "trash",
+    "sync",
+    "settings",
+  ]) {
+    (document.getElementById("tab-" + t) as HTMLElement).hidden = t !== tab;
+  }
   if (tab === "passwords") renderPasswords();
   if (tab === "notes") renderNotesList();
   if (tab === "trash") {
@@ -1036,13 +1048,12 @@ function initSyncDropZone(): void {
     e.preventDefault();
     e.stopPropagation();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    return false;
   });
 
-  // Use window-level dragenter/dragleave so we can detect when the drag leaves the tab entirely
-  window.addEventListener("dragenter", (e: DragEvent) => {
+  // Use globalThis-level dragenter/dragleave so we can detect when the drag leaves the tab entirely
+  globalThis.addEventListener("dragenter", (e: DragEvent) => {
     // Only activate when files are being dragged (not internal row reordering)
-    if (!e.dataTransfer || e.dataTransfer.types.indexOf("Files") === -1) return;
+    if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
     dragCounter++;
     if (dragCounter === 1) {
       // Create overlay
@@ -1054,8 +1065,8 @@ function initSyncDropZone(): void {
     }
   });
 
-  window.addEventListener("dragleave", (e: DragEvent) => {
-    if (!e.dataTransfer || e.dataTransfer.types.indexOf("Files") === -1) return;
+  globalThis.addEventListener("dragleave", (e: DragEvent) => {
+    if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
     dragCounter--;
     if (dragCounter <= 0) {
       dragCounter = 0;
@@ -1066,7 +1077,7 @@ function initSyncDropZone(): void {
     }
   });
 
-  window.addEventListener("drop", async (e: DragEvent) => {
+  globalThis.addEventListener("drop", async (e: DragEvent) => {
     // Clean up overlay
     dragCounter = 0;
     if (dropOverlay) {
@@ -1074,14 +1085,14 @@ function initSyncDropZone(): void {
       dropOverlay = null;
     }
     // Only handle file drops (not internal row reordering)
-    if (!e.dataTransfer || e.dataTransfer.types.indexOf("Files") === -1) return;
+    if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
     e.preventDefault();
     e.stopPropagation();
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
     const paths: string[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const p = api.getFilePath(files[i]);
+    for (const f of files) {
+      const p = api.getFilePath(f);
       if (p) paths.push(p);
     }
     if (paths.length === 0) {
@@ -1288,10 +1299,10 @@ async function loadSyncFolders() {
   // Expand/collapse handlers
   list.querySelectorAll(".sync-folder-expand").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var expandId = (btn as HTMLElement).dataset.expand;
-      var tree = document.getElementById(expandId!);
+      const expandId = (btn as HTMLElement).dataset.expand;
+      const tree = document.getElementById(expandId!);
       if (tree) {
-        var isOpen = !tree.hidden;
+        const isOpen = !tree.hidden;
         tree.hidden = isOpen;
         btn.classList.toggle("expanded", !isOpen);
       }
@@ -1300,8 +1311,8 @@ async function loadSyncFolders() {
   // Remove handlers
   list.querySelectorAll(".sync-folder-remove").forEach(function (btn) {
     btn.addEventListener("click", async function () {
-      var id = (btn as HTMLElement).dataset.folderId!;
-      var confirmed = await new Promise<boolean>(function (resolve) {
+      const id = (btn as HTMLElement).dataset.folderId!;
+      const confirmed = await new Promise<boolean>(function (resolve) {
         confirm({
           title: "Remove sync folder?",
           msg: "Files on your PC and Drive will NOT be deleted. Only the sync mapping will be removed.",
@@ -1312,14 +1323,15 @@ async function loadSyncFolders() {
             resolve(true);
           },
         });
-        var cancelBtn = document.getElementById("confirm-cancel")!;
-        cancelBtn.addEventListener("click", function handler() {
+        const cancelBtn = document.getElementById("confirm-cancel")!;
+        const handler = () => {
           cancelBtn.removeEventListener("click", handler);
           resolve(false);
-        });
+        };
+        cancelBtn.addEventListener("click", handler);
       });
       if (!confirmed) return;
-      var res = await api.sync.foldersRemove(id);
+      const res = await api.sync.foldersRemove(id);
       if (res.ok) {
         toast("Folder removed");
         loadSyncFolders();
@@ -1331,9 +1343,9 @@ async function loadSyncFolders() {
   // Toggle handlers
   list.querySelectorAll(".sync-folder-toggle").forEach(function (input) {
     input.addEventListener("change", async function () {
-      var el = input as HTMLInputElement;
-      var folderId = (input as HTMLElement).dataset.folderId!;
-      var toggleRes = await api.sync.foldersToggle(folderId, el.checked);
+      const el = input as HTMLInputElement;
+      const folderId = (input as HTMLElement).dataset.folderId!;
+      const toggleRes = await api.sync.foldersToggle(folderId, el.checked);
       if (toggleRes.ok) {
         toast(el.checked ? "Folder enabled" : "Folder disabled");
       } else {
@@ -1343,13 +1355,13 @@ async function loadSyncFolders() {
     });
   });
   // Row reordering via drag handle
-  var dragSrcRow: HTMLElement | null = null;
+  let dragSrcRow: HTMLElement | null = null;
   list.querySelectorAll(".sync-folder-drag").forEach(function (handle) {
     handle.addEventListener("dragstart", function (e) {
-      var row = handle.closest(".sync-folder-row") as HTMLElement;
+      const row = handle.closest(".sync-folder-row") as HTMLElement;
       dragSrcRow = row;
       row.classList.add("dragging");
-      var de = e as DragEvent;
+      const de = e as DragEvent;
       if (de.dataTransfer) {
         de.dataTransfer.effectAllowed = "move";
         de.dataTransfer.setData("text/plain", row.dataset.folderId || "");
@@ -1358,45 +1370,43 @@ async function loadSyncFolders() {
   });
   list.querySelectorAll(".sync-folder-row").forEach(function (row) {
     row.addEventListener("dragover", function (e) {
-      var de = e as DragEvent;
+      const de = e as DragEvent;
       if (de.preventDefault) de.preventDefault();
       if (de.dataTransfer) de.dataTransfer.dropEffect = "move";
       if (dragSrcRow && dragSrcRow !== row) row.classList.add("drag-over");
-      return false;
     });
     row.addEventListener("dragleave", function () {
       row.classList.remove("drag-over");
     });
     row.addEventListener("drop", function (e) {
-      var de = e as DragEvent;
+      const de = e as DragEvent;
       if (de.preventDefault) de.preventDefault();
       if (de.stopPropagation) de.stopPropagation();
       row.classList.remove("drag-over");
       if (!dragSrcRow || dragSrcRow === row) return;
-      var rect = row.getBoundingClientRect();
-      var listEl = row.parentElement!;
+      const rect = row.getBoundingClientRect();
+      const listEl = row.parentElement!;
       if (de.clientY < rect.top + rect.height / 2) {
-        listEl.insertBefore(dragSrcRow, row);
+        row.before(dragSrcRow);
       } else {
-        var next = row.nextSibling as HTMLElement | null;
+        let next = row.nextSibling as HTMLElement | null;
         // Skip file-tree siblings
-        if (next && next.classList.contains("sync-file-tree"))
+        if (next?.classList.contains("sync-file-tree"))
           next = next.nextSibling as HTMLElement | null;
         if (next) {
-          listEl.insertBefore(dragSrcRow, next);
+          next.before(dragSrcRow);
         } else {
           listEl.appendChild(dragSrcRow);
         }
       }
       // Also move the file-tree after its folder row
-      var srcTree = document.getElementById(
+      const srcTree = document.getElementById(
         "sync-files-" + dragSrcRow.dataset.folderId,
       );
       if (srcTree) {
-        listEl.insertBefore(srcTree, dragSrcRow.nextSibling);
+        dragSrcRow.nextSibling?.before(srcTree);
       }
       dragSrcRow = null;
-      return false;
     });
     row.addEventListener("dragend", function () {
       row.classList.remove("dragging");
@@ -1410,17 +1420,17 @@ async function loadSyncFolders() {
 
 function timeAgo(ts: number) {
   if (!ts) return "never";
-  var s = Math.floor((Date.now() - ts) / 1000);
+  const s = Math.floor((Date.now() - ts) / 1000);
   if (s < 60) return "just now";
-  var m = Math.floor(s / 60);
+  const m = Math.floor(s / 60);
   if (m < 60) return m + "m ago";
-  var h = Math.floor(m / 60);
+  const h = Math.floor(m / 60);
   if (h < 24) return h + "h ago";
   return Math.floor(h / 24) + "d ago";
 }
 
 function escHtml(s: string) {
-  var d = document.createElement("div");
+  const d = document.createElement("div");
   d.textContent = s;
   return d.innerHTML;
 }
@@ -1436,7 +1446,12 @@ async function syncNowWithDriveRetry(): Promise<any> {
     const auth = await api.reauth();
     if (!auth.ok)
       return { ok: false, error: auth.error || "Google sign-in required" };
-    if (auth.token) window.__vaultToken.set(auth.token);
+    if (auth.token)
+      (
+        (globalThis as unknown as Record<string, unknown>).__vaultToken as {
+          set: (t: string) => void;
+        }
+      ).set(auth.token);
     if (auth.user) S.user = auth.user;
     if (auth.vault) loadVault(auth.vault);
     r = await api.sync.syncNow();
@@ -1447,18 +1462,18 @@ async function syncNowWithDriveRetry(): Promise<any> {
 var _syncNowBtn = document.getElementById("btn-sync-now");
 if (_syncNowBtn)
   _syncNowBtn.addEventListener("click", async function () {
-    var btn = document.getElementById("btn-sync-now") as HTMLButtonElement;
+    const btn = document.getElementById("btn-sync-now") as HTMLButtonElement;
     btn.style.opacity = ".5";
     btn.style.pointerEvents = "none";
     btn.textContent = "Syncing...";
     logInfo("sync", "Manual sync triggered");
-    var r = await syncNowWithDriveRetry();
+    const r = await syncNowWithDriveRetry();
     btn.style.opacity = "";
     btn.style.pointerEvents = "";
     btn.innerHTML =
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Sync now';
     if (r.ok) {
-      var parts = [];
+      const parts: string[] = [];
       if (r.uploaded) parts.push(r.uploaded + " uploaded");
       if (r.downloaded) parts.push(r.downloaded + " downloaded");
       if (r.conflicts) parts.push(r.conflicts + " conflicts");
@@ -1480,26 +1495,27 @@ var _syncAddBtn = document.getElementById("btn-sync-add");
 if (_syncAddBtn)
   _syncAddBtn.addEventListener("click", async function () {
     logInfo("sync", "Add folder clicked");
-    var res = await api.sync.browseFolder();
+    const res = await api.sync.browseFolder();
     if (!res.ok || !res.path) return;
-    var defaultName = res.path.split(/[\/]/).filter(Boolean).pop() || "Folder";
+    const defaultName =
+      res.path.split(/[\\/]/).filter(Boolean).pop() || "Folder";
     // Use custom confirm modal with an inline input instead of window.prompt
-    var driveName = await new Promise<string | null>(function (resolve) {
-      var overlay = document.getElementById("confirm-overlay")!;
-      var title = document.getElementById("confirm-title")!;
-      var msg = document.getElementById("confirm-msg")!;
-      var okBtn = document.getElementById("confirm-ok")!;
-      var cancelBtn = document.getElementById("confirm-cancel")!;
-      var icon = document.getElementById("confirm-icon")!;
+    const driveName = await new Promise<string | null>(function (resolve) {
+      const overlay = document.getElementById("confirm-overlay")!;
+      const title = document.getElementById("confirm-title")!;
+      const msg = document.getElementById("confirm-msg")!;
+      const okBtn = document.getElementById("confirm-ok")!;
+      const cancelBtn = document.getElementById("confirm-cancel")!;
+      const icon = document.getElementById("confirm-icon")!;
       title.textContent = "Name on Drive";
       msg.textContent = "Choose a name for this folder on Google Drive:";
       icon.textContent = "📁";
       okBtn.textContent = "Add folder";
       okBtn.className = "btn-primary";
-      var inputId = "sync-folder-name-input";
-      var existing = document.getElementById(inputId);
+      const inputId = "sync-folder-name-input";
+      const existing = document.getElementById(inputId);
       if (existing) existing.remove();
-      var inp = document.createElement("input");
+      const inp = document.createElement("input");
       inp.id = inputId;
       inp.className = "fi";
       inp.style.cssText =
@@ -1512,22 +1528,22 @@ if (_syncAddBtn)
         inp.focus();
         inp.select();
       }, 60);
-      var cleanup = function () {
+      const cleanup = function () {
         overlay.hidden = true;
         inp.remove();
         okBtn.removeEventListener("click", onOk);
         cancelBtn.removeEventListener("click", onCancel);
         document.removeEventListener("keydown", onKey);
       };
-      var onOk = function () {
+      const onOk = function () {
         cleanup();
         resolve(inp.value.trim() || defaultName);
       };
-      var onCancel = function () {
+      const onCancel = function () {
         cleanup();
         resolve(null);
       };
-      var onKey = function (e: KeyboardEvent) {
+      const onKey = function (e: KeyboardEvent) {
         if (e.key === "Enter") onOk();
         if (e.key === "Escape") onCancel();
       };
@@ -1536,7 +1552,7 @@ if (_syncAddBtn)
       document.addEventListener("keydown", onKey);
     });
     if (driveName === null) return;
-    var addRes = await api.sync.foldersAdd(res.path, driveName);
+    const addRes = await api.sync.foldersAdd(res.path, driveName);
     if (addRes.ok) {
       toast("Folder added — syncing...");
       api.sync.syncNow().then(function () {
@@ -3315,7 +3331,7 @@ async function loadSettingsTab(): Promise<void> {
       if (pinDeleteRow) pinDeleteRow.hidden = true;
       if (pinDeleteDivider) pinDeleteDivider.hidden = true;
       // Update PIN indicator in sidebar
-      var pinIndicator = document.getElementById("pin-indicator");
+      const pinIndicator = document.getElementById("pin-indicator");
       if (pinIndicator) pinIndicator.hidden = true;
       __saveSettings();
     });
