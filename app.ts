@@ -2864,7 +2864,7 @@ function renderTotpGrid(): void {
         toast("Code copied! (clipboard clears in 30s)");
         logInfo("totp", "TOTP code copied", { name: item.name });
         setTimeout(() => {
-          await navigator.clipboard.writeText("");
+          navigator.clipboard.writeText("").catch(() => {});
           logInfo("app", "Clipboard auto-cleared");
         }, 30000);
       }
