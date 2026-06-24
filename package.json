@@ -16,6 +16,11 @@
     "appId": "com.vault.app",
     "productName": "Vault",
     "icon": "assets/icon",
+    "files": [
+      "dist/**/*",
+      "!dist/win-unpacked{,/**/*}",
+      "!dist/win-unpacked.tmp{,/**/*}"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png"

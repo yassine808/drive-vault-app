@@ -1,8 +1,10 @@
 # Dependencies
 node_modules/
 
-# Build output (Vite — zero .js on disk)
-dist/
+# Build output
+out/
+build/
+# dist/ removed from gitignore — electron-builder needs it for packaging
 out/
 build/
 assets/
