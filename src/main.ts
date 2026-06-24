@@ -852,7 +852,7 @@ ipcMain.handle(
       }
       if (
         typeof email !== "string" ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)
+        !/^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/u.test(email)
       ) {
         return { ok: false, error: "Invalid session" };
       }
@@ -1384,11 +1384,11 @@ function createWindow(): void {
     },
   });
   const builtIndex = path.join(__dirname, "..", "dist", "index.html");
-  if (!app.isPackaged) {
+  if (app.isPackaged) {
+    win.loadFile(builtIndex);
+  } else {
     win.loadURL("http://localhost:5173/index.html");
     win.webContents.openDevTools({ mode: "detach" });
-  } else {
-    win.loadFile(builtIndex);
   }
 
   win.webContents.on("will-navigate", (event, navUrl) => {

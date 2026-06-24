@@ -20,6 +20,34 @@ const VALID_JOB_STATUSES: ReadonlySet<JobStatus> = new Set<JobStatus>([
   "rejected",
 ]);
 
+function validateAppliedDate(appliedAt: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(appliedAt)) {
+    return "Invalid date format (YYYY-MM-DD)";
+  }
+  const year = Number.parseInt(appliedAt.slice(0, 4), 10);
+  const month = Number.parseInt(appliedAt.slice(5, 7), 10);
+  const day = Number.parseInt(appliedAt.slice(8, 10), 10);
+  if (
+    year < 2000 ||
+    year > 2100 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return "Applied date must be a valid date between 2000 and 2100";
+  }
+  const d = new Date(appliedAt + "T00:00:00.000Z");
+  if (
+    Number.isNaN(d.getTime()) ||
+    d.getUTCMonth() + 1 !== month ||
+    d.getUTCDate() !== day
+  ) {
+    return "Applied date is not a valid calendar date";
+  }
+  return null;
+}
+
 function register(
   ipcMain: Electron.IpcMain,
   requireAuth: AuthWrapper,
@@ -36,33 +64,6 @@ function register(
   dec: (data: string, key: string) => object | null,
   logError: LogError,
 ) {
-  function validateAppliedDate(appliedAt: string): string | null {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(appliedAt)) {
-      return "Invalid date format (YYYY-MM-DD)";
-    }
-    const year = Number.parseInt(appliedAt.slice(0, 4), 10);
-    const month = Number.parseInt(appliedAt.slice(5, 7), 10);
-    const day = Number.parseInt(appliedAt.slice(8, 10), 10);
-    if (
-      year < 2000 ||
-      year > 2100 ||
-      month < 1 ||
-      month > 12 ||
-      day < 1 ||
-      day > 31
-    ) {
-      return "Applied date must be a valid date between 2000 and 2100";
-    }
-    const d = new Date(appliedAt + "T00:00:00.000Z");
-    if (
-      Number.isNaN(d.getTime()) ||
-      d.getUTCMonth() + 1 !== month ||
-      d.getUTCDate() !== day
-    ) {
-      return "Applied date is not a valid calendar date";
-    }
-    return null;
-  }
   function dbLoadJobs(): Job[] {
     logger.dbLog("dbLoadJobs", "Loading jobs from cache");
     if (!driveClient) return [];

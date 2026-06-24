@@ -138,7 +138,7 @@ const uid = (): string => {
   return Date.now().toString(36) + rnd;
 };
 const wc = (t: unknown): number => {
-  const s = t == null ? "" : String(t).trim();
+  const s = t == null || t === undefined ? "" : String(t).trim();
   return s ? s.split(/\s+/).length : 0;
 };
 const days = (d: string): number =>
@@ -164,7 +164,7 @@ function formatLockTimer(ms: number): string {
   return `${s}s`;
 }
 function toast(msg: string, ms?: number): void {
-  ms ??= S.settings.toast_duration || 2400;
+  if (ms === undefined || ms === null) ms = S.settings.toast_duration || 2400;
   logInfo("ui", "Toast: " + msg);
   const el = document.getElementById("toast") as HTMLElement;
   el.textContent = msg;
@@ -252,7 +252,7 @@ function clearAllInputs(): void {
 // ═══ SOUNDS ═══════════════════════════════════════════════════════════════════
 const AudioCtx: typeof AudioContext =
   globalThis.AudioContext ||
-  (window as unknown as { webkitAudioContext: typeof AudioContext })
+  (globalThis as unknown as { webkitAudioContext: typeof AudioContext })
     .webkitAudioContext;
 let actx: AudioContext | null = null;
 function getACtx(): AudioContext {
@@ -702,11 +702,106 @@ function selectPinAccount(account: {
   );
 }
 
+function buildPinAccountItem(
+  acct: {
+    googleId: string;
+    email: string;
+    name: string;
+    avatar: string | null;
+  },
+  list: HTMLElement,
+): HTMLDivElement {
+  const item = document.createElement("div");
+  item.className = "pin-account-item";
+  const init = (acct.name || acct.email || "?")[0].toUpperCase();
+  if (acct.avatar && acct.avatar.startsWith("https://")) {
+    const img = document.createElement("img");
+    img.className = "pin-account-avatar";
+    img.src = acct.avatar.split("?")[0];
+    img.addEventListener("error", () => {
+      img.remove();
+      const fb = document.createElement("div");
+      fb.className = "pin-account-avatar-fb";
+      fb.textContent = init;
+      item.insertBefore(fb, item.firstChild);
+    });
+    item.appendChild(img);
+  } else {
+    const fb = document.createElement("div");
+    fb.className = "pin-account-avatar-fb";
+    fb.textContent = init;
+    item.appendChild(fb);
+  }
+  const nameEl = document.createElement("div");
+  nameEl.className = "pin-account-name";
+  nameEl.textContent = acct.name || acct.email;
+  item.appendChild(nameEl);
+  const emailEl = document.createElement("div");
+  emailEl.className = "pin-account-email";
+  emailEl.textContent = acct.email;
+  item.appendChild(emailEl);
+  const removeBtn = document.createElement("button");
+  removeBtn.className = "pin-account-remove";
+  removeBtn.title = "Remove account";
+  removeBtn.innerHTML =
+    '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  removeBtn.addEventListener("click", async function (e: Event) {
+    e.stopPropagation();
+    e.preventDefault();
+    const confirmed = await new Promise<boolean>(function (resolve) {
+      const overlay = document.getElementById("confirm-overlay")!;
+      const title = document.getElementById("confirm-title")!;
+      const msg = document.getElementById("confirm-msg")!;
+      const okBtn = document.getElementById("confirm-ok")!;
+      const cancelBtn = document.getElementById("confirm-cancel")!;
+      const icon = document.getElementById("confirm-icon")!;
+      title.textContent = "Remove account?";
+      msg.textContent = "Remove " + acct.email + " from the quick login list?";
+      icon.textContent = "✕";
+      okBtn.textContent = "Remove";
+      okBtn.className = "btn-danger";
+      overlay.hidden = false;
+      const cleanup = function () {
+        overlay.hidden = true;
+        okBtn.removeEventListener("click", onOk);
+        cancelBtn.removeEventListener("click", onCancel);
+      };
+      const onOk = function () {
+        cleanup();
+        resolve(true);
+      };
+      const onCancel = function () {
+        cleanup();
+        resolve(false);
+      };
+      okBtn.addEventListener("click", onOk);
+      cancelBtn.addEventListener("click", onCancel);
+    });
+    if (!confirmed) return;
+    const res = await api.accounts.removeById(acct.googleId);
+    if (res.ok) {
+      item.remove();
+      toast("Account removed");
+      const remaining = list.querySelectorAll(".pin-account-item");
+      if (remaining.length === 0) {
+        hide("pin-accounts");
+        show("pin-user-label");
+        show("pin-input-area");
+        _selectedAccount = null;
+      }
+    } else {
+      toast("Failed to remove account");
+    }
+  });
+  item.appendChild(removeBtn);
+  item.addEventListener("click", () => selectPinAccount(acct));
+  return item;
+}
+
 async function loadPinAccounts() {
   try {
     const r = await api.accounts.list();
     if (!r.ok || !r.accounts.length) {
-      // No saved accounts — show PIN input directly
       _selectedAccount = null;
       hide("pin-selected-account");
       hide("pin-accounts");
@@ -720,7 +815,6 @@ async function loadPinAccounts() {
       );
       return;
     }
-    // Saved accounts exist — show account list, hide PIN input until account is selected
     _selectedAccount = null;
     hide("pin-input-area");
     hide("pin-selected-account");
@@ -728,94 +822,7 @@ async function loadPinAccounts() {
     const list = document.getElementById("pin-accounts-list") as HTMLElement;
     list.innerHTML = "";
     for (const acct of r.accounts) {
-      const item = document.createElement("div");
-      item.className = "pin-account-item";
-      const init = (acct.name || acct.email || "?")[0].toUpperCase();
-      if (acct.avatar && acct.avatar.startsWith("https://")) {
-        const img = document.createElement("img");
-        img.className = "pin-account-avatar";
-        img.src = acct.avatar.split("?")[0];
-        img.addEventListener("error", () => {
-          img.remove();
-          const fb = document.createElement("div");
-          fb.className = "pin-account-avatar-fb";
-          fb.textContent = init;
-          item.insertBefore(fb, item.firstChild);
-        });
-        item.appendChild(img);
-      } else {
-        const fb = document.createElement("div");
-        fb.className = "pin-account-avatar-fb";
-        fb.textContent = init;
-        item.appendChild(fb);
-      }
-      const nameEl = document.createElement("div");
-      nameEl.className = "pin-account-name";
-      nameEl.textContent = acct.name || acct.email;
-      item.appendChild(nameEl);
-      const emailEl = document.createElement("div");
-      emailEl.className = "pin-account-email";
-      emailEl.textContent = acct.email;
-      item.appendChild(emailEl);
-      // Add remove button (X) on the account avatar
-      const removeBtn = document.createElement("button");
-      removeBtn.className = "pin-account-remove";
-      removeBtn.title = "Remove account";
-      removeBtn.innerHTML =
-        '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      removeBtn.addEventListener("click", async function (e: Event) {
-        e.stopPropagation();
-        e.preventDefault();
-        const confirmed = await new Promise<boolean>(function (resolve) {
-          const overlay = document.getElementById("confirm-overlay")!;
-          const title = document.getElementById("confirm-title")!;
-          const msg = document.getElementById("confirm-msg")!;
-          const okBtn = document.getElementById("confirm-ok")!;
-          const cancelBtn = document.getElementById("confirm-cancel")!;
-          const icon = document.getElementById("confirm-icon")!;
-          title.textContent = "Remove account?";
-          msg.textContent =
-            "Remove " + acct.email + " from the quick login list?";
-          icon.textContent = "✕";
-          okBtn.textContent = "Remove";
-          okBtn.className = "btn-danger";
-          overlay.hidden = false;
-          const cleanup = function () {
-            overlay.hidden = true;
-            okBtn.removeEventListener("click", onOk);
-            cancelBtn.removeEventListener("click", onCancel);
-          };
-          const onOk = function () {
-            cleanup();
-            resolve(true);
-          };
-          const onCancel = function () {
-            cleanup();
-            resolve(false);
-          };
-          okBtn.addEventListener("click", onOk);
-          cancelBtn.addEventListener("click", onCancel);
-        });
-        if (!confirmed) return;
-        const res = await api.accounts.removeById(acct.googleId);
-        if (res.ok) {
-          item.remove();
-          toast("Account removed");
-          // Check if no accounts left
-          const remaining = list.querySelectorAll(".pin-account-item");
-          if (remaining.length === 0) {
-            hide("pin-accounts");
-            show("pin-user-label");
-            show("pin-input-area");
-            _selectedAccount = null;
-          }
-        } else {
-          toast("Failed to remove account");
-        }
-      });
-      item.appendChild(removeBtn);
-      item.addEventListener("click", () => selectPinAccount(acct));
-      list.appendChild(item);
+      list.appendChild(buildPinAccountItem(acct, list));
     }
     const accountsWrap = document.getElementById("pin-accounts") as HTMLElement;
     accountsWrap.hidden = false;
@@ -1703,7 +1710,7 @@ async function checkBreach(
 ): Promise<{ breached: boolean; count: number }> {
   try {
     const sha1 = await crypto.subtle.digest(
-      "SHA-1",
+      "SHA-1", // NOSONAR: SHA-1 required by HIBP k-anonymity API
       new TextEncoder().encode(password),
     );
     const hex = Array.from(new Uint8Array(sha1))
@@ -2545,6 +2552,72 @@ document.addEventListener("click", (e: MouseEvent) => {
     hide("status-popup");
 });
 
+function buildJobRow(
+  job: Job,
+  stMap: Record<string, { cls: string; label: string }>,
+): HTMLTableRowElement {
+  const tr = document.createElement("tr");
+  tr.className = "draggable";
+  tr.draggable = true;
+  tr.dataset.id = String(job.id);
+  const st = stMap[job.status] || stMap.wait;
+
+  const dragTd = document.createElement("td");
+  dragTd.className = "drag-handle-cell";
+  dragTd.textContent = "⠿";
+  tr.appendChild(dragTd);
+  const companyTd = document.createElement("td");
+  companyTd.className = "editable-cell";
+  companyTd.dataset.field = "company";
+  const companyStrong = document.createElement("strong");
+  companyStrong.textContent = job.company || "";
+  companyTd.appendChild(companyStrong);
+  tr.appendChild(companyTd);
+  const roleTd = document.createElement("td");
+  roleTd.className = "editable-cell";
+  roleTd.dataset.field = "role";
+  roleTd.textContent = job.role || "";
+  tr.appendChild(roleTd);
+  const emailTd = document.createElement("td");
+  const emailWrap = document.createElement("div");
+  emailWrap.style.cssText = "display:flex;align-items:center;gap:5px";
+  const emailLink = document.createElement("a");
+  emailLink.className = "job-email";
+  emailLink.href = "mailto:" + encodeURIComponent(job.email || "");
+  emailLink.textContent = job.email || "";
+  emailWrap.appendChild(emailLink);
+  const copyEmailBtn = document.createElement("button");
+  copyEmailBtn.className = "icon-btn copy copy-email-btn";
+  copyEmailBtn.title = "Copy email";
+  copyEmailBtn.style.cssText = "width:22px;height:22px;flex-shrink:0";
+  copyEmailBtn.innerHTML =
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  emailWrap.appendChild(copyEmailBtn);
+  emailTd.appendChild(emailWrap);
+  tr.appendChild(emailTd);
+  const dateTd = document.createElement("td");
+  dateTd.className = "editable-cell";
+  dateTd.dataset.field = "applied_at";
+  dateTd.textContent = job.applied_at || "—";
+  tr.appendChild(dateTd);
+  const statusTd = document.createElement("td");
+  statusTd.className = "job-status-cell";
+  const statusSpan = document.createElement("span");
+  statusSpan.className = "job-status " + st.cls;
+  statusSpan.textContent = st.label;
+  statusTd.appendChild(statusSpan);
+  tr.appendChild(statusTd);
+  const delTd = document.createElement("td");
+  const delJobBtn = document.createElement("button");
+  delJobBtn.className = "icon-btn del del-job-btn";
+  delJobBtn.title = "Delete";
+  delJobBtn.innerHTML =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+  delTd.appendChild(delJobBtn);
+  tr.appendChild(delTd);
+  return tr;
+}
+
 function renderJobsTable(): void {
   const tbody = document.getElementById("jobs-body") as HTMLTableSectionElement;
   tbody
@@ -2583,66 +2656,7 @@ function renderJobsTable(): void {
   };
 
   list.forEach((job) => {
-    const tr = document.createElement("tr");
-    tr.className = "draggable";
-    tr.draggable = true;
-    tr.dataset.id = String(job.id);
-    const st = stMap[job.status] || stMap.wait;
-
-    const dragTd = document.createElement("td");
-    dragTd.className = "drag-handle-cell";
-    dragTd.textContent = "⠿";
-    tr.appendChild(dragTd);
-    const companyTd = document.createElement("td");
-    companyTd.className = "editable-cell";
-    companyTd.dataset.field = "company";
-    const companyStrong = document.createElement("strong");
-    companyStrong.textContent = job.company || "";
-    companyTd.appendChild(companyStrong);
-    tr.appendChild(companyTd);
-    const roleTd = document.createElement("td");
-    roleTd.className = "editable-cell";
-    roleTd.dataset.field = "role";
-    roleTd.textContent = job.role || "";
-    tr.appendChild(roleTd);
-    const emailTd = document.createElement("td");
-    const emailWrap = document.createElement("div");
-    emailWrap.style.cssText = "display:flex;align-items:center;gap:5px";
-    const emailLink = document.createElement("a");
-    emailLink.className = "job-email";
-    emailLink.href = "mailto:" + encodeURIComponent(job.email || "");
-    emailLink.textContent = job.email || "";
-    emailWrap.appendChild(emailLink);
-    const copyEmailBtn = document.createElement("button");
-    copyEmailBtn.className = "icon-btn copy copy-email-btn";
-    copyEmailBtn.title = "Copy email";
-    copyEmailBtn.style.cssText = "width:22px;height:22px;flex-shrink:0";
-    copyEmailBtn.innerHTML =
-      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    emailWrap.appendChild(copyEmailBtn);
-    emailTd.appendChild(emailWrap);
-    tr.appendChild(emailTd);
-    const dateTd = document.createElement("td");
-    dateTd.className = "editable-cell";
-    dateTd.dataset.field = "applied_at";
-    dateTd.textContent = job.applied_at || "—";
-    tr.appendChild(dateTd);
-    const statusTd = document.createElement("td");
-    statusTd.className = "job-status-cell";
-    const statusSpan = document.createElement("span");
-    statusSpan.className = "job-status " + st.cls;
-    statusSpan.textContent = st.label;
-    statusTd.appendChild(statusSpan);
-    tr.appendChild(statusTd);
-    const delTd = document.createElement("td");
-    const delJobBtn = document.createElement("button");
-    delJobBtn.className = "icon-btn del del-job-btn";
-    delJobBtn.title = "Delete";
-    delJobBtn.innerHTML =
-      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
-    delTd.appendChild(delJobBtn);
-    tr.appendChild(delTd);
-
+    const tr = buildJobRow(job, stMap);
     bindJobRow(tr, job, popup, tbody);
     tbody.appendChild(tr);
   });
@@ -2915,6 +2929,82 @@ async function loadAndRenderTotp(): Promise<void> {
   updateCounts();
   logOk("totp", "TOTP accounts loaded", { count: S.totp.length });
 }
+function buildTotpCard(item: TotpItem): HTMLDivElement {
+  const card = document.createElement("div");
+  card.className = "totp-card";
+  const codeId = "totp-code-" + item.id;
+  const progId = "totp-prog-" + item.id;
+  const header = document.createElement("div");
+  header.className = "totp-header";
+  const totpIcon = document.createElement("span");
+  totpIcon.className = "totp-icon";
+  totpIcon.textContent = item.icon || "🔐";
+  header.appendChild(totpIcon);
+  const totpInfo = document.createElement("div");
+  totpInfo.className = "totp-info";
+  const totpName = document.createElement("div");
+  totpName.className = "totp-name";
+  totpName.textContent = item.name || "";
+  totpInfo.appendChild(totpName);
+  const totpIssuer = document.createElement("div");
+  totpIssuer.className = "totp-issuer";
+  totpIssuer.textContent = item.issuer || "";
+  totpInfo.appendChild(totpIssuer);
+  header.appendChild(totpInfo);
+  const totpDel = document.createElement("button");
+  totpDel.className = "icon-btn del totp-del";
+  totpDel.title = "Remove";
+  totpDel.innerHTML =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  header.appendChild(totpDel);
+  card.appendChild(header);
+  const totpCode = document.createElement("div");
+  totpCode.className = "totp-code";
+  totpCode.id = codeId;
+  totpCode.textContent = "——";
+  card.appendChild(totpCode);
+  const totpFoot = document.createElement("div");
+  totpFoot.className = "totp-foot";
+  const barWrap = document.createElement("div");
+  barWrap.className = "totp-bar-wrap";
+  const bar = document.createElement("div");
+  bar.className = "totp-bar";
+  bar.id = progId;
+  barWrap.appendChild(bar);
+  totpFoot.appendChild(barWrap);
+  const totpCopy = document.createElement("button");
+  totpCopy.className = "icon-btn copy totp-copy";
+  totpCopy.title = "Copy";
+  totpCopy.innerHTML =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  totpFoot.appendChild(totpCopy);
+  card.appendChild(totpFoot);
+  (card.querySelector(".totp-del") as HTMLButtonElement).onclick = () => {
+    confirm({
+      title: "Remove account?",
+      msg: `"${item.name}" will be removed.`,
+      icon: "🗑️",
+      okLabel: "Remove",
+      onOk: () => deleteTotpItem(item),
+    });
+  };
+  (card.querySelector(".totp-copy") as HTMLButtonElement).onclick = () => {
+    const code = (
+      document.getElementById(codeId) as HTMLElement
+    ).textContent!.replace(/\s/g, "");
+    if (code && code !== "——") {
+      navigator.clipboard.writeText(code);
+      toast("Code copied! (clipboard clears in 30s)");
+      logInfo("totp", "TOTP code copied", { name: item.name });
+      setTimeout(() => {
+        navigator.clipboard.writeText("").catch(() => {});
+        logInfo("app", "Clipboard auto-cleared");
+      }, 30000);
+    }
+  };
+  return card;
+}
+
 function renderTotpGrid(): void {
   const grid = document.getElementById("totp-grid") as HTMLElement;
   grid
@@ -2924,79 +3014,9 @@ function renderTotpGrid(): void {
     !!S.totp.length;
   if (!S.totp.length) return;
   S.totp.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "totp-card";
-    const codeId = "totp-code-" + item.id;
-    const progId = "totp-prog-" + item.id;
-    const header = document.createElement("div");
-    header.className = "totp-header";
-    const totpIcon = document.createElement("span");
-    totpIcon.className = "totp-icon";
-    totpIcon.textContent = item.icon || "🔐";
-    header.appendChild(totpIcon);
-    const totpInfo = document.createElement("div");
-    totpInfo.className = "totp-info";
-    const totpName = document.createElement("div");
-    totpName.className = "totp-name";
-    totpName.textContent = item.name || "";
-    totpInfo.appendChild(totpName);
-    const totpIssuer = document.createElement("div");
-    totpIssuer.className = "totp-issuer";
-    totpIssuer.textContent = item.issuer || "";
-    totpInfo.appendChild(totpIssuer);
-    header.appendChild(totpInfo);
-    const totpDel = document.createElement("button");
-    totpDel.className = "icon-btn del totp-del";
-    totpDel.title = "Remove";
-    totpDel.innerHTML =
-      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    header.appendChild(totpDel);
-    card.appendChild(header);
-    const totpCode = document.createElement("div");
-    totpCode.className = "totp-code";
-    totpCode.id = codeId;
-    totpCode.textContent = "——";
-    card.appendChild(totpCode);
-    const totpFoot = document.createElement("div");
-    totpFoot.className = "totp-foot";
-    const barWrap = document.createElement("div");
-    barWrap.className = "totp-bar-wrap";
-    const bar = document.createElement("div");
-    bar.className = "totp-bar";
-    bar.id = progId;
-    barWrap.appendChild(bar);
-    totpFoot.appendChild(barWrap);
-    const totpCopy = document.createElement("button");
-    totpCopy.className = "icon-btn copy totp-copy";
-    totpCopy.title = "Copy";
-    totpCopy.innerHTML =
-      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-    totpFoot.appendChild(totpCopy);
-    card.appendChild(totpFoot);
-    (card.querySelector(".totp-del") as HTMLButtonElement).onclick = () => {
-      confirm({
-        title: "Remove account?",
-        msg: `"${item.name}" will be removed.`,
-        icon: "🗑️",
-        okLabel: "Remove",
-        onOk: () => deleteTotpItem(item),
-      });
-    };
-    (card.querySelector(".totp-copy") as HTMLButtonElement).onclick = () => {
-      const code = (
-        document.getElementById(codeId) as HTMLElement
-      ).textContent!.replace(/\s/g, "");
-      if (code && code !== "——") {
-        navigator.clipboard.writeText(code);
-        toast("Code copied! (clipboard clears in 30s)");
-        logInfo("totp", "TOTP code copied", { name: item.name });
-        setTimeout(() => {
-          navigator.clipboard.writeText("").catch(() => {});
-          logInfo("app", "Clipboard auto-cleared");
-        }, 30000);
-      }
-    };
+    const card = buildTotpCard(item);
     grid.appendChild(card);
+    const progId = "totp-prog-" + item.id;
     const updateCode = (): void => {
       const epoch = Math.floor(Date.now() / 1000);
       const remaining = (30 - (epoch % 30)) / 30;
@@ -3263,7 +3283,7 @@ async function loadSettingsTab(): Promise<void> {
       )[key];
     else {
       const raw = (S.settings as unknown as Record<string, unknown>)[key];
-      el.value = raw == null ? "" : String(raw);
+      el.value = raw == null || raw === undefined ? "" : String(raw);
     }
     el.addEventListener("change", () => {
       let val: unknown;
@@ -3314,30 +3334,18 @@ async function loadSettingsTab(): Promise<void> {
   // If PIN file exists → show change + delete rows (regardless of toggle)
   // If no PIN file → show setup row only when toggle is on
   // If PIN is disabled and no file → hide all
-  if (pinSetupRow) pinSetupRow.hidden = _pinFileExists || !pinEnabled;
-  if (pinChangeRow) pinChangeRow.hidden = !_pinFileExists;
-  if (pinDeleteRow) pinDeleteRow.hidden = !_pinFileExists;
-  if (pinDeleteDivider) pinDeleteDivider.hidden = !_pinFileExists;
+  const initialPinView = _pinFileExists
+    ? "changeDelete"
+    : pinEnabled
+      ? "setup"
+      : "none";
+  setPinRowsView(initialPinView);
 
-  function showPinChangeDeleteView(): void {
-    if (pinSetupRow) pinSetupRow.hidden = true;
-    if (pinChangeRow) pinChangeRow.hidden = false;
-    if (pinDeleteRow) pinDeleteRow.hidden = false;
-    if (pinDeleteDivider) pinDeleteDivider.hidden = false;
-  }
-
-  function showPinSetupView(): void {
-    if (pinSetupRow) pinSetupRow.hidden = false;
-    if (pinChangeRow) pinChangeRow.hidden = true;
-    if (pinDeleteRow) pinDeleteRow.hidden = true;
-    if (pinDeleteDivider) pinDeleteDivider.hidden = true;
-  }
-
-  function hideAllPinRows(): void {
-    if (pinSetupRow) pinSetupRow.hidden = true;
-    if (pinChangeRow) pinChangeRow.hidden = true;
-    if (pinDeleteRow) pinDeleteRow.hidden = true;
-    if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+  function setPinRowsView(view: "setup" | "changeDelete" | "none"): void {
+    if (pinSetupRow) pinSetupRow.hidden = view !== "setup";
+    if (pinChangeRow) pinChangeRow.hidden = view !== "changeDelete";
+    if (pinDeleteRow) pinDeleteRow.hidden = view !== "changeDelete";
+    if (pinDeleteDivider) pinDeleteDivider.hidden = view !== "changeDelete";
   }
 
   // PIN enable toggle handler
@@ -3349,13 +3357,9 @@ async function loadSettingsTab(): Promise<void> {
       const enabled = pinEnabledEl.checked;
       S.settings.pin_login_enabled = enabled;
       if (enabled) {
-        if (_pinFileExists) {
-          showPinChangeDeleteView();
-        } else {
-          showPinSetupView();
-        }
+        setPinRowsView(_pinFileExists ? "changeDelete" : "setup");
       } else {
-        hideAllPinRows();
+        setPinRowsView("none");
       }
       __saveSettings();
       toast(
@@ -3387,7 +3391,7 @@ async function loadSettingsTab(): Promise<void> {
   function switchToPinChangeDeleteView(): void {
     _pinFileExists = true;
     S.settings.pin_login_enabled = true;
-    showPinChangeDeleteView();
+    setPinRowsView("changeDelete");
     if (pinEnabledEl) pinEnabledEl.checked = true;
     __saveSettings();
   }

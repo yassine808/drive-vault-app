@@ -177,50 +177,50 @@ export class DriveClient {
   private async processDirtyItem(item: DirtyItem): Promise<void> {
     if (!this.driveApi) throw new Error("Drive not initialized");
 
-    switch (item.action) {
-      case "create":
-      case "update": {
-        const cacheItem = this.findCacheItem(item.id, item.type);
-        if (!cacheItem) throw new Error(`Cache item not found: ${item.id}`);
-        const fileName = this.itemFileName(item.id, item.type);
-        const content = cacheItem.encryptedData;
+    if (item.action === "delete") {
+      await this.processDirtyDelete(item);
+      return;
+    }
+    await this.processDirtyCreateOrUpdate(item);
+  }
 
-        if (item.driveFileId) {
-          // Update existing file
-          await this.driveApi.files.update({
-            fileId: item.driveFileId,
-            media: { mimeType: "application/octet-stream", body: content },
-            fields: "id, name, modifiedTime",
-          });
-          this.fileIdCache.set(fileName, item.driveFileId);
-        } else {
-          // Create new file in the correct subfolder
-          const subfolderId = await this.ensureSubfolder(
-            SUBFOLDERS[item.type as SubfolderType],
-          );
-          const created = await this.driveApi.files.create({
-            requestBody: {
-              name: fileName,
-              parents: [subfolderId],
-              mimeType: "application/octet-stream",
-              appProperties: { itemId: item.id, itemType: item.type },
-            },
-            media: { mimeType: "application/octet-stream", body: content },
-            fields: "id, name, modifiedTime",
-          });
-          item.driveFileId = created.data.id || undefined;
-          this.fileIdCache.set(fileName, item.driveFileId || "");
-        }
-        break;
-      }
-      case "delete": {
-        if (item.driveFileId) {
-          await this.driveApi.files.delete({ fileId: item.driveFileId });
-          const fileName = this.itemFileName(item.id, item.type);
-          this.fileIdCache.delete(fileName);
-        }
-        break;
-      }
+  private async processDirtyCreateOrUpdate(item: DirtyItem): Promise<void> {
+    const cacheItem = this.findCacheItem(item.id, item.type);
+    if (!cacheItem) throw new Error(`Cache item not found: ${item.id}`);
+    const fileName = this.itemFileName(item.id, item.type);
+    const content = cacheItem.encryptedData;
+
+    if (item.driveFileId) {
+      await this.driveApi!.files.update({
+        fileId: item.driveFileId,
+        media: { mimeType: "application/octet-stream", body: content },
+        fields: "id, name, modifiedTime",
+      });
+      this.fileIdCache.set(fileName, item.driveFileId);
+    } else {
+      const subfolderId = await this.ensureSubfolder(
+        SUBFOLDERS[item.type as SubfolderType],
+      );
+      const created = await this.driveApi!.files.create({
+        requestBody: {
+          name: fileName,
+          parents: [subfolderId],
+          mimeType: "application/octet-stream",
+          appProperties: { itemId: item.id, itemType: item.type },
+        },
+        media: { mimeType: "application/octet-stream", body: content },
+        fields: "id, name, modifiedTime",
+      });
+      item.driveFileId = created.data.id || undefined;
+      this.fileIdCache.set(fileName, item.driveFileId || "");
+    }
+  }
+
+  private async processDirtyDelete(item: DirtyItem): Promise<void> {
+    if (item.driveFileId) {
+      await this.driveApi!.files.delete({ fileId: item.driveFileId });
+      const fileName = this.itemFileName(item.id, item.type);
+      this.fileIdCache.delete(fileName);
     }
   }
 

@@ -526,37 +526,25 @@ class SyncEngine {
     return { uploaded, downloaded, errors, resolved };
   }
 
-  private async syncFileChange(opts: {
-    relPath: string;
-    local: { hash: string; mtime?: number } | null;
-    drive: { fileId: string; modifiedTime: string; hash: string | null } | null;
-    prev: SyncFolderState["files"][string] | null;
-    folder: SyncFolder;
-    driveSubfolderId: string;
+  private async syncFileChange(
+    relPath: string,
+    local: { hash: string; mtime?: number } | null,
+    drive: { fileId: string; modifiedTime: string; hash: string | null } | null,
+    prev: SyncFolderState["files"][string] | null,
+    folder: SyncFolder,
+    driveSubfolderId: string,
     driveFiles: Map<
       string,
       { fileId: string; modifiedTime: string; hash: string | null }
-    >;
-    newState: SyncFolderState;
+    >,
+    newState: SyncFolderState,
     counters: {
       uploaded: number;
       downloaded: number;
       conflicts: number;
       errors: number;
-    };
-  }): Promise<void> {
-    const {
-      relPath,
-      local,
-      drive,
-      prev,
-      folder,
-      driveSubfolderId,
-      driveFiles,
-      newState,
-      counters,
-    } = opts;
-
+    },
+  ): Promise<void> {
     newState.files[relPath] = {
       relativePath: relPath,
       localHash: local?.hash || null,
@@ -569,16 +557,14 @@ class SyncEngine {
 
     const localChanged = !prev || prev.localHash !== local?.hash;
     const driveChanged = !prev || prev.driveHash !== drive?.hash;
-    const localExists = !!local;
-    const driveExists = !!drive;
 
-    if (localChanged && driveChanged && localExists && driveExists) {
+    if (localChanged && driveChanged && local && drive) {
       newState.files[relPath].conflict = "both";
       counters.conflicts++;
       const r = await this.resolveConflict(
         relPath,
-        drive!,
-        local!,
+        drive,
+        local,
         folder,
         driveSubfolderId,
         newState,
@@ -586,15 +572,13 @@ class SyncEngine {
       counters.uploaded += r.uploaded;
       counters.downloaded += r.downloaded;
       counters.errors += r.errors;
-      if (!r.resolved) {
-        newState.files[relPath].conflict = "both";
-      }
+      if (!r.resolved) newState.files[relPath].conflict = "both";
       return;
     }
-    if (localChanged && localExists) {
+    if (localChanged && local) {
       await this.syncLocalChanged(
         relPath,
-        local!,
+        local,
         folder,
         driveSubfolderId,
         driveFiles,
@@ -602,11 +586,36 @@ class SyncEngine {
       );
       return;
     }
-    if (driveChanged && driveExists) {
-      await this.syncDriveChanged(relPath, drive!, folder, counters);
+    if (driveChanged && drive) {
+      await this.syncDriveChanged(relPath, drive, folder, counters);
       return;
     }
-    if (!localExists && driveExists && prev && drive && this.drive?.driveApi) {
+    await this.handleDeletedFileSync(
+      relPath,
+      local,
+      drive,
+      prev,
+      folder,
+      counters,
+      newState,
+    );
+  }
+
+  private async handleDeletedFileSync(
+    relPath: string,
+    local: { hash: string; mtime?: number } | null,
+    drive: { fileId: string; modifiedTime: string; hash: string | null } | null,
+    prev: SyncFolderState["files"][string] | null,
+    folder: SyncFolder,
+    counters: {
+      uploaded: number;
+      downloaded: number;
+      conflicts: number;
+      errors: number;
+    },
+    _newState: SyncFolderState,
+  ): Promise<void> {
+    if (!local && drive && prev && this.drive?.driveApi) {
       try {
         await this.drive.driveApi.files.delete({ fileId: drive.fileId });
       } catch {
@@ -614,7 +623,7 @@ class SyncEngine {
       }
       return;
     }
-    if (!driveExists && localExists && prev) {
+    if (!drive && local && prev) {
       try {
         await fs.promises.unlink(path.join(folder.localPath, relPath));
       } catch {
@@ -732,7 +741,7 @@ class SyncEngine {
         const local = localFiles.get(relPath) || null;
         const drive = driveFiles.get(relPath) || null;
         const prev = folderState.files[relPath] || null;
-        await this.syncFileChange({
+        await this.syncFileChange(
           relPath,
           local,
           drive,
@@ -742,7 +751,7 @@ class SyncEngine {
           driveFiles,
           newState,
           counters,
-        });
+        );
       }
 
       uploaded = counters.uploaded;

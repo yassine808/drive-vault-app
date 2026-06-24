@@ -71,7 +71,9 @@ function write(level: number, ctx: string, msg: string, data?: unknown): void {
   if (data !== undefined) {
     try {
       const dataStr =
-        typeof data === "object" ? JSON.stringify(data, null, 0) : String(data);
+        typeof data === "object" && data !== null
+          ? JSON.stringify(data, null, 0)
+          : String(data ?? "");
       line += ` | data: ${dataStr}`;
     } catch {
       line += " | data: [unserializable]";

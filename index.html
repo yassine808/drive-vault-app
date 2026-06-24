@@ -858,7 +858,10 @@
                     ><input
                       type="checkbox"
                       id="s-lock-countdown"
-                      checked /><span class="toggle-track"></span
+                      checked
+                      aria-label="Show countdown before locking" /><span
+                      class="toggle-track"
+                    ></span
                   ></label>
                 </div>
               </div>
@@ -871,7 +874,10 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-lock-minimize"
-                    ><input type="checkbox" id="s-lock-minimize" /><span
+                    ><input
+                      type="checkbox"
+                      id="s-lock-minimize"
+                      aria-label="Lock on minimize" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -902,7 +908,10 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-compact"
-                    ><input type="checkbox" id="s-compact" /><span
+                    ><input
+                      type="checkbox"
+                      id="s-compact"
+                      aria-label="Compact mode" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -917,7 +926,11 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-animations"
-                    ><input type="checkbox" id="s-animations" checked /><span
+                    ><input
+                      type="checkbox"
+                      id="s-animations"
+                      checked
+                      aria-label="Animations" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1043,7 +1056,11 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-gen-symbols"
-                    ><input type="checkbox" id="s-gen-symbols" checked /><span
+                    ><input
+                      type="checkbox"
+                      id="s-gen-symbols"
+                      checked
+                      aria-label="Include symbols in generated passwords" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1058,7 +1075,11 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-gen-numbers"
-                    ><input type="checkbox" id="s-gen-numbers" checked /><span
+                    ><input
+                      type="checkbox"
+                      id="s-gen-numbers"
+                      checked
+                      aria-label="Include numbers in generated passwords" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1073,7 +1094,10 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-gen-ambiguous"
-                    ><input type="checkbox" id="s-gen-ambiguous" /><span
+                    ><input
+                      type="checkbox"
+                      id="s-gen-ambiguous"
+                      aria-label="Exclude ambiguous characters" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1088,7 +1112,11 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-gen-copy"
-                    ><input type="checkbox" id="s-gen-copy" checked /><span
+                    ><input
+                      type="checkbox"
+                      id="s-gen-copy"
+                      checked
+                      aria-label="Copy generated passwords to clipboard" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1119,7 +1147,11 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-sounds"
-                    ><input type="checkbox" id="s-sounds" checked /><span
+                    ><input
+                      type="checkbox"
+                      id="s-sounds"
+                      checked
+                      aria-label="Master sound" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1144,7 +1176,11 @@
                     <option value="soft">Soft</option>
                     <option value="bright">Bright</option></select
                   ><label class="toggle toggle-sm" for="s-sound-login"
-                    ><input type="checkbox" id="s-sound-login" checked /><span
+                    ><input
+                      type="checkbox"
+                      id="s-sound-login"
+                      checked
+                      aria-label="Login sound" /><span
                       class="toggle-track"
                     ></span></label
                   ><button
@@ -1175,7 +1211,11 @@
                     <option value="soft">Soft</option>
                     <option value="bright">Bright</option></select
                   ><label class="toggle toggle-sm" for="s-sound-exit"
-                    ><input type="checkbox" id="s-sound-exit" checked /><span
+                    ><input
+                      type="checkbox"
+                      id="s-sound-exit"
+                      checked
+                      aria-label="Exit and lock sound" /><span
                       class="toggle-track"
                     ></span></label
                   ><button
@@ -1206,7 +1246,10 @@
                     <option value="pop">Pop</option>
                     <option value="none">None</option></select
                   ><label class="toggle toggle-sm" for="s-sound-hover"
-                    ><input type="checkbox" id="s-sound-hover" /><span
+                    ><input
+                      type="checkbox"
+                      id="s-sound-hover"
+                      aria-label="Hover sound" /><span
                       class="toggle-track"
                     ></span></label
                   ><button
@@ -1291,7 +1334,10 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-pin-enabled"
-                    ><input type="checkbox" id="s-pin-enabled" /><span
+                    ><input
+                      type="checkbox"
+                      id="s-pin-enabled"
+                      aria-label="Enable PIN login" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1387,7 +1433,10 @@
                 </div>
                 <div class="settings-control">
                   <label class="toggle" for="s-pin-alpha"
-                    ><input type="checkbox" id="s-pin-alpha" /><span
+                    ><input
+                      type="checkbox"
+                      id="s-pin-alpha"
+                      aria-label="Allow alphanumeric PINs" /><span
                       class="toggle-track"
                     ></span
                   ></label>
@@ -1536,20 +1585,32 @@
             <label for="go-upper" class="tog-label"
               >Uppercase Aâ&#x20AC;&ldquo;Z</label
             ><label class="tog"
-              ><input type="checkbox" id="go-upper" checked /><span></span
+              ><input
+                type="checkbox"
+                id="go-upper"
+                checked
+                aria-label="Include uppercase letters" /><span></span
             ></label>
           </div>
           <div class="gen-opt">
             <label for="go-nums" class="tog-label"
               >Numbers 0â&#x20AC;&ldquo;9</label
             ><label class="tog"
-              ><input type="checkbox" id="go-nums" checked /><span></span
+              ><input
+                type="checkbox"
+                id="go-nums"
+                checked
+                aria-label="Include numbers" /><span></span
             ></label>
           </div>
           <div class="gen-opt">
             <label for="go-syms" class="tog-label">Symbols !@#$â&#x20AC;¦</label
             ><label class="tog"
-              ><input type="checkbox" id="go-syms" checked /><span></span
+              ><input
+                type="checkbox"
+                id="go-syms"
+                checked
+                aria-label="Include symbols" /><span></span
             ></label>
           </div>
         </div>
