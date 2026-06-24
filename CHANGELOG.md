@@ -1,5 +1,62 @@
 # Changelog
 
+## [3.0.0] — 2026-06-24
+
+### Added
+
+- **PIN-based authentication** — skip Google OAuth on subsequent logins with a local PIN; supports account selection, alphanumeric option, and rate limiting
+- **Sync tab** — local folder <-> Google Drive sync with debounce, dirty queue, and offline support
+- **Saved accounts** — quick-switch between previously logged-in accounts on the PIN screen
+- **Google Drive storage** — replaced Supabase; all vault data stored as per-item encrypted files in the user's Drive
+- **TypeScript throughout** — complete JS -> TS migration for main process and renderer
+- **Vite bundler** — replaced esbuild with Vite for renderer builds
+- **CI workflow** — GitHub Actions with build, typecheck, lint, audit, and SonarCloud analysis
+- **Dependabot** — automated dependency updates for npm and GitHub Actions
+
+### Changed
+
+- **Encryption** — AES-256-CBC + HMAC-SHA256 encrypt-then-MAC (replaces CryptoJS legacy; backward-compatible decryption)
+- **Key derivation** — PBKDF2-SHA256 with 600k iterations and per-account salt (legacy SHA-256 fallback for old items)
+- **Renderer** — full TypeScript typing, Vite bundling
+- **Monitor dashboard** — redesigned with stat cards, activity timeline, log filters, and tab caching
+- **Settings** — 2-column layout, PIN management controls, sync folder configuration
+- **Dependencies** — updated to fix 14 vulnerabilities; removed Supabase leftovers and dead code
+
+### Fixed
+
+- OAuth direct redirect, modal blur sidebar, avatar fallback, sync OS drag-drop, per-file status, breach count
+- PIN login flow — account selection required, delete always visible, status obvious
+- PIN deletion now clears saved account and disables PIN setting
+- Sync folder add/remove/toggle, PIN-only accounts, remove account button
+- Key derivation fallback — decrypt old PBKDF2 items with legacy SHA-256
+- OS drag-and-drop file paths — use `webUtils.getPathForFile` instead of removed `File.path`
+- Sync engine now receives drive client after login
+- Settings error visibility, monitor timer leak, SSRF hardening
+- Multiple main.js bugs — trash purge, 2FA, lock resilience
+- Strict date validation in `jobs:save` — reject invalid calendar dates
+- `pintoken` ESM import, `save2fa` base64 encoding mismatch
+- Logger API calls across all modules, PIN setup UI
+- Renderer base path `'./'` for `file://` protocol compatibility
+- `parse5` control-character warning in `index.html`
+- SonarCloud Automatic Analysis conflict — CI now disables it via API before scanning
+
+### Removed
+
+- Supabase storage backend (replaced by Google Drive)
+- Admin email concept — dead code with no functional use
+- Animated glowing background effects (canvas nebulae + aurora blobs)
+- CodeQL job from CI (replaced by SonarCloud)
+- DESIGN.md and PRODUCT.md
+- Temporary `fix_unicode.py` script
+
+### Refactored
+
+- Complete JS -> TypeScript migration (main process + all modules + renderer)
+- Replaced esbuild with Vite for TypeScript-only architecture
+- Finalized renderer TypeScript typing
+- Removed build output JS files from git tracking
+- Set `moduleResolution` to `bundler` to avoid deprecation warnings
+
 ## [2.0] — 2026-05-26
 
 ### Major Changes
