@@ -28,6 +28,9 @@ desktop.ini
 .idea/
 *.sublime-*
 
+# Impeccable
+.impeccable/
+
 # Logs
 *.log
 npm-debug.log*

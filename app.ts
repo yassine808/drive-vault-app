@@ -118,10 +118,11 @@ const logErr = (ctx: string, msg: string, data?: unknown): void =>
 logInfo("app", "Renderer initialized");
 
 // ═══ UTILS ════════════════════════════════════════════════════════════════════
+// NOSONAR: uid() generates local item IDs, not security tokens; Math.random() is acceptable here
 const uid = (): string =>
   Date.now().toString(36) + Math.random().toString(36).slice(2);
 const wc = (t: unknown): number => {
-  const s = String(t || "").trim();
+  const s = String(t ?? "").trim();
   return s ? s.split(/\s+/).length : 0;
 };
 const days = (d: string): number =>
@@ -147,7 +148,7 @@ function formatLockTimer(ms: number): string {
   return `${s}s`;
 }
 function toast(msg: string, ms?: number): void {
-  if (ms === undefined) ms = S.settings.toast_duration || 2400;
+  ms ??= S.settings.toast_duration || 2400;
   logInfo("ui", "Toast: " + msg);
   const el = document.getElementById("toast") as HTMLElement;
   el.textContent = msg;
@@ -201,7 +202,7 @@ function clearAllInputs(): void {
 
 // ═══ SOUNDS ═══════════════════════════════════════════════════════════════════
 const AudioCtx: typeof AudioContext =
-  window.AudioContext ||
+  globalThis.AudioContext ||
   (window as unknown as { webkitAudioContext: typeof AudioContext })
     .webkitAudioContext;
 let actx: AudioContext | null = null;
@@ -262,7 +263,10 @@ function playToneSeq(toneName: string): void {
   );
 }
 function playSound(type: string): void {
-  if (window.__soundsEnabled === false) return;
+  if (
+    (globalThis as unknown as Record<string, boolean>).__soundsEnabled === false
+  )
+    return;
   const s = S.settings;
   switch (type) {
     case "login":
@@ -310,7 +314,10 @@ api.onTrayLogout(() => {
 
 // ═══ SOUND TEST BUTTONS ════════════════════════════════════════════════════════
 function testSound(soundType: string): void {
-  if (window.__soundsEnabled === false) return;
+  if (
+    (globalThis as unknown as Record<string, boolean>).__soundsEnabled === false
+  )
+    return;
   const s = S.settings;
   switch (soundType) {
     case "login":
@@ -487,7 +494,10 @@ function doLock(): void {
     btn.disabled = true;
     const r = await api.reauth();
     if (r.ok) {
-      if (r.token) window.__vaultToken.set(r.token);
+      if (r.token)
+        (
+          globalThis as unknown as { __vaultToken: { set(t: string): void } }
+        ).__vaultToken.set(r.token);
       S.user = r.user;
       loadVault(r.vault);
       screen("s-app");
@@ -530,7 +540,10 @@ function doLock(): void {
       logInfo("auth", "Login requires 2FA", { email: S.user?.email });
       return;
     }
-    if (r.token) window.__vaultToken.set(r.token);
+    if (r.token)
+      (
+        globalThis as unknown as { __vaultToken: { set(t: string): void } }
+      ).__vaultToken.set(r.token);
     S.user = r.user;
     loadVault(r.vault);
     await loadSettings();
@@ -553,7 +566,10 @@ function doLock(): void {
     logWarn("auth", "2FA verify failed", r.error);
     return;
   }
-  if (r.token) window.__vaultToken.set(r.token);
+  if (r.token)
+    (
+      globalThis as unknown as { __vaultToken: { set(t: string): void } }
+    ).__vaultToken.set(r.token);
   S.user = r.user;
   loadVault(r.vault);
   await loadSettings();
@@ -950,7 +966,7 @@ function switchTab(tab: string): void {
   if (tab === "passwords") renderPasswords();
   if (tab === "notes") renderNotesList();
   if (tab === "trash") {
-    if (!_tabCache.trash) {
+    if (_tabCache.trash !== true) {
       loadAndRenderTrash();
       _tabCache.trash = true;
     }
@@ -1176,24 +1192,28 @@ async function loadSyncFolders() {
       Object.values(files).every(
         (f) => f.localHash && f.driveHash && f.localHash === f.driveHash,
       );
-    const sc =
-      folder.status === "syncing"
-        ? "syncing"
-        : folder.status === "error"
-          ? "err"
-          : hasConflict
-            ? "conflict"
-            : "idle";
-    const st =
-      folder.status === "syncing"
-        ? "Syncing..."
-        : folder.status === "error"
-          ? folder.errorMessage || "Error"
-          : hasConflict
-            ? "Conflict"
-            : folder.lastSyncAt
-              ? "Synced " + timeAgo(folder.lastSyncAt)
-              : "Never synced";
+    let sc: string;
+    if (folder.status === "syncing") {
+      sc = "syncing";
+    } else if (folder.status === "error") {
+      sc = "err";
+    } else if (hasConflict) {
+      sc = "conflict";
+    } else {
+      sc = "idle";
+    }
+    let st: string;
+    if (folder.status === "syncing") {
+      st = "Syncing...";
+    } else if (folder.status === "error") {
+      st = folder.errorMessage || "Error";
+    } else if (hasConflict) {
+      st = "Conflict";
+    } else if (folder.lastSyncAt) {
+      st = "Synced " + timeAgo(folder.lastSyncAt);
+    } else {
+      st = "Never synced";
+    }
     let statusIcon;
     if (folder.status === "syncing") {
       statusIcon =
@@ -1459,7 +1479,7 @@ async function syncNowWithDriveRetry(): Promise<any> {
   return r;
 }
 
-var _syncNowBtn = document.getElementById("btn-sync-now");
+const _syncNowBtn = document.getElementById("btn-sync-now");
 if (_syncNowBtn)
   _syncNowBtn.addEventListener("click", async function () {
     const btn = document.getElementById("btn-sync-now") as HTMLButtonElement;
@@ -1491,14 +1511,13 @@ if (_syncNowBtn)
     loadSyncFolders();
   });
 
-var _syncAddBtn = document.getElementById("btn-sync-add");
+const _syncAddBtn = document.getElementById("btn-sync-add");
 if (_syncAddBtn)
   _syncAddBtn.addEventListener("click", async function () {
     logInfo("sync", "Add folder clicked");
     const res = await api.sync.browseFolder();
     if (!res.ok || !res.path) return;
-    const defaultName =
-      res.path.split(/[\\/]/).filter(Boolean).pop() || "Folder";
+    const defaultName = res.path.split(/[\\/]/).findLast(Boolean) ?? "Folder";
     // Use custom confirm modal with an inline input instead of window.prompt
     const driveName = await new Promise<string | null>(function (resolve) {
       const overlay = document.getElementById("confirm-overlay")!;
@@ -1646,7 +1665,7 @@ async function checkBreach(
       const idx = line.indexOf(":");
       if (idx > 0) {
         const s = line.slice(0, idx).trim().toUpperCase();
-        const count = parseInt(line.slice(idx + 1).trim(), 10) || 0;
+        const count = Number.parseInt(line.slice(idx + 1).trim(), 10) || 0;
         suffixMap.set(s, count);
       }
     }
@@ -2205,16 +2224,22 @@ async function loadAndRenderTrash(): Promise<void> {
     const isJob = item._type === "job";
     const jobItem = item as unknown as Job;
     const vaultItem = item as unknown as VaultItem;
-    const label = isNote
-      ? vaultItem.title || "Untitled note"
-      : isJob
-        ? jobItem.company || "Unknown company"
-        : vaultItem.site || "Unknown site";
-    const sub = isNote
-      ? vaultItem.body?.slice(0, 40) || ""
-      : isJob
-        ? jobItem.role || ""
-        : vaultItem.username || "";
+    let label: string;
+    if (isNote) {
+      label = vaultItem.title || "Untitled note";
+    } else if (isJob) {
+      label = jobItem.company || "Unknown company";
+    } else {
+      label = vaultItem.site || "Unknown site";
+    }
+    let sub: string;
+    if (isNote) {
+      sub = vaultItem.body?.slice(0, 40) || "";
+    } else if (isJob) {
+      sub = jobItem.role || "";
+    } else {
+      sub = vaultItem.username || "";
+    }
     const d = days(item._deletedAt);
     const icon = isNote ? "📝" : isJob ? "💼" : "🔑";
     const row = document.createElement("div");
@@ -2376,7 +2401,9 @@ function getFilteredJobs(): Job[] {
     list = [...list].sort((a, b) => {
       const va = (a[S.jobSort.col as keyof Job] || "").toString().toLowerCase();
       const vb = (b[S.jobSort.col as keyof Job] || "").toString().toLowerCase();
-      return va < vb ? -S.jobSort.dir : va > vb ? S.jobSort.dir : 0;
+      if (va < vb) return -S.jobSort.dir;
+      if (va > vb) return S.jobSort.dir;
+      return 0;
     });
   }
   return list;
@@ -2837,7 +2864,7 @@ function renderTotpGrid(): void {
         toast("Code copied! (clipboard clears in 30s)");
         logInfo("totp", "TOTP code copied", { name: item.name });
         setTimeout(() => {
-          navigator.clipboard.writeText("");
+          await navigator.clipboard.writeText("");
           logInfo("app", "Clipboard auto-cleared");
         }, 30000);
       }
@@ -2864,7 +2891,7 @@ function base32Decode(b32: string): Uint8Array {
     bits += v.toString(2).padStart(5, "0");
   }
   for (let i = 0; i + 8 <= bits.length; i += 8)
-    res.push(parseInt(bits.slice(i, i + 8), 2));
+    res.push(Number.parseInt(bits.slice(i, i + 8), 2));
   return new Uint8Array(res);
 }
 async function computeTotpAsync(
@@ -2879,7 +2906,7 @@ async function computeTotpAsync(
     const ck = await crypto.subtle.importKey(
       "raw",
       key as BufferSource,
-      { name: "HMAC", hash: "SHA-1" },
+      { name: "HMAC", hash: "SHA-1" }, // NOSONAR: SHA-1 is required by TOTP spec (RFC 6238)
       false,
       ["sign"],
     );
@@ -3032,7 +3059,9 @@ function applyAccent(name: string): void {
   );
   document.documentElement.style.setProperty(
     "--accent-strong",
-    c.replace(/0\.\d+/, (m) => String(Math.min(1, parseFloat(m) + 0.08))),
+    c.replace(/0\.\d+/, (m) =>
+      String(Math.min(1, Number.parseFloat(m) + 0.08)),
+    ),
   );
   document.documentElement.style.setProperty(
     "--accent-glass",
@@ -3060,7 +3089,9 @@ function applySetting(key: string, value: unknown): void {
   if (key === "animations")
     document.body.style.setProperty("--transition", value ? "" : "0s");
   if (key === "accent") applyAccent(value as string);
-  if (key === "sounds") window.__soundsEnabled = !!value;
+  if (key === "sounds")
+    (globalThis as unknown as Record<string, unknown>).__soundsEnabled =
+      !!value;
   __saveSettings();
 }
 let __saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3094,14 +3125,14 @@ async function loadSettingsTab(): Promise<void> {
       (el as HTMLInputElement).checked = !!(
         S.settings as unknown as Record<string, unknown>
       )[key];
-    else
-      el.value = String(
-        (S.settings as unknown as Record<string, unknown>)[key] ?? "",
-      );
+    else {
+      const raw = (S.settings as unknown as Record<string, unknown>)[key];
+      el.value = raw != null ? String(raw) : "";
+    }
     el.addEventListener("change", () => {
       let val: unknown;
       if (type === "toggle") val = (el as HTMLInputElement).checked;
-      else if (type === "number") val = parseInt(el.value) || 0;
+      else if (type === "number") val = Number.parseInt(el.value, 10) || 0;
       else val = el.value;
       applySetting(key, val);
       toast("Setting updated", 1200);
@@ -3352,7 +3383,8 @@ async function loadSettingsTab(): Promise<void> {
     S.settings.animations ? "" : "0s",
   );
   applyAccent(S.settings.accent);
-  window.__soundsEnabled = !!S.settings.sounds;
+  (globalThis as unknown as Record<string, unknown>).__soundsEnabled =
+    !!S.settings.sounds;
 
   const r2 = await api.twofa.status();
   (document.getElementById("s-2fa-status") as HTMLElement).textContent =
@@ -3382,7 +3414,7 @@ function scoreP(pw: string): { n: number; lbl: string; cls: string } {
   if (pw.length >= 8) s++;
   if (pw.length >= 14) s++;
   if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
-  if (/[0-9]/.test(pw)) s++;
+  if (/\d/.test(pw)) s++;
   if (/[^A-Za-z0-9]/.test(pw)) s++;
   const n = Math.min(4, Math.ceil((s * 4) / 5));
   return {
@@ -3411,8 +3443,9 @@ const LOWER = "abcdefghijklmnopqrstuvwxyz",
   NUMS = "0123456789",
   SYMS = "!@#$%^&*()_+-=[]{}|;:,.<>?";
 function doGenerate(): string {
-  const len = parseInt(
+  const len = Number.parseInt(
     (document.getElementById("gen-len") as HTMLInputElement).value,
+    10,
   );
   const classes = [LOWER];
   if ((document.getElementById("go-upper") as HTMLInputElement).checked)
@@ -3729,7 +3762,11 @@ document.addEventListener("keydown", (e: KeyboardEvent) => {
 // ═══ HOVER SOUNDS ══════════════════════════════════════════════════════════════
 let __hoverTimer: ReturnType<typeof setTimeout> | null = null;
 document.addEventListener("mouseover", (e: MouseEvent) => {
-  if (!S.settings.sound_hover || window.__soundsEnabled === false) return;
+  if (
+    !S.settings.sound_hover ||
+    (globalThis as unknown as Record<string, boolean>).__soundsEnabled === false
+  )
+    return;
   const t = (e.target as HTMLElement).closest(
     ".nav-btn, .accent-swatch, .wb, .btn-primary, .btn-ghost, .icon-btn, .filter-pill, .job-stat",
   ) as HTMLElement;
@@ -3756,6 +3793,6 @@ document.addEventListener("mouseover", (e: MouseEvent) => {
 })();
 
 // Clear in-memory icon cache on app close (NOT on logout)
-window.addEventListener("beforeunload", () => {
+globalThis.addEventListener("beforeunload", () => {
   Object.keys(iconCache).forEach((k) => delete iconCache[k]);
 });
