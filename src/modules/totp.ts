@@ -16,17 +16,30 @@ type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 type EncFn = (obj: object, key: string) => string;
 type DecFn = (str: string, key: string) => Record<string, unknown> | null;
 
-function register(
-  ipcMain: Electron.IpcMain,
-  requireAuth: AuthWrapper,
-  requireAuthNoArgs: AuthWrapper,
-  driveClient: DriveClient | null,
-  getSession: () => Session | null,
-  logger: Logger,
-  enc: EncFn,
-  dec: DecFn,
-  logError: LogError,
-) {
+interface RegisterTotpOptions {
+  ipcMain: Electron.IpcMain;
+  requireAuth: AuthWrapper;
+  requireAuthNoArgs: AuthWrapper;
+  driveClient: DriveClient | null;
+  getSession: () => Session | null;
+  logger: Logger;
+  enc: EncFn;
+  dec: DecFn;
+  logError: LogError;
+}
+
+function register(opts: RegisterTotpOptions) {
+  const {
+    ipcMain,
+    requireAuth,
+    requireAuthNoArgs,
+    driveClient,
+    getSession,
+    logger,
+    enc,
+    dec,
+    logError,
+  } = opts;
   function dbLoadTotp(encKey: string): TotpItem[] {
     logger.dbLog("dbLoadTotp", "Loading TOTP items");
     if (!driveClient) return [];

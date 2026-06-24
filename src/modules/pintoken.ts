@@ -3,7 +3,7 @@
  * pin.ts generates tokens on successful verification.
  * main.ts consumes tokens in auth:loginWithPin.
  */
-import crypto from "crypto";
+import crypto from "node:crypto";
 
 interface PinVerifyEntry {
   googleId: string;

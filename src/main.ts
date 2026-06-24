@@ -1,18 +1,17 @@
 "use strict";
 
 import dotenv from "dotenv";
-import path from "path";
+import path from "node:path";
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 import electron from "electron";
 const { ipcMain, BrowserWindow, shell, Tray, Menu, nativeImage, dialog } =
   electron;
 const { app } = electron;
-import http from "http";
-import https from "https";
-import url from "url";
-import crypto from "crypto";
-import fs from "fs";
+import http from "node:http";
+import url from "node:url";
+import crypto from "node:crypto";
+import fs from "node:fs";
 
 import * as logger from "./logger";
 logger.init();
@@ -132,7 +131,7 @@ async function driveLoadItems(
   notes: Record<string, unknown>[];
 }> {
   logger.db("driveLoadItems", "Loading vault items from cache");
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
 
   // Force-flush any pending changes first
   await driveClient.syncToDrive();
@@ -183,7 +182,7 @@ async function driveLoadTrash(
   encKey: string,
 ): Promise<Record<string, unknown>[]> {
   logger.db("driveLoadTrash", "Loading trash from cache");
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
 
   const items: Record<string, unknown>[] = [];
   for (const type of ["password", "note"] as const) {
@@ -208,7 +207,7 @@ async function driveSaveItem(
   encKey: string,
 ): Promise<string> {
   logger.db("driveSaveItem", "Saving item", { type, localId: item?._localId });
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
 
   const { _localId, _sort, ...payload } = item;
   const encryptedData = enc(payload as object, encKey);
@@ -224,21 +223,21 @@ async function driveSaveItem(
 
 async function driveSoftDelete(localId: string, type: string): Promise<void> {
   logger.db("driveSoftDelete", "Soft-deleting item", { localId, type });
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
   driveClient.softDelete(type as "password" | "note" | "job", localId);
   logger.db("driveSoftDelete", "Success", { localId });
 }
 
 async function driveRestore(localId: string, type: string): Promise<void> {
   logger.db("driveRestore", "Restoring item", { localId, type });
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
   driveClient.restore(type as "password" | "note" | "job", localId);
   logger.db("driveRestore", "Success", { localId });
 }
 
 async function drivePermDelete(localId: string, type: string): Promise<void> {
   logger.db("drivePermDelete", "Permanently deleting item", { localId, type });
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
   driveClient.permDelete(type as "password" | "note" | "job" | "totp", localId);
   logger.db("drivePermDelete", "Success", { localId });
 }
@@ -250,7 +249,7 @@ async function driveUpdateSortOrder(
   logger.db("driveUpdateSortOrder", "Updating sort order", {
     count: items?.length,
   });
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
   driveClient.updateSortOrder(
     type as "password" | "note" | "job",
     items.map((i) => ({ id: i._localId || "" })),
@@ -263,13 +262,13 @@ async function drive2faGet(): Promise<{
   enabled: boolean;
 } | null> {
   logger.db("drive2faGet", "Getting 2FA record");
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
   return driveClient.load2fa();
 }
 
 async function drive2faSave(secret: string, enabled: boolean): Promise<void> {
   logger.db("drive2faSave", "Saving 2FA record", { enabled });
-  if (!driveClient) throw new Error("Drive not initialized");
+  if (!driveClient) throw new TypeError("Drive not initialized");
   await driveClient.save2fa(secret, enabled);
 }
 
@@ -281,7 +280,10 @@ function verify2fa(secret: string, token: string): boolean {
       token,
       window: 1,
     });
-  } catch {
+  } catch (e) {
+    logger.warn("verify2fa", "TOTP verify threw", {
+      message: (e as Error).message,
+    });
     return false;
   }
 }
@@ -291,8 +293,10 @@ async function googleOAuth(): Promise<GoogleProfile> {
   if (oauthServer) {
     try {
       oauthServer.close();
-    } catch {
-      /* noop */
+    } catch (e) {
+      logger.warn("oauth", "OAuth server close failed", {
+        message: (e as Error).message,
+      });
     }
     oauthServer = null;
   }
@@ -369,7 +373,10 @@ a{color:#a78bfa}
               u.protocol === "http:" &&
               (u.host === "localhost:42813" || u.host === "127.0.0.1:42813")
             );
-          } catch {
+          } catch (e) {
+            logger.warn("oauth", "Origin validation failed", {
+              message: (e as Error).message,
+            });
             return false;
           }
         };
@@ -501,8 +508,10 @@ a{color:#a78bfa}
           oauthServer.close();
           oauthServer = null;
         }
-      } catch {
-        /* noop */
+      } catch (e) {
+        logger.warn("oauth", "OAuth timeout cleanup failed", {
+          message: (e as Error).message,
+        });
       }
       oauthInProgress = false;
       logger.authLog("oauth", "OAuth timed out after 180s");
@@ -702,8 +711,10 @@ ipcMain.handle(
     if (driveClient) {
       try {
         await driveClient.close();
-      } catch {
-        /* noop */
+      } catch (e) {
+        logger.warn("auth:logout", "Drive close failed during logout", {
+          message: (e as Error).message,
+        });
       }
       driveClient = null;
       updateDriveClient(null);
@@ -1291,7 +1302,10 @@ function setupTray(): void {
   try {
     const img = nativeImage.createFromPath(iconPath);
     trayIcon = img.resize({ width: 16, height: 16 });
-  } catch {
+  } catch (e) {
+    logger.warn("tray", "Failed to load tray icon, using empty", {
+      message: (e as Error).message,
+    });
     trayIcon = nativeImage.createEmpty();
   }
   tray = new Tray(trayIcon);
@@ -1454,17 +1468,17 @@ app.whenReady().then(() => {
     dec,
     logError,
   );
-  registerTotp(
+  registerTotp({
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
     driveClient,
-    getSessionFn,
-    logger as any,
+    getSession: getSessionFn,
+    logger: logger as any,
     enc,
     dec,
     logError,
-  );
+  });
   registerSettings(
     ipcMain,
     requireAuth,
@@ -1534,8 +1548,10 @@ app.on("before-quit", async () => {
   if (driveClient) {
     try {
       await driveClient.close();
-    } catch {
-      /* noop */
+    } catch (e) {
+      logger.warn("app", "Drive close failed during quit", {
+        message: (e as Error).message,
+      });
     }
   }
 });

@@ -214,7 +214,7 @@ function register(
         try {
           const validation = validateSettings(settings, logger);
           if (!validation.ok) {
-            logger.warn("settings:save", (validation as any).error, {
+            logger.warn("settings:save", validation.error, {
               lock_timeout: settings?.lock_timeout,
               lock_action: settings?.lock_action,
             });

@@ -1,4 +1,4 @@
-import path from "path";
+import path from "node:path";
 import fs from "fs";
 import type Electron from "electron";
 import { getPinGoogleId } from "./pin";
@@ -31,19 +31,18 @@ export function setUserDataPathAccounts(p: string): void {
   _userDataPath = p;
 }
 
+function getFallbackUserDataPath(): string {
+  if (process.platform === "darwin") {
+    return path.join(process.env.HOME || "", "Library", "Application Support");
+  }
+  return path.join(process.env.HOME || "", ".config");
+}
+
 function getAccountsFilePath(): string {
   const userData =
-    _userDataPath ||
-    process.env.APPDATA ||
-    (process.platform === "darwin"
-      ? path.join(process.env.HOME || "", "Library", "Application Support")
-      : path.join(process.env.HOME || "", ".config"));
+    _userDataPath || process.env.APPDATA || getFallbackUserDataPath();
   const dir = path.join(userData, "Vault");
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    /* noop */
-  }
+  fs.mkdirSync(dir, { recursive: true });
   return path.join(dir, "vault_accounts");
 }
 
@@ -67,11 +66,7 @@ function loadAccounts(): SavedAccount[] {
 }
 
 function writeAccounts(accounts: SavedAccount[]): void {
-  try {
-    fs.writeFileSync(getAccountsFilePath(), JSON.stringify(accounts));
-  } catch {
-    /* noop */
-  }
+  fs.writeFileSync(getAccountsFilePath(), JSON.stringify(accounts));
 }
 
 function register(
@@ -241,7 +236,10 @@ function register(
           writeAccounts(accounts);
         }
         return { ok: true };
-      } catch {
+      } catch (e: unknown) {
+        const err = e as Error;
+        logger.error("accounts:touch", "Failed", err.message);
+        logError("accounts:touch", err);
         return { ok: false };
       }
     },

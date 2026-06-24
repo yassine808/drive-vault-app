@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 
 // CryptoJS type declaration for legacy decryption
 declare global {
@@ -14,7 +14,7 @@ declare global {
   };
 }
 
-let _CryptoJS: any = null;
+let _CryptoJS: typeof globalThis.CryptoJS | null = null;
 
 function setCryptoJS(lib: typeof globalThis.CryptoJS): void {
   _CryptoJS = lib;
@@ -57,8 +57,8 @@ function generateUserSalt(): string {
 }
 
 interface DerivedKeys {
-  encKey: Buffer;
-  macKey: Buffer;
+  readonly encKey: Buffer;
+  readonly macKey: Buffer;
 }
 
 function _keysFromHexKey(hexKey: string): DerivedKeys {
@@ -70,10 +70,12 @@ function _keysFromHexKey(hexKey: string): DerivedKeys {
   return { encKey, macKey };
 }
 
+const NEW_FORMAT_BASE64_RE = /^[A-Za-z0-9+/=]+$/;
+
 function _isNewFormat(ciphertext: string): boolean {
   if (!ciphertext || typeof ciphertext !== "string") return false;
   if (ciphertext.startsWith("U2FsdGVk")) return false;
-  if (ciphertext.length >= 64 && /^[A-Za-z0-9+/=]+$/.test(ciphertext)) {
+  if (ciphertext.length >= 64 && NEW_FORMAT_BASE64_RE.test(ciphertext)) {
     try {
       const decoded = Buffer.from(ciphertext, "base64");
       return decoded.length >= 48;
@@ -99,35 +101,50 @@ function enc(obj: object, key: string): string {
   return packed.toString("base64");
 }
 
+function _decryptNewFormat(
+  str: string,
+  encKey: Buffer,
+  macKey: Buffer,
+): Record<string, unknown> | null {
+  const packed = Buffer.from(str, "base64");
+  if (packed.length < 64) return null;
+  const mac = packed.subarray(0, 32);
+  const iv = packed.subarray(32, 48);
+  const ct = packed.subarray(48);
+  const expectedMac = crypto
+    .createHmac("sha256", macKey)
+    .update(iv)
+    .update(ct)
+    .digest();
+  if (!crypto.timingSafeEqual(mac, expectedMac)) {
+    return null;
+  }
+  const decipher = crypto.createDecipheriv("aes-256-cbc", encKey, iv);
+  const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
+  return JSON.parse(pt.toString("utf8"));
+}
+
+function _decryptLegacy(
+  str: string,
+  key: string,
+): Record<string, unknown> | null {
+  if (!_CryptoJS) return null;
+  return JSON.parse(
+    _CryptoJS.AES.decrypt(str, key).toString(_CryptoJS.enc.Utf8 as any),
+  );
+}
+
 function dec(str: string, key: string): Record<string, unknown> | null {
   if (_isNewFormat(str)) {
     try {
       const { encKey, macKey } = _keysFromHexKey(key);
-      const packed = Buffer.from(str, "base64");
-      if (packed.length < 64) return null;
-      const mac = packed.subarray(0, 32);
-      const iv = packed.subarray(32, 48);
-      const ct = packed.subarray(48);
-      const expectedMac = crypto
-        .createHmac("sha256", macKey)
-        .update(iv)
-        .update(ct)
-        .digest();
-      if (!crypto.timingSafeEqual(mac, expectedMac)) {
-        return null;
-      }
-      const decipher = crypto.createDecipheriv("aes-256-cbc", encKey, iv);
-      const pt = Buffer.concat([decipher.update(ct), decipher.final()]);
-      return JSON.parse(pt.toString("utf8"));
+      return _decryptNewFormat(str, encKey, macKey);
     } catch {
       return null;
     }
   }
-  if (!_CryptoJS) return null;
   try {
-    return JSON.parse(
-      _CryptoJS.AES.decrypt(str, key).toString(_CryptoJS.enc.Utf8),
-    );
+    return _decryptLegacy(str, key);
   } catch {
     return null;
   }

@@ -1,4 +1,4 @@
-import path from "path";
+import path from "node:path";
 import fs from "fs";
 
 /**
@@ -13,19 +13,17 @@ export function setUserDataPath(p: string): void {
   _userDataPath = p;
 }
 
-function getCacheDir(): string {
-  const userData =
-    _userDataPath ||
-    process.env.APPDATA ||
-    (process.platform === "darwin"
-      ? path.join(process.env.HOME || "", "Library", "Application Support")
-      : path.join(process.env.HOME || "", ".config"));
-  const dir = path.join(userData, "Vault", "Cache");
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    /* noop */
+function platformHomeDir(): string {
+  if (process.platform === "darwin") {
+    return path.join(process.env.HOME ?? "", "Library", "Application Support");
   }
+  return path.join(process.env.HOME ?? "", ".config");
+}
+
+function getCacheDir(): string {
+  const userData = _userDataPath || process.env.APPDATA || platformHomeDir();
+  const dir = path.join(userData, "Vault", "Cache");
+  fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
@@ -97,26 +95,18 @@ function defaultCache(googleId: string): CacheData {
 }
 
 export function loadCache(googleId: string): CacheData {
-  try {
-    const file = getCacheFilePath();
-    if (!fs.existsSync(file)) return defaultCache(googleId);
-    const raw = fs.readFileSync(file, "utf8");
-    const data = JSON.parse(raw) as CacheData;
-    if (data.googleId !== googleId) return defaultCache(googleId);
-    // Ensure all fields exist (forward compat)
-    const def = defaultCache(googleId);
-    return { ...def, ...data };
-  } catch {
-    return defaultCache(googleId);
-  }
+  const file = getCacheFilePath();
+  if (!fs.existsSync(file)) return defaultCache(googleId);
+  const raw = fs.readFileSync(file, "utf8");
+  const data = JSON.parse(raw) as CacheData;
+  if (data.googleId !== googleId) return defaultCache(googleId);
+  // Ensure all fields exist (forward compat)
+  const def = defaultCache(googleId);
+  return { ...def, ...data };
 }
 
 export function saveCache(cache: CacheData): void {
-  try {
-    fs.writeFileSync(getCacheFilePath(), JSON.stringify(cache, null, 2));
-  } catch {
-    /* noop */
-  }
+  fs.writeFileSync(getCacheFilePath(), JSON.stringify(cache, null, 2));
 }
 
 export function getCacheDir_(): string {

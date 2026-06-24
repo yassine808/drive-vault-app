@@ -65,12 +65,40 @@ function register(
     return jobs;
   }
 
+  function validateAppliedDate(appliedAt: string): string | null {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(appliedAt)) {
+      return "Invalid date format (YYYY-MM-DD)";
+    }
+    const year = parseInt(appliedAt.slice(0, 4), 10);
+    const month = parseInt(appliedAt.slice(5, 7), 10);
+    const day = parseInt(appliedAt.slice(8, 10), 10);
+    if (
+      year < 2000 ||
+      year > 2100 ||
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31
+    ) {
+      return "Applied date must be a valid date between 2000 and 2100";
+    }
+    const d = new Date(appliedAt + "T00:00:00.000Z");
+    if (
+      isNaN(d.getTime()) ||
+      d.getUTCMonth() + 1 !== month ||
+      d.getUTCDate() !== day
+    ) {
+      return "Applied date is not a valid calendar date";
+    }
+    return null;
+  }
+
   function dbSaveJob(job: Job): string {
     logger.dbLog("dbSaveJob", "Saving job", {
       jobId: job?.id,
       company: job?.company,
     });
-    if (!driveClient) throw new Error("Drive not initialized");
+    if (!driveClient) throw new TypeError("Drive not initialized");
     const payload = {
       company: job.company,
       role: job.role,
@@ -80,7 +108,7 @@ function register(
       notes: job.notes,
     };
     const session = getSession();
-    if (!session) throw new Error("No active session");
+    if (!session) throw new TypeError("No active session");
     const encrypted = enc(payload, session.encKey);
     const id = driveClient.saveItem("job", encrypted, job.id, job.sort_order);
     logger.dbLog("dbSaveJob", "Job saved", { jobId: id });
@@ -89,21 +117,21 @@ function register(
 
   function dbDeleteJob(id: string): void {
     logger.dbLog("dbDeleteJob", "Soft-deleting job", { jobId: id });
-    if (!driveClient) throw new Error("Drive not initialized");
+    if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.softDelete("job", id);
     logger.dbLog("dbDeleteJob", "Success", { jobId: id });
   }
 
   function dbRestoreJob(id: string): void {
     logger.dbLog("dbRestoreJob", "Restoring job", { jobId: id });
-    if (!driveClient) throw new Error("Drive not initialized");
+    if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.restore("job", id);
     logger.dbLog("dbRestoreJob", "Success", { jobId: id });
   }
 
   function dbPermDeleteJob(id: string): void {
     logger.dbLog("dbPermDeleteJob", "Permanently deleting job", { jobId: id });
-    if (!driveClient) throw new Error("Drive not initialized");
+    if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.permDelete("job", id);
     logger.dbLog("dbPermDeleteJob", "Success", { jobId: id });
   }
@@ -142,7 +170,7 @@ function register(
     logger.dbLog("dbUpdateJobOrder", "Updating job order", {
       count: jobs?.length,
     });
-    if (!driveClient) throw new Error("Drive not initialized");
+    if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.updateSortOrder("job", jobs);
     logger.dbLog("dbUpdateJobOrder", "Success");
   }
@@ -187,44 +215,12 @@ function register(
           return { ok: false, error: "Invalid status" };
         }
         if (job.applied_at) {
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(job.applied_at)) {
-            logger.warn("jobs:save", "Invalid date", {
+          const dateError = validateAppliedDate(job.applied_at);
+          if (dateError) {
+            logger.warn("jobs:save", "Invalid applied date", {
               applied_at: job.applied_at,
             });
-            return { ok: false, error: "Invalid date format (YYYY-MM-DD)" };
-          }
-          const year = parseInt(job.applied_at.slice(0, 4), 10);
-          const month = parseInt(job.applied_at.slice(5, 7), 10);
-          const day = parseInt(job.applied_at.slice(8, 10), 10);
-          if (
-            year < 2000 ||
-            year > 2100 ||
-            month < 1 ||
-            month > 12 ||
-            day < 1 ||
-            day > 31
-          ) {
-            logger.warn("jobs:save", "Date out of range", {
-              applied_at: job.applied_at,
-            });
-            return {
-              ok: false,
-              error: "Applied date must be a valid date between 2000 and 2100",
-            };
-          }
-          const d = new Date(job.applied_at + "T00:00:00.000Z");
-          if (
-            isNaN(d.getTime()) ||
-            d.getUTCMonth() + 1 !== month ||
-            d.getUTCDate() !== day
-          ) {
-            logger.warn("jobs:save", "Invalid calendar date", {
-              applied_at: job.applied_at,
-            });
-            return {
-              ok: false,
-              error: "Applied date is not a valid calendar date",
-            };
+            return { ok: false, error: dateError };
           }
         }
         const id = dbSaveJob(job);
@@ -268,7 +264,7 @@ function register(
       } catch (e: unknown) {
         const err = e as Error;
         logError("jobs:reorder", err);
-        return { ok: false };
+        return { ok: false, error: err.message };
       }
     }),
   );

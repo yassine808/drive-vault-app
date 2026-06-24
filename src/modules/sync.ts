@@ -1,15 +1,13 @@
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
-import os from "os";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import os from "node:os";
 import type { DriveClient } from "./drive";
 import type {
   Session,
   SyncFolder,
-  SyncFileState,
   SyncFolderState,
   SyncConfig,
-  SyncConflictType,
 } from "../types";
 import type Electron from "electron";
 
@@ -88,7 +86,7 @@ const RESERVED_NAMES_WINDOWS = [
 
 function sanitizeDriveFolderName(name: string): string {
   if (typeof name !== "string") {
-    throw new Error("Folder name must be a string");
+    throw new TypeError("Folder name must be a string");
   }
 
   const trimmed = name.trim();
@@ -106,7 +104,7 @@ function sanitizeDriveFolderName(name: string): string {
   }
 
   // Remove dangerous characters
-  let sanitized = trimmed.replace(/[\/\\<>:|"?*\x00-\x1f]/g, "_");
+  let sanitized = trimmed.replace(/[\\/<>:|"?*\x00-\x1f]/g, "_");
 
   // Prevent directory traversal patterns
   sanitized = sanitized.replace(/\.{2,}/g, "_");
@@ -146,13 +144,13 @@ function validateSyncPath(inputPath: string): {
     const forbidden =
       process.platform === "win32"
         ? [
-            "C:\\Windows",
-            "C:\\Program Files",
-            "C:\\Program Files (x86)",
-            "C:\\ProgramData",
-            "C:\\$Recycle.Bin",
-            path.join(homeDir, "AppData\\Roaming\\Microsoft"),
-            path.join(homeDir, "AppData\\Local\\Temp"),
+            String.raw`C:\Windows`,
+            String.raw`C:\Program Files`,
+            String.raw`C:\Program Files (x86)`,
+            String.raw`C:\ProgramData`,
+            String.raw`C:\$Recycle.Bin`,
+            path.join(homeDir, String.raw`AppData\Roaming\Microsoft`),
+            path.join(homeDir, String.raw`AppData\Local\Temp`),
           ]
         : [
             "/System",
@@ -171,7 +169,7 @@ function validateSyncPath(inputPath: string): {
     }
 
     return { ok: true, realPath };
-  } catch (e) {
+  } catch {
     return { ok: false, error: "Invalid path or access denied" };
   }
 }
@@ -192,7 +190,7 @@ async function walkLocalFiles(
 ): Promise<Map<string, { hash: string; mtime: number }>> {
   const result = new Map<string, { hash: string; mtime: number }>();
   const includeSet = includePaths?.length
-    ? new Set(includePaths.map((p) => p.replace(/\\/g, "/")))
+    ? new Set(includePaths.map((p) => p.replaceAll("\\", "/")))
     : null;
   async function walk(dir: string): Promise<void> {
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -201,13 +199,17 @@ async function walkLocalFiles(
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (includeSet) {
-          const relDir = path.relative(localPath, fullPath).replace(/\\/g, "/");
+          const relDir = path
+            .relative(localPath, fullPath)
+            .replaceAll("\\", "/");
           const prefix = relDir ? relDir + "/" : "";
           if (![...includeSet].some((p) => p.startsWith(prefix))) continue;
         }
         await walk(fullPath);
       } else if (entry.isFile()) {
-        const relPath = path.relative(localPath, fullPath).replace(/\\/g, "/");
+        const relPath = path
+          .relative(localPath, fullPath)
+          .replaceAll("\\", "/");
         if (includeSet && !includeSet.has(relPath)) continue;
         try {
           const stat = await fs.promises.stat(fullPath);
@@ -224,7 +226,7 @@ async function walkLocalFiles(
 }
 
 function escapeDriveQueryValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
 }
 
 // ── State persistence ──
@@ -283,9 +285,10 @@ function saveState(state: Record<string, SyncFolderState>): void {
 // ── File watcher ──
 
 class FileWatcher {
-  private watchers: Map<string, fs.FSWatcher> = new Map();
-  private timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private onChange: (folderId: string) => void;
+  private readonly watchers: Map<string, fs.FSWatcher> = new Map();
+  private readonly timers: Map<string, ReturnType<typeof setTimeout>> =
+    new Map();
+  private readonly onChange: (folderId: string) => void;
 
   constructor(onChange: (folderId: string) => void) {
     this.onChange = onChange;
@@ -339,8 +342,8 @@ class FileWatcher {
 class SyncEngine {
   private drive: DriveClient | null = null;
   private syncFolderId: string | null = null;
-  private fileWatcher: FileWatcher;
-  private syncingFolders: Set<string> = new Set();
+  private readonly fileWatcher: FileWatcher;
+  private readonly syncingFolders: Set<string> = new Set();
 
   constructor(driveClient: DriveClient | null) {
     this.drive = driveClient;
@@ -355,21 +358,22 @@ class SyncEngine {
 
   // Get or create the Vault/sync folder on Drive.
   private async getSyncFolderId(): Promise<string | null> {
-    if (!this.drive || !(this.drive as any).drive) return null;
+    if (!this.drive?.driveApi) return null;
     if (this.syncFolderId) return this.syncFolderId;
 
-    const vaultFolderId = (this.drive as any).vaultFolderId;
+    const vaultFolderId = this.drive.vaultFolderId;
     if (!vaultFolderId) return null;
 
-    const drive = (this.drive as any).drive;
+    const drive = this.drive?.driveApi;
     const res = await drive.files.list({
       q: `name='${escapeDriveQueryValue(SYNC_DRIVE_FOLDER)}' and mimeType='application/vnd.google-apps.folder' and '${vaultFolderId}' in parents and trashed=false`,
       spaces: "drive",
       fields: "files(id, name)",
     });
 
-    if (res.data.files && res.data.files.length > 0) {
-      this.syncFolderId = res.data.files[0].id!;
+    const existing = res.data.files?.[0];
+    if (existing?.id) {
+      this.syncFolderId = existing.id;
       return this.syncFolderId;
     }
 
@@ -393,15 +397,17 @@ class SyncEngine {
     if (!syncFolderId || !this.drive) return null;
     if (!driveFolderName) return syncFolderId;
 
-    const drive = (this.drive as any).drive;
+    const drive = this.drive?.driveApi;
+    if (!drive) return null;
     const res = await drive.files.list({
       q: `name='${escapeDriveQueryValue(driveFolderName)}' and mimeType='application/vnd.google-apps.folder' and '${syncFolderId}' in parents and trashed=false`,
       spaces: "drive",
       fields: "files(id, name)",
     });
 
-    if (res.data.files && res.data.files.length > 0) {
-      return res.data.files[0].id!;
+    const existing = res.data.files?.[0];
+    if (existing?.id) {
+      return existing.id;
     }
 
     const created = await drive.files.create({
@@ -439,7 +445,7 @@ class SyncEngine {
       errors = 0;
 
     try {
-      if (!this.drive || !(this.drive as any).drive) {
+      if (!this.drive?.driveApi) {
         throw new Error("Drive not initialized");
       }
 
@@ -460,7 +466,7 @@ class SyncEngine {
         string,
         { fileId: string; modifiedTime: string; hash: string | null }
       >();
-      const drive = (this.drive as any).drive;
+      const drive = this.drive?.driveApi;
       let pageToken: string | undefined;
       do {
         const res: any = await drive.files.list({
@@ -542,7 +548,7 @@ class SyncEngine {
             };
             downloaded++;
             conflictResolved = true;
-          } catch (e) {
+          } catch {
             errors++;
           }
           // Upload local version as-is
@@ -582,7 +588,7 @@ class SyncEngine {
               );
             }
             uploaded++;
-          } catch (e) {
+          } catch {
             errors++;
           }
         } else if (driveChanged && driveExists) {
@@ -593,13 +599,13 @@ class SyncEngine {
               path.join(folder.localPath, relPath),
             );
             downloaded++;
-          } catch (e) {
+          } catch {
             errors++;
           }
         } else if (!localExists && driveExists && prev) {
           // Deleted locally → delete on Drive
           try {
-            await (this.drive as any).drive.files.delete({
+            await this.drive?.driveApi.files.delete({
               fileId: drive!.fileId,
             });
           } catch (e) {
@@ -632,9 +638,15 @@ class SyncEngine {
       const hasConflicts = Object.values(newState.files).some(
         (f) => f.conflict !== "none",
       );
-      folder.status = errors > 0 ? "error" : hasConflicts ? "conflict" : "idle";
+      if (errors > 0) {
+        folder.status = "error";
+        folder.errorMessage = `${errors} error(s)`;
+      } else if (hasConflicts) {
+        folder.status = "conflict";
+      } else {
+        folder.status = "idle";
+      }
       folder.lastSyncAt = Date.now();
-      if (errors > 0) folder.errorMessage = `${errors} error(s)`;
       saveConfig(config);
     } catch (e) {
       errors++;
@@ -661,7 +673,8 @@ class SyncEngine {
     parentFolderId: string,
     contentHash: string,
   ): Promise<void> {
-    const drive = (this.drive as any).drive;
+    const drive = this.drive?.driveApi;
+    if (!drive) return;
     const content = fs.createReadStream(localPath);
     await drive.files.create({
       requestBody: {
@@ -680,7 +693,8 @@ class SyncEngine {
     localPath: string,
     contentHash: string,
   ): Promise<void> {
-    const drive = (this.drive as any).drive;
+    const drive = this.drive?.driveApi;
+    if (!drive) return;
     const content = fs.createReadStream(localPath);
     await drive.files.update({
       fileId,
@@ -698,7 +712,8 @@ class SyncEngine {
   private async downloadFile(fileId: string, localPath: string): Promise<void> {
     const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit
 
-    const drive = (this.drive as any).drive;
+    const drive = this.drive?.driveApi;
+    if (!drive) return;
     const res = await drive.files.get(
       { fileId, alt: "media" },
       { responseType: "arraybuffer" },
@@ -733,7 +748,7 @@ class SyncEngine {
         fs.rmdirSync(dir);
       }
     } catch {
-      // ignore
+      // ignore — best-effort cleanup
     }
   }
 
@@ -837,7 +852,7 @@ export function register(
     if (dc) engine.startWatching();
   };
   // Store reference for later updates
-  (global as any).__syncEngine = engine;
+  (globalThis as any).__syncEngine = engine;
 
   ipcMain.handle(
     "sync:folders:list",
@@ -972,11 +987,11 @@ export function register(
         });
         if (totalErrors > 0) {
           const errored = config.folders.find((f) => f.status === "error");
+          const error =
+            errored?.errorMessage ?? `Sync failed with ${totalErrors} error(s)`;
           return {
             ok: false,
-            error:
-              errored?.errorMessage ||
-              `Sync failed with ${totalErrors} error(s)`,
+            error,
             uploaded: totalUploaded,
             downloaded: totalDownloaded,
             conflicts: totalConflicts,
@@ -1053,7 +1068,7 @@ export function register(
               }
               const relFile = path
                 .relative(parentValidation.realPath!, fs.realpathSync(p))
-                .replace(/\\/g, "/");
+                .replaceAll("\\", "/");
               const folder = engine.addFolder(parentValidation.realPath!, "", [
                 relFile,
               ]);

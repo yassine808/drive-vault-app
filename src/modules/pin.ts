@@ -1,11 +1,10 @@
-import crypto from "crypto";
-import path from "path";
-import fs from "fs";
+import crypto from "node:crypto";
+import path from "node:path";
+import fs from "node:fs";
 import type Electron from "electron";
 import type { DriveClient } from "./drive";
 import { enc, dec, derivePinKey } from "./crypto";
 import type { Session } from "../types";
-import { storeToken, consumeToken } from "./pintoken";
 
 // ── PIN verify store: holds verified credentials between pin:verify and pin:completeLogin ──
 // This prevents the token from traveling through the renderer process.
@@ -57,6 +56,22 @@ function setUserDataPath(p: string): void {
   _userDataPath = p;
 }
 
+function getUserDataDir(): string {
+  if (_userDataPath) return _userDataPath;
+  if (process.env.APPDATA) return process.env.APPDATA;
+  const home = process.env.HOME || "";
+  if (process.platform === "darwin") {
+    return path.join(home, "Library", "Application Support");
+  }
+  return path.join(home, ".config");
+}
+
+function ensureVaultDir(): string {
+  const dir = path.join(getUserDataDir(), "Vault");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 // ── PIN rate limiter (5 attempts per 15-min window, 15-min lockout) ──
 // Persisted to disk so rate limits survive app restarts.
 const PIN_RATE_LIMIT_FILE = "vault_pin_rate_limit";
@@ -68,13 +83,7 @@ interface PersistedRateLimit {
 
 function loadPersistedRateLimit(): PersistedRateLimit {
   try {
-    const userData =
-      _userDataPath ||
-      process.env.APPDATA ||
-      (process.platform === "darwin"
-        ? path.join(process.env.HOME || "", "Library", "Application Support")
-        : path.join(process.env.HOME || "", ".config"));
-    const dir = path.join(userData, "Vault");
+    const dir = path.join(getUserDataDir(), "Vault");
     const file = path.join(dir, PIN_RATE_LIMIT_FILE);
     const raw = fs.readFileSync(file, "utf8");
     const data = JSON.parse(raw);
@@ -82,24 +91,17 @@ function loadPersistedRateLimit(): PersistedRateLimit {
       return data as PersistedRateLimit;
     }
   } catch {
-    /* corrupt or missing — start fresh */
+    // corrupt or missing — start fresh
   }
   return { attempts: [], lockoutUntil: 0 };
 }
 
 function savePersistedRateLimit(data: PersistedRateLimit): void {
   try {
-    const userData =
-      _userDataPath ||
-      process.env.APPDATA ||
-      (process.platform === "darwin"
-        ? path.join(process.env.HOME || "", "Library", "Application Support")
-        : path.join(process.env.HOME || "", ".config"));
-    const dir = path.join(userData, "Vault");
-    fs.mkdirSync(dir, { recursive: true });
+    const dir = ensureVaultDir();
     fs.writeFileSync(path.join(dir, PIN_RATE_LIMIT_FILE), JSON.stringify(data));
   } catch {
-    /* ignore write errors */
+    // ignore write errors
   }
 }
 
@@ -139,73 +141,35 @@ function resetPinRateLimit(): void {
 
 // ── File path for encrypted user key ──
 function getKeyfilePath(): string {
-  const userData =
-    _userDataPath ||
-    process.env.APPDATA ||
-    (process.platform === "darwin"
-      ? path.join(process.env.HOME || "", "Library", "Application Support")
-      : path.join(process.env.HOME || "", ".config"));
-  const dir = path.join(userData, "Vault");
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    /* noop */
-  }
+  const dir = ensureVaultDir();
   return path.join(dir, "vault_user_key");
 }
 
 function fileExists(): boolean {
-  try {
-    return fs.existsSync(getKeyfilePath());
-  } catch {
-    return false;
-  }
+  return fs.existsSync(getKeyfilePath());
 }
 
 // ── PIN meta file (stores which googleId has a PIN, unencrypted) ──
 // This is not sensitive — it only records that a PIN exists for a given googleId.
 // The actual PIN hash and user key remain encrypted in vault_user_key.
 function getMetafilePath(): string {
-  const userData =
-    _userDataPath ||
-    process.env.APPDATA ||
-    (process.platform === "darwin"
-      ? path.join(process.env.HOME || "", "Library", "Application Support")
-      : path.join(process.env.HOME || "", ".config"));
-  const dir = path.join(userData, "Vault");
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    /* noop */
-  }
+  const dir = ensureVaultDir();
   return path.join(dir, "vault_pin_meta");
 }
 
 function getPinGoogleId(): string | null {
-  try {
-    const raw = fs.readFileSync(getMetafilePath(), "utf8");
-    const data = JSON.parse(raw);
-    return typeof data.googleId === "string" ? data.googleId : null;
-  } catch {
-    return null;
-  }
+  const raw = fs.readFileSync(getMetafilePath(), "utf8");
+  const data = JSON.parse(raw);
+  return typeof data.googleId === "string" ? data.googleId : null;
 }
 
 function setPinGoogleId(googleId: string): void {
-  try {
-    fs.writeFileSync(getMetafilePath(), JSON.stringify({ googleId }));
-  } catch {
-    /* noop */
-  }
+  fs.writeFileSync(getMetafilePath(), JSON.stringify({ googleId }));
 }
 
 function clearPinGoogleId(): void {
-  try {
-    const p = getMetafilePath();
-    if (fs.existsSync(p)) fs.unlinkSync(p);
-  } catch {
-    /* noop */
-  }
+  const p = getMetafilePath();
+  if (fs.existsSync(p)) fs.unlinkSync(p);
 }
 
 // ── PIN validation ──

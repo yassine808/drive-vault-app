@@ -1,5 +1,5 @@
 import fs from "fs";
-import path from "path";
+import path from "node:path";
 
 const LOG_DIR = path.join(__dirname, "..", "Logs");
 
@@ -24,6 +24,7 @@ const LEVELS: Record<string, number> = {
   IPC: 6,
   DB: 7,
 };
+
 const LEVEL_NAMES = [
   "DEBUG",
   "INFO",
@@ -43,7 +44,7 @@ function init(): void {
   try {
     fs.mkdirSync(LOG_DIR, { recursive: true });
   } catch {
-    /* noop */
+    // noop
   }
 }
 
@@ -57,11 +58,15 @@ function fileForLevel(levelName: string): string {
   return path.join(LOG_DIR, filename);
 }
 
+function sanitizeNewlines(value: string): string {
+  return value.replaceAll("\n", "\\n").replaceAll("\r", "");
+}
+
 function write(level: number, ctx: string, msg: string, data?: unknown): void {
   init();
   const levelName = LEVEL_NAMES[level] || "UNKNOWN";
-  const safeCtx = String(ctx).replace(/\n/g, "\\n").replace(/\r/g, "");
-  const safeMsg = String(msg).replace(/\n/g, "\\n").replace(/\r/g, "");
+  const safeCtx = sanitizeNewlines(String(ctx));
+  const safeMsg = sanitizeNewlines(String(msg));
   let line = `[${ts()}] [${safeCtx}] ${safeMsg}`;
   if (data !== undefined) {
     try {
@@ -76,12 +81,12 @@ function write(level: number, ctx: string, msg: string, data?: unknown): void {
   try {
     fs.appendFileSync(fileForLevel(levelName), line);
   } catch {
-    /* noop */
+    // noop
   }
   try {
     fs.appendFileSync(path.join(LOG_DIR, "all.log"), `[${levelName}] ${line}`);
   } catch {
-    /* noop */
+    // noop
   }
 }
 
@@ -100,7 +105,7 @@ function writeError(ctx: string, err: unknown): void {
   try {
     fs.appendFileSync(fileForLevel("ERROR"), line);
   } catch {
-    /* noop */
+    // noop
   }
 }
 
@@ -129,31 +134,25 @@ function dbLog(ctx: string, msg: string, data?: unknown): void {
   write(LEVELS.DB, ctx, msg, data);
 }
 
+function rotateFile(filePath: string, maxSize: number): void {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > maxSize) {
+      const rotated = filePath + "." + Date.now() + ".bak";
+      fs.renameSync(filePath, rotated);
+    }
+  } catch {
+    // noop
+  }
+}
+
 function rotateIfNeeded(maxSize: number = 5 * 1024 * 1024): void {
   init();
   try {
     for (const filename of Object.values(LEVEL_FILES)) {
-      const filePath = path.join(LOG_DIR, filename);
-      try {
-        const stat = fs.statSync(filePath);
-        if (stat.size > maxSize) {
-          const rotated = filePath + "." + Date.now() + ".bak";
-          fs.renameSync(filePath, rotated);
-        }
-      } catch {
-        /* noop */
-      }
+      rotateFile(path.join(LOG_DIR, filename), maxSize);
     }
-    const allPath = path.join(LOG_DIR, "all.log");
-    try {
-      const stat = fs.statSync(allPath);
-      if (stat.size > maxSize) {
-        const rotated = allPath + "." + Date.now() + ".bak";
-        fs.renameSync(allPath, rotated);
-      }
-    } catch {
-      /* noop */
-    }
+    rotateFile(path.join(LOG_DIR, "all.log"), maxSize);
     try {
       const files = fs.readdirSync(LOG_DIR);
       const now = Date.now();
@@ -167,10 +166,10 @@ function rotateIfNeeded(maxSize: number = 5 * 1024 * 1024): void {
         }
       }
     } catch {
-      /* noop */
+      // noop
     }
   } catch {
-    /* noop */
+    // noop
   }
 }
 

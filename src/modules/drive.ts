@@ -1,7 +1,7 @@
 import https from "https";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import type { OAuth2Client } from "googleapis-common";
-import type { drive_v3 } from "googleapis";
+import type { drive_v3 as DriveV3 } from "googleapis";
 import * as cache from "./cache";
 import type { CacheData, CacheItem, DirtyItem } from "./cache";
 
@@ -38,12 +38,12 @@ type SubfolderType = keyof typeof SUBFOLDERS;
  * A local cache provides offline support; a dirty queue handles sync retries.
  */
 export class DriveClient {
-  private drive: drive_v3.Drive | null = null;
+  driveApi: DriveV3.Drive | null = null;
   cache: CacheData;
   private cacheDirty = false;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private syncInProgress = false;
-  private vaultFolderId: string | null = null;
+  vaultFolderId: string | null = null;
   private subfolderIds: Record<string, string> = {};
   private fileIdCache: Map<string, string> = new Map(); // name -> fileId
   private logger: Logger;
@@ -69,7 +69,7 @@ export class DriveClient {
    */
   async init(authClient: OAuth2Client): Promise<void> {
     const { google } = await import("googleapis");
-    this.drive = google.drive({ version: "v3", auth: authClient });
+    this.driveApi = google.drive({ version: "v3", auth: authClient });
     this.logger.dbLog("drive:init", "Drive client initialized");
 
     // Ensure the Vault folder exists on Drive
@@ -114,7 +114,7 @@ export class DriveClient {
    * Processes the dirty queue: creates/updates/deletes files.
    */
   async syncToDrive(): Promise<void> {
-    if (!this.drive || this.syncInProgress || this.closed) return;
+    if (!this.driveApi || this.syncInProgress || this.closed) return;
     this.syncInProgress = true;
     this.syncTimer = null;
 
@@ -173,7 +173,7 @@ export class DriveClient {
   }
 
   private async processDirtyItem(item: DirtyItem): Promise<void> {
-    if (!this.drive) throw new Error("Drive not initialized");
+    if (!this.driveApi) throw new Error("Drive not initialized");
 
     switch (item.action) {
       case "create":
@@ -185,7 +185,7 @@ export class DriveClient {
 
         if (item.driveFileId) {
           // Update existing file
-          await this.drive.files.update({
+          await this.driveApi.files.update({
             fileId: item.driveFileId,
             media: { mimeType: "application/octet-stream", body: content },
             fields: "id, name, modifiedTime",
@@ -196,7 +196,7 @@ export class DriveClient {
           const subfolderId = await this.ensureSubfolder(
             SUBFOLDERS[item.type as SubfolderType],
           );
-          const created = await this.drive.files.create({
+          const created = await this.driveApi.files.create({
             requestBody: {
               name: fileName,
               parents: [subfolderId],
@@ -213,7 +213,7 @@ export class DriveClient {
       }
       case "delete": {
         if (item.driveFileId) {
-          await this.drive.files.delete({ fileId: item.driveFileId });
+          await this.driveApi.files.delete({ fileId: item.driveFileId });
           const fileName = this.itemFileName(item.id, item.type);
           this.fileIdCache.delete(fileName);
         }
@@ -255,10 +255,10 @@ export class DriveClient {
   // ── Vault folder management ──
 
   private async ensureVaultFolder(): Promise<void> {
-    if (!this.drive) throw new Error("Drive not initialized");
+    if (!this.driveApi) throw new Error("Drive not initialized");
 
     // Search for existing Vault folder
-    const res = await this.drive.files.list({
+    const res = await this.driveApi.files.list({
       q: `name='${VAULT_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       spaces: "drive",
       fields: "files(id, name)",
@@ -271,7 +271,7 @@ export class DriveClient {
       });
     } else {
       // Create the Vault folder
-      const created = await this.drive.files.create({
+      const created = await this.driveApi.files.create({
         requestBody: {
           name: VAULT_FOLDER_NAME,
           mimeType: "application/vnd.google-apps.folder",
@@ -287,7 +287,7 @@ export class DriveClient {
 
   private async ensureSubfolder(name: string): Promise<string> {
     if (this.subfolderIds[name]) return this.subfolderIds[name];
-    const res = await this.drive!.files.list({
+    const res = await this.driveApi!.files.list({
       q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
       spaces: "drive",
       fields: "files(id, name)",
@@ -298,7 +298,7 @@ export class DriveClient {
         folderId: this.subfolderIds[name],
       });
     } else {
-      const created = await this.drive!.files.create({
+      const created = await this.driveApi!.files.create({
         requestBody: {
           name,
           mimeType: "application/vnd.google-apps.folder",
@@ -317,7 +317,7 @@ export class DriveClient {
   private async ensureSubfolders(): Promise<void> {
     for (const name of Object.values(SUBFOLDERS)) {
       if (this.subfolderIds[name]) continue;
-      const res = await this.drive!.files.list({
+      const res = await this.driveApi!.files.list({
         q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
         spaces: "drive",
         fields: "files(id, name)",
@@ -328,7 +328,7 @@ export class DriveClient {
           folderId: this.subfolderIds[name],
         });
       } else {
-        const created = await this.drive!.files.create({
+        const created = await this.driveApi!.files.create({
           requestBody: {
             name,
             mimeType: "application/vnd.google-apps.folder",
@@ -349,9 +349,9 @@ export class DriveClient {
    * Handles users who had the old flat structure before subfolders were introduced.
    */
   private async migrateFlatFiles(): Promise<void> {
-    if (!this.drive || !this.vaultFolderId) return;
+    if (!this.driveApi || !this.vaultFolderId) return;
 
-    const res = await this.drive.files.list({
+    const res = await this.driveApi.files.list({
       q: `'${this.vaultFolderId}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`,
       spaces: "drive",
       fields: "files(id, name)",
@@ -368,7 +368,7 @@ export class DriveClient {
         const subfolderName = SUBFOLDERS[parsed.type as SubfolderType];
         const subfolderId = this.subfolderIds[subfolderName];
         if (!subfolderId) continue;
-        await this.drive.files.update({
+        await this.driveApi.files.update({
           fileId: f.id!,
           addParents: subfolderId,
           removeParents: this.vaultFolderId!,
@@ -381,7 +381,7 @@ export class DriveClient {
       if (name === SETTINGS_FILE_NAME || name === TWOFA_FILE_NAME) {
         const subfolderId = this.subfolderIds[SUBFOLDERS.settings];
         if (!subfolderId) continue;
-        await this.drive.files.update({
+        await this.driveApi.files.update({
           fileId: f.id!,
           addParents: subfolderId,
           removeParents: this.vaultFolderId!,
@@ -412,13 +412,13 @@ export class DriveClient {
   }
 
   private async buildFileIdCache(): Promise<void> {
-    if (!this.drive || !this.vaultFolderId) return;
+    if (!this.driveApi || !this.vaultFolderId) return;
 
     // Iterate each subfolder to collect all item files
     for (const [name, subfolderId] of Object.entries(this.subfolderIds)) {
       let pageToken: string | undefined;
       do {
-        const res = await this.drive.files.list({
+        const res = await this.driveApi.files.list({
           q: `'${subfolderId}' in parents and trashed=false`,
           spaces: "drive",
           fields: "nextPageToken, files(id, name, modifiedTime, appProperties)",
@@ -449,7 +449,7 @@ export class DriveClient {
    * If Drive has a newer version (different ETag), download and merge.
    */
   private async resolveConflicts(): Promise<void> {
-    if (!this.drive || !this.vaultFolderId) return;
+    if (!this.driveApi || !this.vaultFolderId) return;
 
     this.logger.dbLog("drive:conflict", "Checking for conflicts", {
       lastSyncedAt: this.cache.lastSyncedAt,
@@ -488,9 +488,9 @@ export class DriveClient {
     id: string,
     type: string,
   ): Promise<void> {
-    if (!this.drive) return;
+    if (!this.driveApi) return;
 
-    const res = await this.drive.files.get(
+    const res = await this.driveApi.files.get(
       { fileId, alt: "media" },
       { responseType: "arraybuffer" },
     );
@@ -694,10 +694,10 @@ export class DriveClient {
   async loadSettings(): Promise<Record<string, unknown> | null> {
     const fileId = this.fileIdCache.get(SETTINGS_FILE_NAME);
     if (!fileId) return null;
-    if (!this.drive) return this.cache.settings;
+    if (!this.driveApi) return this.cache.settings;
 
     try {
-      const res = await this.drive.files.get(
+      const res = await this.driveApi.files.get(
         { fileId, alt: "media" },
         { responseType: "arraybuffer" },
       );
@@ -721,20 +721,20 @@ export class DriveClient {
     this.cache.settings = settings;
     const content = JSON.stringify(settings, null, 2);
 
-    if (!this.drive) {
+    if (!this.driveApi) {
       cache.saveCache(this.cache);
       return;
     }
 
     const fileId = this.fileIdCache.get(SETTINGS_FILE_NAME);
     if (fileId) {
-      await this.drive.files.update({
+      await this.driveApi.files.update({
         fileId,
         media: { mimeType: "application/json", body: content },
       });
     } else {
       const subfolderId = await this.ensureSubfolder(SUBFOLDERS.settings);
-      const created = await this.drive.files.create({
+      const created = await this.driveApi.files.create({
         requestBody: {
           name: SETTINGS_FILE_NAME,
           parents: [subfolderId],
@@ -758,13 +758,13 @@ export class DriveClient {
       return this.cache.twofa
         ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled }
         : null;
-    if (!this.drive)
+    if (!this.driveApi)
       return this.cache.twofa
         ? { secret: this.cache.twofa.secret, enabled: this.cache.twofa.enabled }
         : null;
 
     try {
-      const res = await this.drive.files.get(
+      const res = await this.driveApi.files.get(
         { fileId, alt: "media" },
         { responseType: "arraybuffer" },
       );
@@ -784,20 +784,20 @@ export class DriveClient {
     this.cache.twofa = { secret, enabled };
     const content = JSON.stringify({ secret, enabled }, null, 2);
 
-    if (!this.drive) {
+    if (!this.driveApi) {
       cache.saveCache(this.cache);
       return;
     }
 
     const fileId = this.fileIdCache.get(TWOFA_FILE_NAME);
     if (fileId) {
-      await this.drive.files.update({
+      await this.driveApi.files.update({
         fileId,
         media: { mimeType: "application/json", body: content },
       });
     } else {
       const subfolderId = await this.ensureSubfolder(SUBFOLDERS.settings);
-      const created = await this.drive.files.create({
+      const created = await this.driveApi.files.create({
         requestBody: {
           name: TWOFA_FILE_NAME,
           parents: [subfolderId],
