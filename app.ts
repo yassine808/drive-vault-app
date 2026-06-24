@@ -118,9 +118,14 @@ const logErr = (ctx: string, msg: string, data?: unknown): void =>
 logInfo("app", "Renderer initialized");
 
 // ═══ UTILS ════════════════════════════════════════════════════════════════════
-// NOSONAR: uid() generates local item IDs, not security tokens; Math.random() is acceptable here
-const uid = (): string =>
-  Date.now().toString(36) + Math.random().toString(36).slice(2);
+const uid = (): string => {
+  const buf = new Uint8Array(8);
+  crypto.getRandomValues(buf);
+  const rnd = Array.from(buf)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return Date.now().toString(36) + rnd;
+};
 const wc = (t: unknown): number => {
   const s = String(t ?? "").trim();
   return s ? s.split(/\s+/).length : 0;
@@ -154,6 +159,39 @@ function toast(msg: string, ms?: number): void {
   el.textContent = msg;
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), ms);
+}
+function confirmDialog(opts: ConfirmOpts): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const overlay = document.getElementById("confirm-overlay") as HTMLElement;
+    const title = document.getElementById("confirm-title") as HTMLElement;
+    const msg = document.getElementById("confirm-msg") as HTMLElement;
+    const icon = document.getElementById("confirm-icon") as HTMLElement;
+    const cancelBtn = document.getElementById(
+      "confirm-cancel",
+    ) as HTMLButtonElement;
+    const okBtn = document.getElementById("confirm-ok") as HTMLButtonElement;
+    if (opts.title) title.textContent = opts.title;
+    if (opts.msg) msg.textContent = opts.msg;
+    if (opts.icon) icon.textContent = opts.icon;
+    if (opts.okLabel) okBtn.textContent = opts.okLabel;
+    if (opts.okClass) okBtn.className = "btn " + opts.okClass;
+    overlay.hidden = false;
+    const cleanup = () => {
+      overlay.hidden = true;
+      cancelBtn.removeEventListener("click", onCancel);
+      okBtn.removeEventListener("click", onOk);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve(false);
+    };
+    const onOk = () => {
+      cleanup();
+      resolve(true);
+    };
+    cancelBtn.addEventListener("click", onCancel);
+    okBtn.addEventListener("click", onOk);
+  });
 }
 function show(id: string): void {
   (document.getElementById(id) as HTMLElement).hidden = false;
@@ -963,38 +1001,41 @@ function switchTab(tab: string): void {
   ]) {
     (document.getElementById("tab-" + t) as HTMLElement).hidden = t !== tab;
   }
-  if (tab === "passwords") renderPasswords();
-  if (tab === "notes") renderNotesList();
-  if (tab === "trash") {
-    if (_tabCache.trash !== true) {
-      loadAndRenderTrash();
-      _tabCache.trash = true;
-    }
-  }
-  if (tab === "jobs") {
-    if (!_tabCache.jobs) {
-      loadAndRenderJobs();
-      _tabCache.jobs = true;
-    }
-  }
-  if (tab === "totp") {
-    if (!_tabCache.totp) {
-      loadAndRenderTotp();
-      _tabCache.totp = true;
-    }
-  }
-  if (tab === "sync") {
-    if (!_tabCache.sync) {
-      loadSyncTab();
-      _tabCache.sync = true;
-    }
-  }
-  if (tab === "settings") {
-    if (!_tabCache.settings) {
-      loadSettingsTab();
-      _tabCache.settings = true;
-    }
-  }
+  const tabLoaders: Record<string, () => void> = {
+    passwords: () => renderPasswords(),
+    notes: () => renderNotesList(),
+    trash: () => {
+      if (!_tabCache.trash) {
+        loadAndRenderTrash();
+        _tabCache.trash = true;
+      }
+    },
+    jobs: () => {
+      if (!_tabCache.jobs) {
+        loadAndRenderJobs();
+        _tabCache.jobs = true;
+      }
+    },
+    totp: () => {
+      if (!_tabCache.totp) {
+        loadAndRenderTotp();
+        _tabCache.totp = true;
+      }
+    },
+    sync: () => {
+      if (!_tabCache.sync) {
+        loadSyncTab();
+        _tabCache.sync = true;
+      }
+    },
+    settings: () => {
+      if (!_tabCache.settings) {
+        loadSettingsTab();
+        _tabCache.settings = true;
+      }
+    },
+  };
+  if (tabLoaders[tab]) tabLoaders[tab]();
   updateCounts();
 }
 function updateCounts(): void {
@@ -1142,6 +1183,59 @@ let _fileStates: Record<
   >
 > = {};
 
+function classifyFolderStatus(status: string, hasConflict: boolean): string {
+  if (status === "syncing") return "syncing";
+  if (status === "error") return "err";
+  if (hasConflict) return "conflict";
+  return "idle";
+}
+
+function buildFolderStatusText(
+  folder: {
+    status: string;
+    errorMessage?: string | null;
+    lastSyncAt?: number | null;
+  },
+  hasConflict: boolean,
+): string {
+  if (folder.status === "syncing") return "Syncing...";
+  if (folder.status === "error") return folder.errorMessage || "Error";
+  if (hasConflict) return "Conflict";
+  if (folder.lastSyncAt) return "Synced " + timeAgo(folder.lastSyncAt);
+  return "Never synced";
+}
+
+function buildFolderStatusIcon(
+  status: string,
+  hasConflict: boolean,
+  allSynced: boolean,
+  lastSyncAt?: number | null,
+): string {
+  if (status === "syncing")
+    return '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
+  if (status === "error")
+    return '<span class="sync-status-icon sync-status-error">✗</span>';
+  if (hasConflict)
+    return '<span class="sync-status-icon sync-status-conflict">⚡</span>';
+  if (allSynced || lastSyncAt)
+    return '<span class="sync-status-icon sync-status-synced">✓</span>';
+  return '<span class="sync-status-icon"></span>';
+}
+
+function buildFileStatusIcon(fs: {
+  conflict: string;
+  localHash: string | null;
+  driveHash: string | null;
+}): string {
+  if (fs.conflict && fs.conflict !== "none")
+    return '<span class="sync-status-icon sync-status-conflict">⚡</span>';
+  if (fs.localHash && fs.driveHash && fs.localHash === fs.driveHash)
+    return '<span class="sync-status-icon sync-status-synced">✓</span>';
+  if (fs.localHash || fs.driveHash)
+    return '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
+  return '<span class="sync-status-icon"></span>';
+}
+
 async function loadSyncFolders() {
   const r = await api.sync.foldersList();
   if (!r.ok) {
@@ -1192,42 +1286,14 @@ async function loadSyncFolders() {
       Object.values(files).every(
         (f) => f.localHash && f.driveHash && f.localHash === f.driveHash,
       );
-    let sc: string;
-    if (folder.status === "syncing") {
-      sc = "syncing";
-    } else if (folder.status === "error") {
-      sc = "err";
-    } else if (hasConflict) {
-      sc = "conflict";
-    } else {
-      sc = "idle";
-    }
-    let st: string;
-    if (folder.status === "syncing") {
-      st = "Syncing...";
-    } else if (folder.status === "error") {
-      st = folder.errorMessage || "Error";
-    } else if (hasConflict) {
-      st = "Conflict";
-    } else if (folder.lastSyncAt) {
-      st = "Synced " + timeAgo(folder.lastSyncAt);
-    } else {
-      st = "Never synced";
-    }
-    let statusIcon;
-    if (folder.status === "syncing") {
-      statusIcon =
-        '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
-    } else if (folder.status === "error") {
-      statusIcon = '<span class="sync-status-icon sync-status-error">✗</span>';
-    } else if (hasConflict) {
-      statusIcon =
-        '<span class="sync-status-icon sync-status-conflict">⚡</span>';
-    } else if (allSynced || folder.lastSyncAt) {
-      statusIcon = '<span class="sync-status-icon sync-status-synced">✓</span>';
-    } else {
-      statusIcon = '<span class="sync-status-icon"></span>';
-    }
+    const sc = classifyFolderStatus(folder.status, hasConflict);
+    const st = buildFolderStatusText(folder, hasConflict);
+    const statusIcon = buildFolderStatusIcon(
+      folder.status,
+      hasConflict,
+      allSynced,
+      folder.lastSyncAt,
+    );
     const row = document.createElement("div");
     row.className = "sync-folder-row";
     row.id = "sync-folder-" + folder.id;
@@ -1278,22 +1344,7 @@ async function loadSyncFolders() {
       const fileRow = document.createElement("div");
       fileRow.className = "sync-file-row";
       const fileName = relPath.split("/").pop() || relPath;
-      let fileIcon;
-      if (fs.conflict && fs.conflict !== "none") {
-        fileIcon =
-          '<span class="sync-status-icon sync-status-conflict">⚡</span>';
-      } else if (
-        fs.localHash &&
-        fs.driveHash &&
-        fs.localHash === fs.driveHash
-      ) {
-        fileIcon = '<span class="sync-status-icon sync-status-synced">✓</span>';
-      } else if (fs.localHash || fs.driveHash) {
-        fileIcon =
-          '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
-      } else {
-        fileIcon = '<span class="sync-status-icon"></span>';
-      }
+      const fileIcon = buildFileStatusIcon(fs);
       fileRow.innerHTML =
         '<div class="sync-file-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="sync-file-name" title="' +
         escHtml(relPath) +
@@ -1332,23 +1383,12 @@ async function loadSyncFolders() {
   list.querySelectorAll(".sync-folder-remove").forEach(function (btn) {
     btn.addEventListener("click", async function () {
       const id = (btn as HTMLElement).dataset.folderId!;
-      const confirmed = await new Promise<boolean>(function (resolve) {
-        confirm({
-          title: "Remove sync folder?",
-          msg: "Files on your PC and Drive will NOT be deleted. Only the sync mapping will be removed.",
-          icon: "⚠️",
-          okLabel: "Remove",
-          okClass: "btn-danger",
-          onOk: function () {
-            resolve(true);
-          },
-        });
-        const cancelBtn = document.getElementById("confirm-cancel")!;
-        const handler = () => {
-          cancelBtn.removeEventListener("click", handler);
-          resolve(false);
-        };
-        cancelBtn.addEventListener("click", handler);
+      const confirmed = await confirmDialog({
+        title: "Remove sync folder?",
+        msg: "Files on your PC and Drive will NOT be deleted. Only the sync mapping will be removed.",
+        icon: "⚠️",
+        okLabel: "Remove",
+        okClass: "btn-danger",
       });
       if (!confirmed) return;
       const res = await api.sync.foldersRemove(id);
@@ -1854,27 +1894,30 @@ function renderPasswords(): void {
       logInfo("password", "Edit password", { site: pw.site });
       openPwModal(pw);
     };
-    delBtn.onclick = () =>
+    delBtn.onclick = () => {
       confirm({
         title: "Move to Trash?",
         msg: `"${pw.site}" will be moved to Trash and auto-deleted after 30 days.`,
         icon: "🗑️",
         okLabel: "Move to Trash",
-        onOk: async () => {
-          logInfo("password", "Moving to trash", {
-            site: pw.site,
-            dbId: pw._localId,
-          });
-          if (pw._localId) await api.delete(pw._localId, "password");
-          S.passwords = S.passwords.filter((p) => p.id !== pw.id);
-          renderPasswords();
-          updateCounts();
-          toast("Moved to Trash");
-          logOk("password", "Moved to trash", { site: pw.site });
-        },
+        onOk: () => movePasswordToTrash(pw),
       });
+    };
     wrap.appendChild(row);
   });
+}
+
+async function movePasswordToTrash(pw: VaultItem): Promise<void> {
+  logInfo("password", "Moving to trash", {
+    site: pw.site,
+    dbId: pw._localId,
+  });
+  if (pw._localId) await api.delete(pw._localId, "password");
+  S.passwords = S.passwords.filter((p) => p.id !== pw.id);
+  renderPasswords();
+  updateCounts();
+  toast("Moved to Trash");
+  logOk("password", "Moved to trash", { site: pw.site });
 }
 
 function updateInlineSm(wrap: HTMLElement, pw: string): void {
@@ -2175,6 +2218,63 @@ function addVerticalDrag(
 }
 
 // ═══ TRASH ════════════════════════════════════════════════════════════════════
+async function restoreTrashItem(
+  isJob: boolean,
+  jobItem: Job,
+  vaultItem: VaultItem,
+  item: { _type: string },
+  label: string,
+): Promise<void> {
+  let ok = false;
+  if (isJob) {
+    const res = await api.jobsTrash.restore(jobItem.id!);
+    ok = res.ok;
+  } else {
+    const res = await api.trashRestore(vaultItem._localId!, item._type);
+    ok = res.ok;
+  }
+  if (!ok) {
+    toast("Restore failed");
+    logErr("trash", "Restore failed", { label });
+    return;
+  }
+  const itemDbId = (item as unknown as VaultItem)._localId;
+  S.trash = S.trash.filter(
+    (t) => (t as unknown as VaultItem)._localId !== itemDbId,
+  );
+  loadAndRenderTrash();
+  updateCounts();
+  toast("Restored ✓");
+  logOk("trash", "Item restored", { label });
+}
+
+async function purgeTrashItem(
+  isJob: boolean,
+  jobItem: Job,
+  vaultItem: VaultItem,
+  item: { _type: string },
+  row: HTMLElement,
+  label: string,
+): Promise<void> {
+  logInfo("trash", "Permanently deleting", { label });
+  if (isJob) await api.jobsTrash.purge(jobItem.id!);
+  else await api.trashPurge(vaultItem._localId!, item._type);
+  S.trash = S.trash.filter((t) => {
+    const tId =
+      t._type === "job"
+        ? (t as unknown as Job).id
+        : (t as unknown as VaultItem)._localId;
+    const itemId = isJob ? jobItem.id : vaultItem._localId;
+    return tId !== itemId;
+  });
+  row.remove();
+  if (!S.trash.length)
+    (document.getElementById("trash-empty") as HTMLElement).hidden = false;
+  updateCounts();
+  toast("Permanently deleted");
+  logOk("trash", "Item purged", { label });
+}
+
 async function loadAndRenderTrash(): Promise<void> {
   logInfo("trash", "Loading trash");
   const wrap = document.getElementById("trash-list") as HTMLElement;
@@ -2278,64 +2378,25 @@ async function loadAndRenderTrash(): Promise<void> {
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     pwActs.appendChild(delBtn);
     row.appendChild(pwActs);
-    restBtn.onclick = () =>
+    restBtn.onclick = () => {
       confirm({
         title: "Restore?",
         msg: `"${label}" will be restored.`,
         icon: "↩️",
         okLabel: "Restore",
         okClass: "btn-primary",
-        onOk: async () => {
-          let ok = false;
-          if (isJob) {
-            const res = await api.jobsTrash.restore(jobItem.id!);
-            ok = res.ok;
-          } else {
-            const res = await api.trashRestore(vaultItem._localId!, item._type);
-            ok = res.ok;
-          }
-          if (!ok) {
-            toast("Restore failed");
-            logErr("trash", "Restore failed", { label });
-            return;
-          }
-          const itemDbId = (item as unknown as VaultItem)._localId;
-          S.trash = S.trash.filter(
-            (t) => (t as unknown as VaultItem)._localId !== itemDbId,
-          );
-          loadAndRenderTrash();
-          updateCounts();
-          toast("Restored ✓");
-          logOk("trash", "Item restored", { label });
-        },
+        onOk: () => restoreTrashItem(isJob, jobItem, vaultItem, item, label),
       });
-    delBtn.onclick = () =>
+    };
+    delBtn.onclick = () => {
       confirm({
         title: "Delete permanently?",
         msg: `"${label}" will be gone forever.`,
         icon: "⚠️",
         okLabel: "Delete forever",
-        onOk: async () => {
-          logInfo("trash", "Permanently deleting", { label });
-          if (isJob) await api.jobsTrash.purge(jobItem.id!);
-          else await api.trashPurge(vaultItem._localId!, item._type);
-          S.trash = S.trash.filter((t) => {
-            const tId =
-              t._type === "job"
-                ? (t as unknown as Job).id
-                : (t as unknown as VaultItem)._localId;
-            const itemId = isJob ? jobItem.id : vaultItem._localId;
-            return tId !== itemId;
-          });
-          row.remove();
-          if (!S.trash.length)
-            (document.getElementById("trash-empty") as HTMLElement).hidden =
-              false;
-          updateCounts();
-          toast("Permanently deleted");
-          logOk("trash", "Item purged", { label });
-        },
+        onOk: () => purgeTrashItem(isJob, jobItem, vaultItem, item, row, label),
       });
+    };
     wrap.appendChild(row);
   });
 }
@@ -2352,23 +2413,25 @@ async function loadAndRenderTrash(): Promise<void> {
     msg: `All ${S.trash.length} item(s) will be permanently deleted.`,
     icon: "⚠️",
     okLabel: "Empty Trash",
-    onOk: async () => {
-      const vaultItems = S.trash.filter((t) => t._type !== "job");
-      const jobItems = S.trash.filter((t) => t._type === "job");
-      await Promise.all([
-        ...vaultItems.map((t) =>
-          api.trashPurge((t as unknown as VaultItem)._localId!, t._type),
-        ),
-        ...jobItems.map((t) => api.jobsTrash.purge((t as unknown as Job).id!)),
-      ]);
-      S.trash = [];
-      loadAndRenderTrash();
-      updateCounts();
-      toast("Trash emptied");
-      logOk("trash", "Trash emptied");
-    },
+    onOk: () => emptyTrash(),
   });
 });
+
+async function emptyTrash(): Promise<void> {
+  const vaultItems = S.trash.filter((t) => t._type !== "job");
+  const jobItems = S.trash.filter((t) => t._type === "job");
+  await Promise.all([
+    ...vaultItems.map((t) =>
+      api.trashPurge((t as unknown as VaultItem)._localId!, t._type),
+    ),
+    ...jobItems.map((t) => api.jobsTrash.purge((t as unknown as Job).id!)),
+  ]);
+  S.trash = [];
+  loadAndRenderTrash();
+  updateCounts();
+  toast("Trash emptied");
+  logOk("trash", "Trash emptied");
+}
 
 // ═══ JOBS — inline edit, sort, search, filter ═════════════════════════════════
 let _jobEdit: Job | null = null;
@@ -2563,27 +2626,11 @@ function renderJobsTable(): void {
         td.appendChild(inp);
         inp.focus();
         inp.select();
-        const save = async (): Promise<void> => {
-          const val = inp.value.trim();
-          (job as unknown as Record<string, unknown>)[field] = val;
-          await api.jobsSave({
-            job: job as unknown as Record<string, unknown>,
-          });
-          renderJobsTable();
-        };
+        const save = () => saveInlineJobEdit(job, field, inp);
         inp.addEventListener("blur", save);
         inp.addEventListener("keydown", (e: KeyboardEvent) => {
           if (e.key === "Enter") inp.blur();
-          if (e.key === "Escape") {
-            td.innerHTML = "";
-            if (field === "company") {
-              const s = document.createElement("strong");
-              s.textContent = job.company || "";
-              td.appendChild(s);
-            } else {
-              td.textContent = String(current);
-            }
-          }
+          if (e.key === "Escape") cancelInlineEdit(td, field, job, current);
         });
       });
     });
@@ -2600,29 +2647,15 @@ function renderJobsTable(): void {
       },
     );
 
-    (tr.querySelector(".del-job-btn") as HTMLButtonElement).onclick = () =>
+    (tr.querySelector(".del-job-btn") as HTMLButtonElement).onclick = () => {
       confirm({
         title: "Move to Trash?",
         msg: `"${job.company}" will be moved to Trash.`,
         icon: "🗑️",
         okLabel: "Move to Trash",
-        onOk: async () => {
-          logInfo("jobs", "Job moved to trash", {
-            jobId: job.id,
-            company: job.company,
-          });
-          const res = await api.jobsDelete(job.id!);
-          if (!res.ok) {
-            toast("Delete failed");
-            logErr("jobs", "Delete failed", { jobId: job.id });
-            return;
-          }
-          S.jobs = S.jobs.filter((j) => j.id !== job.id);
-          renderJobsTable();
-          updateCounts();
-          toast("Moved to Trash");
-        },
+        onOk: () => moveJobToTrash(job),
       });
+    };
 
     tr.addEventListener("dragstart", (e: DragEvent) => {
       dragSrc = tr;
@@ -2659,6 +2692,52 @@ function renderJobsTable(): void {
     });
     tbody.appendChild(tr);
   });
+}
+
+async function saveInlineJobEdit(
+  job: Job,
+  field: keyof Job,
+  inp: HTMLInputElement,
+): Promise<void> {
+  const val = inp.value.trim();
+  (job as unknown as Record<string, unknown>)[field] = val;
+  await api.jobsSave({
+    job: job as unknown as Record<string, unknown>,
+  });
+  renderJobsTable();
+}
+
+function cancelInlineEdit(
+  td: HTMLElement,
+  field: keyof Job,
+  job: Job,
+  current: unknown,
+): void {
+  td.innerHTML = "";
+  if (field === "company") {
+    const s = document.createElement("strong");
+    s.textContent = job.company || "";
+    td.appendChild(s);
+  } else {
+    td.textContent = String(current);
+  }
+}
+
+async function moveJobToTrash(job: Job): Promise<void> {
+  logInfo("jobs", "Job moved to trash", {
+    jobId: job.id,
+    company: job.company,
+  });
+  const res = await api.jobsDelete(job.id!);
+  if (!res.ok) {
+    toast("Delete failed");
+    logErr("jobs", "Delete failed", { jobId: job.id });
+    return;
+  }
+  S.jobs = S.jobs.filter((j) => j.id !== job.id);
+  renderJobsTable();
+  updateCounts();
+  toast("Moved to Trash");
 }
 
 function openJobModal(existing: Job | null = null): void {
@@ -2840,21 +2919,15 @@ function renderTotpGrid(): void {
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
     totpFoot.appendChild(totpCopy);
     card.appendChild(totpFoot);
-    (card.querySelector(".totp-del") as HTMLButtonElement).onclick = () =>
+    (card.querySelector(".totp-del") as HTMLButtonElement).onclick = () => {
       confirm({
         title: "Remove account?",
         msg: `"${item.name}" will be removed.`,
         icon: "🗑️",
         okLabel: "Remove",
-        onOk: async () => {
-          logInfo("totp", "TOTP account removed", { name: item.name });
-          await api.totpDelete(item.id!);
-          S.totp = S.totp.filter((t) => t.id !== item.id);
-          renderTotpGrid();
-          updateCounts();
-          toast("Removed");
-        },
+        onOk: () => deleteTotpItem(item),
       });
+    };
     (card.querySelector(".totp-copy") as HTMLButtonElement).onclick = () => {
       const code = (
         document.getElementById(codeId) as HTMLElement
@@ -2881,6 +2954,15 @@ function renderTotpGrid(): void {
     totpTimers.push(setInterval(updateCode, 1000));
   });
 }
+async function deleteTotpItem(item: TotpItem): Promise<void> {
+  logInfo("totp", "TOTP account removed", { name: item.name });
+  await api.totpDelete(item.id!);
+  S.totp = S.totp.filter((t) => t.id !== item.id);
+  renderTotpGrid();
+  updateCounts();
+  toast("Removed");
+}
+
 function base32Decode(b32: string): Uint8Array {
   const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   let bits = "",
@@ -3307,38 +3389,11 @@ async function loadSettingsTab(): Promise<void> {
   document
     .getElementById("s-pin-delete")
     ?.addEventListener("click", async () => {
-      // Use the app's built-in confirm dialog
-      const confirmed = await new Promise<boolean>((resolve) => {
-        const overlay = document.getElementById(
-          "confirm-overlay",
-        ) as HTMLElement;
-        const title = document.getElementById("confirm-title") as HTMLElement;
-        const msg = document.getElementById("confirm-msg") as HTMLElement;
-        const cancelBtn = document.getElementById(
-          "confirm-cancel",
-        ) as HTMLButtonElement;
-        const okBtn = document.getElementById(
-          "confirm-ok",
-        ) as HTMLButtonElement;
-        title.textContent = "Delete PIN?";
-        msg.textContent =
-          "This will permanently delete your PIN. You can set a new one anytime from settings.";
-        overlay.hidden = false;
-        const cleanup = () => {
-          overlay.hidden = true;
-          cancelBtn.removeEventListener("click", onCancel);
-          okBtn.removeEventListener("click", onOk);
-        };
-        const onCancel = () => {
-          cleanup();
-          resolve(false);
-        };
-        const onOk = () => {
-          cleanup();
-          resolve(true);
-        };
-        cancelBtn.addEventListener("click", onCancel);
-        okBtn.addEventListener("click", onOk);
+      const confirmed = await confirmDialog({
+        title: "Delete PIN?",
+        msg: "This will permanently delete your PIN. You can set a new one anytime from settings.",
+        okLabel: "Delete",
+        okClass: "btn-danger",
       });
       if (!confirmed) return;
       logInfo("pin", "Delete PIN confirmed");

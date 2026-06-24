@@ -1,4 +1,4 @@
-import fs from "fs";
+import fs from "node:fs";
 import path from "node:path";
 
 const LOG_DIR = path.join(__dirname, "..", "Logs");
@@ -59,7 +59,7 @@ function fileForLevel(levelName: string): string {
 }
 
 function sanitizeNewlines(value: string): string {
-  return value.replaceAll("\n", "\\n").replaceAll("\r", "");
+  return value.replaceAll("\n", String.raw`\n`).replaceAll("\r", "");
 }
 
 function write(level: number, ctx: string, msg: string, data?: unknown): void {

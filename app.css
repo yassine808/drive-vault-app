@@ -2201,6 +2201,7 @@ body {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 10px;
+  cursor: default;
 }
 .sync-folder-icon {
   width: 32px;
@@ -2834,9 +2835,6 @@ body.compact .settings-card {
 /* ═══════════════════════════════════════════════════════════════
    SYNC DRAG-AND-DROP + STATUS ICONS
    ═══════════════════════════════════════════════════════════════ */
-.sync-folder-row {
-  cursor: default;
-}
 .sync-folder-drag {
   display: flex;
   align-items: center;

@@ -14,11 +14,11 @@ type LogError = (ctx: string, err: unknown) => void;
 type IpcHandler = (...args: any[]) => any;
 type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 
-const VALID_JOB_STATUSES: readonly JobStatus[] = [
+const VALID_JOB_STATUSES: ReadonlySet<JobStatus> = new Set<JobStatus>([
   "wait",
   "accepted",
   "rejected",
-];
+]);
 
 function register(
   ipcMain: Electron.IpcMain,
@@ -36,6 +36,33 @@ function register(
   dec: (data: string, key: string) => object | null,
   logError: LogError,
 ) {
+  function validateAppliedDate(appliedAt: string): string | null {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(appliedAt)) {
+      return "Invalid date format (YYYY-MM-DD)";
+    }
+    const year = Number.parseInt(appliedAt.slice(0, 4), 10);
+    const month = Number.parseInt(appliedAt.slice(5, 7), 10);
+    const day = Number.parseInt(appliedAt.slice(8, 10), 10);
+    if (
+      year < 2000 ||
+      year > 2100 ||
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31
+    ) {
+      return "Applied date must be a valid date between 2000 and 2100";
+    }
+    const d = new Date(appliedAt + "T00:00:00.000Z");
+    if (
+      Number.isNaN(d.getTime()) ||
+      d.getUTCMonth() + 1 !== month ||
+      d.getUTCDate() !== day
+    ) {
+      return "Applied date is not a valid calendar date";
+    }
+    return null;
+  }
   function dbLoadJobs(): Job[] {
     logger.dbLog("dbLoadJobs", "Loading jobs from cache");
     if (!driveClient) return [];
@@ -63,34 +90,6 @@ function register(
     });
     logger.dbLog("dbLoadJobs", "Jobs loaded", { count: jobs.length });
     return jobs;
-  }
-
-  function validateAppliedDate(appliedAt: string): string | null {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(appliedAt)) {
-      return "Invalid date format (YYYY-MM-DD)";
-    }
-    const year = parseInt(appliedAt.slice(0, 4), 10);
-    const month = parseInt(appliedAt.slice(5, 7), 10);
-    const day = parseInt(appliedAt.slice(8, 10), 10);
-    if (
-      year < 2000 ||
-      year > 2100 ||
-      month < 1 ||
-      month > 12 ||
-      day < 1 ||
-      day > 31
-    ) {
-      return "Applied date must be a valid date between 2000 and 2100";
-    }
-    const d = new Date(appliedAt + "T00:00:00.000Z");
-    if (
-      isNaN(d.getTime()) ||
-      d.getUTCMonth() + 1 !== month ||
-      d.getUTCDate() !== day
-    ) {
-      return "Applied date is not a valid calendar date";
-    }
-    return null;
   }
 
   function dbSaveJob(job: Job): string {
@@ -210,7 +209,7 @@ function register(
           return { ok: false, error: "Invalid email" };
         }
         job.notes = sanitizeStr(job.notes, MAX_NOTES_LEN);
-        if (job.status && !VALID_JOB_STATUSES.includes(job.status)) {
+        if (job.status && !VALID_JOB_STATUSES.has(job.status)) {
           logger.warn("jobs:save", "Invalid status", { status: job.status });
           return { ok: false, error: "Invalid status" };
         }

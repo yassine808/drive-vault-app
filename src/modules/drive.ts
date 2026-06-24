@@ -1,4 +1,3 @@
-import https from "https";
 import crypto from "node:crypto";
 import type { OAuth2Client } from "googleapis-common";
 import type { drive_v3 as DriveV3 } from "googleapis";
@@ -45,10 +44,10 @@ export class DriveClient {
   private syncInProgress = false;
   vaultFolderId: string | null = null;
   private subfolderIds: Record<string, string> = {};
-  private fileIdCache: Map<string, string> = new Map(); // name -> fileId
-  private logger: Logger;
-  private googleId: string;
-  private encKey: string;
+  private readonly fileIdCache: Map<string, string> = new Map(); // name -> fileId
+  private readonly logger: Logger;
+  private readonly googleId: string;
+  private readonly encKey: string;
   private closed = false;
 
   // Debounce: wait 2s after last change before syncing to Drive
@@ -348,6 +347,22 @@ export class DriveClient {
    * One-time migration: move files from flat Vault/ root into subfolders.
    * Handles users who had the old flat structure before subfolders were introduced.
    */
+  private async migrateFileToSubfolder(
+    f: { id?: string | null; name?: string | null },
+    subfolderName: string,
+    logMsg: string,
+  ): Promise<void> {
+    const subfolderId = this.subfolderIds[subfolderName];
+    if (!subfolderId || !f.id) return;
+    await this.driveApi!.files.update({
+      fileId: f.id,
+      addParents: subfolderId,
+      removeParents: this.vaultFolderId!,
+      fields: "id, parents",
+    });
+    this.logger.dbLog("drive:migrate", logMsg);
+  }
+
   private async migrateFlatFiles(): Promise<void> {
     if (!this.driveApi || !this.vaultFolderId) return;
 
@@ -362,35 +377,24 @@ export class DriveClient {
 
     for (const f of files) {
       const name = f.name || "";
-      // Check if it's an item file (password/note/job/totp)
       const parsed = this.parseItemFileName(name);
       if (parsed) {
         const subfolderName = SUBFOLDERS[parsed.type as SubfolderType];
-        const subfolderId = this.subfolderIds[subfolderName];
-        if (!subfolderId) continue;
-        await this.driveApi.files.update({
-          fileId: f.id!,
-          addParents: subfolderId,
-          removeParents: this.vaultFolderId!,
-          fields: "id, parents",
-        });
-        this.logger.dbLog("drive:migrate", `Moved ${name} → ${subfolderName}/`);
+        await this.migrateFileToSubfolder(
+          f,
+          subfolderName,
+          `Moved ${name} → ${subfolderName}/`,
+        );
         continue;
       }
-      // Check if it's a settings/2fa file
       if (name === SETTINGS_FILE_NAME || name === TWOFA_FILE_NAME) {
-        const subfolderId = this.subfolderIds[SUBFOLDERS.settings];
-        if (!subfolderId) continue;
-        await this.driveApi.files.update({
-          fileId: f.id!,
-          addParents: subfolderId,
-          removeParents: this.vaultFolderId!,
-          fields: "id, parents",
-        });
-        this.logger.dbLog("drive:migrate", `Moved ${name} → settings/`);
+        await this.migrateFileToSubfolder(
+          f,
+          SUBFOLDERS.settings,
+          `Moved ${name} → settings/`,
+        );
         continue;
       }
-      // Check if it's a legacy subfolder (already migrated)
       if (Object.values(SUBFOLDERS).includes(name as any)) {
         this.logger.dbLog(
           "drive:migrate",
@@ -398,7 +402,6 @@ export class DriveClient {
         );
         continue;
       }
-      // Unknown file — log but don't move
       this.logger.dbLog(
         "drive:migrate",
         `Unknown file in Vault root, leaving in place: ${name}`,
@@ -411,32 +414,34 @@ export class DriveClient {
     }
   }
 
+  private async cacheSubfolderFiles(subfolderId: string): Promise<void> {
+    let pageToken: string | undefined;
+    do {
+      const res = await this.driveApi!.files.list({
+        q: `'${subfolderId}' in parents and trashed=false`,
+        spaces: "drive",
+        fields: "nextPageToken, files(id, name, modifiedTime, appProperties)",
+        pageSize: 1000,
+        pageToken,
+      });
+
+      for (const f of res.data.files || []) {
+        if (f.name && f.id) {
+          this.fileIdCache.set(f.name, f.id);
+          if (f.modifiedTime) {
+            this.cache.etags[f.id] = f.modifiedTime;
+          }
+        }
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+  }
+
   private async buildFileIdCache(): Promise<void> {
     if (!this.driveApi || !this.vaultFolderId) return;
 
-    // Iterate each subfolder to collect all item files
-    for (const [name, subfolderId] of Object.entries(this.subfolderIds)) {
-      let pageToken: string | undefined;
-      do {
-        const res = await this.driveApi.files.list({
-          q: `'${subfolderId}' in parents and trashed=false`,
-          spaces: "drive",
-          fields: "nextPageToken, files(id, name, modifiedTime, appProperties)",
-          pageSize: 1000,
-          pageToken,
-        });
-
-        for (const f of res.data.files || []) {
-          if (f.name && f.id) {
-            this.fileIdCache.set(f.name, f.id);
-            // Store ETag for conflict resolution
-            if (f.modifiedTime) {
-              this.cache.etags[f.id] = f.modifiedTime;
-            }
-          }
-        }
-        pageToken = res.data.nextPageToken || undefined;
-      } while (pageToken);
+    for (const [, subfolderId] of Object.entries(this.subfolderIds)) {
+      await this.cacheSubfolderFiles(subfolderId);
     }
 
     this.logger.dbLog("drive:cache", "File ID cache built", {

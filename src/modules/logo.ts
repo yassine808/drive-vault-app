@@ -23,18 +23,17 @@ function isPrivateIP(d: string): boolean {
     return true;
   const octets = d.split(".");
   if (octets.length < 4) return false;
-  const [a, b, c, dv] = [
-    parseInt(octets[0], 10),
-    parseInt(octets[1], 10),
-    parseInt(octets[2], 10),
-    parseInt(octets[3], 10),
-  ];
-  if (!isNaN(a) && !isNaN(b) && a === 10) return true;
-  if (!isNaN(a) && !isNaN(b) && a === 127) return true;
-  if (!isNaN(a) && !isNaN(b) && a === 192 && b === 168) return true;
-  if (!isNaN(a) && !isNaN(b) && a === 172 && b >= 16 && b <= 31) return true;
-  if (!isNaN(a) && !isNaN(b) && a === 169 && b === 254) return true;
-  if (!isNaN(a) && a === 100 && b >= 64 && b <= 127) return true;
+  const a = Number.parseInt(octets[0], 10);
+  const b = Number.parseInt(octets[1], 10);
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 10) return true;
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 127) return true;
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 192 && b === 168)
+    return true;
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 172 && b >= 16 && b <= 31)
+    return true;
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 169 && b === 254)
+    return true;
+  if (!Number.isNaN(a) && a === 100 && b >= 64 && b <= 127) return true;
   return false;
 }
 
@@ -64,7 +63,7 @@ function detectMime(imgData: Buffer): string {
 function extractDomain(site: string): string {
   return site
     .replaceAll(/^https?:\/\//g, "")
-    .replaceAll(/\/.*$/g, "")
+    .replaceAll(/\/.*$/gs, "")
     .toLowerCase()
     .trim();
 }

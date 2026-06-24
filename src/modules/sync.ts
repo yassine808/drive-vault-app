@@ -34,7 +34,7 @@ const IGNORE_PATTERNS = [
   /^\./, // hidden files
   /\.tmp$/i, // temp files
   /~$/, // backup files
-  /\.\~$/, // lock files
+  /~$/, // lock files
   /^~\$/, // Office lock files
   /\.DS_Store$/i, // macOS
   /^Thumbs\.db$/i, // Windows
@@ -59,7 +59,7 @@ function shouldIgnore(fileName: string): boolean {
   return IGNORE_PATTERNS.some((p) => p.test(fileName));
 }
 
-const RESERVED_NAMES_WINDOWS = [
+const RESERVED_NAMES_WINDOWS = new Set([
   "CON",
   "PRN",
   "AUX",
@@ -82,7 +82,7 @@ const RESERVED_NAMES_WINDOWS = [
   "LPT7",
   "LPT8",
   "LPT9",
-];
+]);
 
 function sanitizeDriveFolderName(name: string): string {
   if (typeof name !== "string") {
@@ -99,7 +99,7 @@ function sanitizeDriveFolderName(name: string): string {
 
   // Check for reserved names (Windows)
   const baseName = trimmed.split(".")[0].toUpperCase();
-  if (RESERVED_NAMES_WINDOWS.includes(baseName)) {
+  if (RESERVED_NAMES_WINDOWS.has(baseName)) {
     throw new Error(`"${trimmed}" is a reserved folder name`);
   }
 
@@ -184,6 +184,38 @@ async function computeFileHash(filePath: string): Promise<string> {
   });
 }
 
+async function walkDir(
+  dir: string,
+  localPath: string,
+  includeSet: Set<string> | null,
+  result: Map<string, { hash: string; mtime: number }>,
+): Promise<void> {
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (shouldIgnore(entry.name)) continue;
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (includeSet) {
+        const relDir = path.relative(localPath, fullPath).replaceAll("\\", "/");
+        const prefix = relDir ? relDir + "/" : "";
+        if (![...includeSet].some((p) => p.startsWith(prefix))) continue;
+      }
+      await walkDir(fullPath, localPath, includeSet, result);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const relPath = path.relative(localPath, fullPath).replaceAll("\\", "/");
+    if (includeSet && !includeSet.has(relPath)) continue;
+    try {
+      const stat = await fs.promises.stat(fullPath);
+      const hash = await computeFileHash(fullPath);
+      result.set(relPath, { hash, mtime: stat.mtimeMs });
+    } catch {
+      // skip unreadable files
+    }
+  }
+}
+
 async function walkLocalFiles(
   localPath: string,
   includePaths?: string[],
@@ -192,41 +224,12 @@ async function walkLocalFiles(
   const includeSet = includePaths?.length
     ? new Set(includePaths.map((p) => p.replaceAll("\\", "/")))
     : null;
-  async function walk(dir: string): Promise<void> {
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (shouldIgnore(entry.name)) continue;
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (includeSet) {
-          const relDir = path
-            .relative(localPath, fullPath)
-            .replaceAll("\\", "/");
-          const prefix = relDir ? relDir + "/" : "";
-          if (![...includeSet].some((p) => p.startsWith(prefix))) continue;
-        }
-        await walk(fullPath);
-      } else if (entry.isFile()) {
-        const relPath = path
-          .relative(localPath, fullPath)
-          .replaceAll("\\", "/");
-        if (includeSet && !includeSet.has(relPath)) continue;
-        try {
-          const stat = await fs.promises.stat(fullPath);
-          const hash = await computeFileHash(fullPath);
-          result.set(relPath, { hash, mtime: stat.mtimeMs });
-        } catch {
-          // skip unreadable files
-        }
-      }
-    }
-  }
-  await walk(localPath);
+  await walkDir(localPath, localPath, includeSet, result);
   return result;
 }
 
 function escapeDriveQueryValue(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+  return value.replaceAll("\\", String.raw`\\`).replaceAll("'", String.raw`\'`);
 }
 
 // ── State persistence ──
@@ -421,6 +424,195 @@ class SyncEngine {
     return created.data.id!;
   }
 
+  private async scanDriveFiles(
+    driveSubfolderId: string,
+  ): Promise<
+    Map<string, { fileId: string; modifiedTime: string; hash: string | null }>
+  > {
+    const driveFiles = new Map<
+      string,
+      { fileId: string; modifiedTime: string; hash: string | null }
+    >();
+    const drive = this.drive?.driveApi;
+    let pageToken: string | undefined;
+    do {
+      const res: any = await drive!.files.list({
+        q: `'${driveSubfolderId}' in parents and trashed=false`,
+        spaces: "drive",
+        fields: "nextPageToken, files(id, name, modifiedTime, appProperties)",
+        pageSize: 1000,
+        pageToken,
+      });
+      for (const f of res.data.files || []) {
+        if (f.name && f.id) {
+          driveFiles.set(f.name, {
+            fileId: f.id,
+            modifiedTime: f.modifiedTime || "",
+            hash: f.appProperties?.contentHash || null,
+          });
+        }
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+    return driveFiles;
+  }
+
+  private async resolveConflict(
+    relPath: string,
+    drive: { fileId: string; modifiedTime: string; hash: string | null },
+    local: { hash: string },
+    folder: SyncFolder,
+    driveSubfolderId: string,
+    newState: SyncFolderState,
+  ): Promise<{
+    uploaded: number;
+    downloaded: number;
+    errors: number;
+    resolved: boolean;
+  }> {
+    let uploaded = 0,
+      downloaded = 0,
+      errors = 0,
+      resolved = false;
+    try {
+      const conflictName = this.addConflictSuffix(relPath);
+      await this.downloadFile(
+        drive.fileId,
+        path.join(folder.localPath, conflictName),
+      );
+      newState.files[conflictName] = {
+        relativePath: conflictName,
+        localHash: drive.hash,
+        localMtime: Date.now(),
+        driveFileId: drive.fileId,
+        driveModifiedTime: drive.modifiedTime,
+        driveHash: drive.hash,
+        conflict: "none",
+      };
+      downloaded++;
+      resolved = true;
+    } catch {
+      errors++;
+    }
+    try {
+      await this.uploadFile(
+        path.join(folder.localPath, relPath),
+        relPath,
+        driveSubfolderId,
+        local.hash,
+      );
+      uploaded++;
+    } catch {
+      errors++;
+    }
+    return { uploaded, downloaded, errors, resolved };
+  }
+
+  private async syncFileChange(
+    relPath: string,
+    local: { hash: string; mtime?: number } | null,
+    drive: { fileId: string; modifiedTime: string; hash: string | null } | null,
+    prev: SyncFolderState["files"][string] | null,
+    folder: SyncFolder,
+    driveSubfolderId: string,
+    driveFiles: Map<
+      string,
+      { fileId: string; modifiedTime: string; hash: string | null }
+    >,
+    newState: SyncFolderState,
+    counters: {
+      uploaded: number;
+      downloaded: number;
+      conflicts: number;
+      errors: number;
+    },
+  ): Promise<void> {
+    newState.files[relPath] = {
+      relativePath: relPath,
+      localHash: local?.hash || null,
+      localMtime: local?.mtime || null,
+      driveFileId: drive?.fileId || null,
+      driveModifiedTime: drive?.modifiedTime || null,
+      driveHash: drive?.hash || null,
+      conflict: "none",
+    };
+
+    const localChanged = !prev || prev.localHash !== (local?.hash || null);
+    const driveChanged = !prev || prev.driveHash !== (drive?.hash || null);
+    const localExists = !!local;
+    const driveExists = !!drive;
+
+    if (localChanged && driveChanged && localExists && driveExists) {
+      newState.files[relPath].conflict = "both";
+      counters.conflicts++;
+      const r = await this.resolveConflict(
+        relPath,
+        drive!,
+        local!,
+        folder,
+        driveSubfolderId,
+        newState,
+      );
+      counters.uploaded += r.uploaded;
+      counters.downloaded += r.downloaded;
+      counters.errors += r.errors;
+      if (!r.resolved) {
+        newState.files[relPath].conflict = "both";
+      }
+      return;
+    }
+    if (localChanged && localExists) {
+      try {
+        const existingDrive = driveFiles.get(relPath);
+        if (existingDrive) {
+          await this.updateFile(
+            existingDrive.fileId,
+            path.join(folder.localPath, relPath),
+            local!.hash,
+          );
+        } else {
+          await this.uploadFile(
+            path.join(folder.localPath, relPath),
+            relPath,
+            driveSubfolderId,
+            local!.hash,
+          );
+        }
+        counters.uploaded++;
+      } catch {
+        counters.errors++;
+      }
+      return;
+    }
+    if (driveChanged && driveExists) {
+      try {
+        await this.downloadFile(
+          drive!.fileId,
+          path.join(folder.localPath, relPath),
+        );
+        counters.downloaded++;
+      } catch {
+        counters.errors++;
+      }
+      return;
+    }
+    if (!localExists && driveExists && prev && drive && this.drive?.driveApi) {
+      try {
+        await this.drive.driveApi.files.delete({ fileId: drive.fileId });
+      } catch {
+        counters.errors++;
+      }
+      return;
+    }
+    if (!driveExists && localExists && prev) {
+      try {
+        await fs.promises.unlink(path.join(folder.localPath, relPath));
+      } catch {
+        counters.errors++;
+      }
+    }
+  }
+
   // ── Two-way sync for one folder ──
   async syncFolder(folderId: string): Promise<{
     uploaded: number;
@@ -455,40 +647,13 @@ class SyncEngine {
       if (!driveSubfolderId)
         throw new Error("Could not access Drive sync folder");
 
-      // 1. Scan local files
       const localFiles = await walkLocalFiles(
         folder.localPath,
         folder.includePaths,
       );
 
-      // 2. Scan Drive files
-      const driveFiles = new Map<
-        string,
-        { fileId: string; modifiedTime: string; hash: string | null }
-      >();
-      const drive = this.drive?.driveApi;
-      let pageToken: string | undefined;
-      do {
-        const res: any = await drive.files.list({
-          q: `'${driveSubfolderId}' in parents and trashed=false`,
-          spaces: "drive",
-          fields: "nextPageToken, files(id, name, modifiedTime, appProperties)",
-          pageSize: 1000,
-          pageToken,
-        });
-        for (const f of res.data.files || []) {
-          if (f.name && f.id) {
-            driveFiles.set(f.name, {
-              fileId: f.id,
-              modifiedTime: f.modifiedTime || "",
-              hash: f.appProperties?.contentHash || null,
-            });
-          }
-        }
-        pageToken = res.data.nextPageToken || undefined;
-      } while (pageToken);
+      const driveFiles = await this.scanDriveFiles(driveSubfolderId);
 
-      // 3. Load previous state
       const state = loadState();
       const folderState: SyncFolderState = state[folderId] || {
         folderId,
@@ -500,141 +665,36 @@ class SyncEngine {
         ...Object.keys(folderState.files),
       ]);
 
-      // 4. Three-way comparison
       const newState: SyncFolderState = { folderId, files: {} };
+      const counters = { uploaded, downloaded, conflicts, errors };
 
       for (const relPath of allPaths) {
         const local = localFiles.get(relPath) || null;
         const drive = driveFiles.get(relPath) || null;
         const prev = folderState.files[relPath] || null;
-
-        newState.files[relPath] = {
-          relativePath: relPath,
-          localHash: local?.hash || null,
-          localMtime: local?.mtime || null,
-          driveFileId: drive?.fileId || null,
-          driveModifiedTime: drive?.modifiedTime || null,
-          driveHash: drive?.hash || null,
-          conflict: "none",
-        };
-
-        const localChanged = !prev || prev.localHash !== (local?.hash || null);
-        const driveChanged = !prev || prev.driveHash !== (drive?.hash || null);
-        const localExists = !!local;
-        const driveExists = !!drive;
-
-        if (localChanged && driveChanged && localExists && driveExists) {
-          // Both changed → conflict
-          newState.files[relPath].conflict = "both";
-          conflicts++;
-          // Auto-resolve: keep both (download Drive version with suffix)
-          // If either step fails, mark the file as still in conflict so it
-          // will be retried on the next sync cycle instead of silently lost.
-          let conflictResolved = false;
-          try {
-            const conflictName = this.addConflictSuffix(relPath);
-            await this.downloadFile(
-              drive!.fileId,
-              path.join(folder.localPath, conflictName),
-            );
-            newState.files[conflictName] = {
-              relativePath: conflictName,
-              localHash: drive!.hash,
-              localMtime: Date.now(),
-              driveFileId: drive!.fileId,
-              driveModifiedTime: drive!.modifiedTime,
-              driveHash: drive!.hash,
-              conflict: "none",
-            };
-            downloaded++;
-            conflictResolved = true;
-          } catch {
-            errors++;
-          }
-          // Upload local version as-is
-          try {
-            const fileHash = local!.hash;
-            await this.uploadFile(
-              path.join(folder.localPath, relPath),
-              relPath,
-              driveSubfolderId,
-              fileHash,
-            );
-            uploaded++;
-          } catch (e) {
-            errors++;
-          }
-          if (!conflictResolved) {
-            // Keep conflict flag so next sync retries
-            newState.files[relPath].conflict = "both";
-          }
-        } else if (localChanged && localExists) {
-          // Upload new/changed local file
-          try {
-            const fileHash = local!.hash;
-            const existingDrive = driveFiles.get(relPath);
-            if (existingDrive) {
-              await this.updateFile(
-                existingDrive.fileId,
-                path.join(folder.localPath, relPath),
-                fileHash,
-              );
-            } else {
-              await this.uploadFile(
-                path.join(folder.localPath, relPath),
-                relPath,
-                driveSubfolderId,
-                fileHash,
-              );
-            }
-            uploaded++;
-          } catch {
-            errors++;
-          }
-        } else if (driveChanged && driveExists) {
-          // Download new/changed Drive file
-          try {
-            await this.downloadFile(
-              drive!.fileId,
-              path.join(folder.localPath, relPath),
-            );
-            downloaded++;
-          } catch {
-            errors++;
-          }
-        } else if (!localExists && driveExists && prev) {
-          // Deleted locally → delete on Drive
-          try {
-            await this.drive?.driveApi.files.delete({
-              fileId: drive!.fileId,
-            });
-          } catch (e) {
-            errors++;
-          }
-          continue; // don't add to newState
-        } else if (!driveExists && localExists && prev) {
-          // Deleted on Drive → delete locally
-          try {
-            await fs.promises.unlink(path.join(folder.localPath, relPath));
-          } catch (e) {
-            errors++;
-          }
-          continue; // don't add to newState
-        } else if (!localExists && !driveExists) {
-          // Deleted on both sides
-          continue;
-        }
-        // If unchanged, keep in newState as-is
+        await this.syncFileChange(
+          relPath,
+          local,
+          drive,
+          prev,
+          folder,
+          driveSubfolderId,
+          driveFiles,
+          newState,
+          counters,
+        );
       }
 
-      // Clean up empty directories after deletions
+      uploaded = counters.uploaded;
+      downloaded = counters.downloaded;
+      conflicts = counters.conflicts;
+      errors = counters.errors;
+
       this.cleanupEmptyDirs(folder.localPath);
 
-      // Save state
       state[folderId] = newState;
       saveState(state);
 
-      // Update folder status
       const hasConflicts = Object.values(newState.files).some(
         (f) => f.conflict !== "none",
       );
@@ -986,9 +1046,7 @@ export function register(
           errors: totalErrors,
         });
         if (totalErrors > 0) {
-          const errored = config.folders.find((f) => f.status === "error");
-          const error =
-            errored?.errorMessage ?? `Sync failed with ${totalErrors} error(s)`;
+          const error = `Sync failed with ${totalErrors} error(s)`;
           return {
             ok: false,
             error,

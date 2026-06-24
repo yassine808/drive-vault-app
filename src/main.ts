@@ -84,9 +84,6 @@ let oauthInProgress = false;
 let oauthServer: http.Server | null = null;
 let oauth2Client: any = null;
 
-// PIN verify store (shared with pin.ts — avoids token traveling through renderer)
-import { consumePinVerify } from "./modules/pin";
-
 import * as authModule from "./modules/auth";
 import {
   deriveKey,
@@ -529,14 +526,17 @@ import { register as registerJobs } from "./modules/jobs";
 import { register as registerTotp } from "./modules/totp";
 import { register as registerSettings } from "./modules/settings";
 import { register as registerLogo } from "./modules/logo";
-import { register as registerPin, setUserDataPath } from "./modules/pin";
+import {
+  consumePinVerify,
+  register as registerPin,
+  setUserDataPath,
+} from "./modules/pin";
 import {
   register as registerAccounts,
   setUserDataPathAccounts,
 } from "./modules/accounts";
 import { register as registerSync } from "./modules/sync";
 import { DriveClient } from "./modules/drive";
-import * as cache from "./modules/cache";
 
 const getSessionFn = getSession;
 
@@ -850,7 +850,7 @@ ipcMain.handle(
       }
       if (
         typeof email !== "string" ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)
       ) {
         return { ok: false, error: "Invalid session" };
       }
@@ -979,7 +979,6 @@ ipcMain.handle(
       _e: electron.IpcMainInvokeEvent,
       { id, type }: { id: string; type: string },
     ) => {
-      const s = getSession()!;
       logger.ipcLog("vault:delete", "Delete vault item", { id, type });
       try {
         await driveSoftDelete(id, type as "password" | "note" | "job");
@@ -1024,7 +1023,6 @@ ipcMain.handle(
       _e: electron.IpcMainInvokeEvent,
       { type, items }: { type: string; items: Array<{ _localId?: string }> },
     ) => {
-      const s = getSession()!;
       logger.ipcLog("vault:reorder", "Reordering items", {
         type,
         count: items?.length,
@@ -1064,7 +1062,6 @@ ipcMain.handle(
       _e: electron.IpcMainInvokeEvent,
       { id, type }: { id: string; type: string },
     ) => {
-      const s = getSession()!;
       logger.ipcLog("trash:restore", "Restoring from trash", { id, type });
       try {
         await driveRestore(id, type as "password" | "note" | "job");
@@ -1085,7 +1082,6 @@ ipcMain.handle(
       _e: electron.IpcMainInvokeEvent,
       { id, type }: { id: string; type: string },
     ) => {
-      const s = getSession()!;
       logger.ipcLog("trash:purge", "Purging from trash", { id, type });
       try {
         await drivePermDelete(id, type as "password" | "note" | "job" | "totp");
@@ -1102,7 +1098,6 @@ ipcMain.handle(
 ipcMain.handle(
   "2fa:status",
   requireAuthNoArgs(async () => {
-    const s = getSession()!;
     logger.ipcLog("2fa:status", "Checking 2FA status");
     try {
       const d = await drive2faGet();
@@ -1152,7 +1147,6 @@ ipcMain.handle(
   "2fa:enable",
   requireAuth(
     async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
-      const s = getSession()!;
       logger.ipcLog("2fa:enable", "Enabling 2FA");
       try {
         if (isRateLimited()) {

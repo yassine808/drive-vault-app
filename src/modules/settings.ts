@@ -63,8 +63,8 @@ function validateSettings(
     return { ok: false, error: "Invalid settings" };
   }
 
-  const t = parseInt(input.lock_timeout as string);
-  if (isNaN(t) || t < 0 || t > 120) {
+  const t = Number.parseInt(input.lock_timeout as string);
+  if (Number.isNaN(t) || t < 0 || t > 120) {
     return { ok: false, error: "Lock timeout must be 0-120 minutes" };
   }
 
@@ -78,10 +78,10 @@ function validateSettings(
     ? (input.accent as ValidAccent)
     : "violet";
 
-  const gl = parseInt(input.gen_length as string);
-  const gen_length = isNaN(gl) || gl < 8 || gl > 128 ? 20 : gl;
+  const gl = Number.parseInt(input.gen_length as string);
+  const gen_length = Number.isNaN(gl) || gl < 8 || gl > 128 ? 20 : gl;
 
-  const td = parseInt(input.toast_duration as string);
+  const td = Number.parseInt(input.toast_duration as string);
   const toast_duration: ValidToastDuration = (
     VALID_TOAST_DURATIONS as readonly number[]
   ).includes(td)

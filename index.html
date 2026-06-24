@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' http://localhost:5173; script-src 'self' http://localhost:5173; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://www.google.com/s2/favicons https://*.googleusercontent.com https://api.qrserver.com; connect-src 'self' http://localhost:5173 https://*.googleapis.com https://api.pwnedpasswords.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; worker-src 'none'; frame-ancestors 'none';"
+      content="default-src 'self' http://localhost:5173; script-src 'self' http://localhost:5173; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://www.google.com/s2/favicons https://lh3.googleusercontent.com https://api.qrserver.com; connect-src 'self' http://localhost:5173 https://www.googleapis.com https://oauth2.googleapis.com https://api.pwnedpasswords.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; worker-src 'none'; frame-ancestors 'none';"
     />
     <title>Vault</title>
     <link rel="stylesheet" href="app.css" />
@@ -89,6 +89,7 @@
           placeholder="000000"
           maxlength="6"
           inputmode="numeric"
+          aria-label="6-digit verification code"
         />
         <button class="btn-primary btn-verify2fa" id="btn-verify2fa">
           Verify code
@@ -154,6 +155,7 @@
             maxlength="12"
             inputmode="numeric"
             autocomplete="off"
+            aria-label="PIN"
           />
           <button class="btn-primary btn-pin-unlock" id="btn-pin-unlock">
             Unlock
@@ -475,6 +477,7 @@
                 type="text"
                 id="pw-search"
                 placeholder="Search passwordsâ&#x20AC;¦"
+                aria-label="Search passwords"
               />
             </div>
           </div>
@@ -587,6 +590,7 @@
                 type="text"
                 id="jobs-search"
                 placeholder="Search all fieldsâ&#x20AC;¦"
+                aria-label="Search all fields"
               />
             </div>
             <div class="jobs-filter-pills">
@@ -820,6 +824,7 @@
                     min="0"
                     max="120"
                     value="5"
+                    aria-label="Auto-lock timeout in minutes"
                   /><span class="settings-suffix">min</span>
                 </div>
               </div>
@@ -831,7 +836,11 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <select class="fi" id="s-lock-action">
+                  <select
+                    class="fi"
+                    id="s-lock-action"
+                    aria-label="When timer expires"
+                  >
                     <option value="lock">Lock the app</option>
                     <option value="exit">Lock and exit</option>
                   </select>
@@ -845,7 +854,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-lock-countdown"
                     ><input
                       type="checkbox"
                       id="s-lock-countdown"
@@ -861,7 +870,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-lock-minimize"
                     ><input type="checkbox" id="s-lock-minimize" /><span
                       class="toggle-track"
                     ></span
@@ -892,7 +901,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-compact"
                     ><input type="checkbox" id="s-compact" /><span
                       class="toggle-track"
                     ></span
@@ -907,7 +916,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-animations"
                     ><input type="checkbox" id="s-animations" checked /><span
                       class="toggle-track"
                     ></span
@@ -1021,6 +1030,7 @@
                     min="8"
                     max="128"
                     value="20"
+                    aria-label="Default password length"
                   />
                 </div>
               </div>
@@ -1032,7 +1042,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-gen-symbols"
                     ><input type="checkbox" id="s-gen-symbols" checked /><span
                       class="toggle-track"
                     ></span
@@ -1047,7 +1057,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-gen-numbers"
                     ><input type="checkbox" id="s-gen-numbers" checked /><span
                       class="toggle-track"
                     ></span
@@ -1062,7 +1072,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-gen-ambiguous"
                     ><input type="checkbox" id="s-gen-ambiguous" /><span
                       class="toggle-track"
                     ></span
@@ -1077,7 +1087,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-gen-copy"
                     ><input type="checkbox" id="s-gen-copy" checked /><span
                       class="toggle-track"
                     ></span
@@ -1108,7 +1118,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-sounds"
                     ><input type="checkbox" id="s-sounds" checked /><span
                       class="toggle-track"
                     ></span
@@ -1124,12 +1134,16 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <select class="fi settings-tone" id="s-sound-login-tone">
+                  <select
+                    class="fi settings-tone"
+                    id="s-sound-login-tone"
+                    aria-label="Login sound tone"
+                  >
                     <option value="chime">Chime</option>
                     <option value="ding">Ding</option>
                     <option value="soft">Soft</option>
                     <option value="bright">Bright</option></select
-                  ><label class="toggle toggle-sm"
+                  ><label class="toggle toggle-sm" for="s-sound-login"
                     ><input type="checkbox" id="s-sound-login" checked /><span
                       class="toggle-track"
                     ></span></label
@@ -1137,6 +1151,7 @@
                     class="sound-test-btn"
                     id="btn-test-login-sound"
                     title="Test login sound"
+                    aria-label="Test login sound"
                   >
                     â&ndash;¶
                   </button>
@@ -1150,12 +1165,16 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <select class="fi settings-tone" id="s-sound-exit-tone">
+                  <select
+                    class="fi settings-tone"
+                    id="s-sound-exit-tone"
+                    aria-label="Exit/lock sound tone"
+                  >
                     <option value="chime">Chime</option>
                     <option value="ding">Ding</option>
                     <option value="soft">Soft</option>
                     <option value="bright">Bright</option></select
-                  ><label class="toggle toggle-sm"
+                  ><label class="toggle toggle-sm" for="s-sound-exit"
                     ><input type="checkbox" id="s-sound-exit" checked /><span
                       class="toggle-track"
                     ></span></label
@@ -1163,6 +1182,7 @@
                     class="sound-test-btn"
                     id="btn-test-exit-sound"
                     title="Test exit/lock sound"
+                    aria-label="Test exit/lock sound"
                   >
                     â&ndash;¶
                   </button>
@@ -1176,12 +1196,16 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <select class="fi settings-tone" id="s-sound-hover-tone">
+                  <select
+                    class="fi settings-tone"
+                    id="s-sound-hover-tone"
+                    aria-label="Hover sound tone"
+                  >
                     <option value="click">Click</option>
                     <option value="tap">Tap</option>
                     <option value="pop">Pop</option>
                     <option value="none">None</option></select
-                  ><label class="toggle toggle-sm"
+                  ><label class="toggle toggle-sm" for="s-sound-hover"
                     ><input type="checkbox" id="s-sound-hover" /><span
                       class="toggle-track"
                     ></span></label
@@ -1189,6 +1213,7 @@
                     class="sound-test-btn"
                     id="btn-test-hover-sound"
                     title="Test hover sound"
+                    aria-label="Test hover sound"
                   >
                     â&ndash;¶
                   </button>
@@ -1203,7 +1228,11 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <select class="fi" id="s-toast-duration">
+                  <select
+                    class="fi"
+                    id="s-toast-duration"
+                    aria-label="Toast duration"
+                  >
                     <option value="1500">1.5 seconds</option>
                     <option value="2400" selected>2.4 seconds</option>
                     <option value="3500">3.5 seconds</option>
@@ -1261,7 +1290,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-pin-enabled"
                     ><input type="checkbox" id="s-pin-enabled" /><span
                       class="toggle-track"
                     ></span
@@ -1282,6 +1311,7 @@
                     type="password"
                     maxlength="12"
                     placeholder="Enter PIN"
+                    aria-label="Enter PIN"
                     style="width: 140px"
                   /><button
                     class="btn-primary"
@@ -1329,6 +1359,7 @@
                     type="password"
                     maxlength="12"
                     placeholder="Current"
+                    aria-label="Current PIN"
                     style="width: 100px"
                   /><input
                     class="fi"
@@ -1336,6 +1367,7 @@
                     type="password"
                     maxlength="12"
                     placeholder="New"
+                    aria-label="New PIN"
                     style="width: 100px; margin-left: 6px"
                   /><button
                     class="btn-primary"
@@ -1354,7 +1386,7 @@
                   </div>
                 </div>
                 <div class="settings-control">
-                  <label class="toggle"
+                  <label class="toggle" for="s-pin-alpha"
                     ><input type="checkbox" id="s-pin-alpha" /><span
                       class="toggle-track"
                     ></span
@@ -1390,15 +1422,15 @@
       <div class="modal">
         <h3 id="modal-title">Add password</h3>
         <div class="fg">
-          <label>Site / App</label
+          <label for="f-site">Site / App</label
           ><input class="fi" id="f-site" placeholder="e.g. GitHub" />
         </div>
         <div class="fg">
-          <label>Email / Username</label
+          <label for="f-user">Email / Username</label
           ><input class="fi" id="f-user" placeholder="you@example.com" />
         </div>
         <div class="fg">
-          <label>Password</label>
+          <label for="f-pw">Password</label>
           <div class="pw-wrap">
             <input
               class="fi"
@@ -1438,7 +1470,7 @@
           </button>
         </div>
         <div class="fg">
-          <label>Notes (optional)</label
+          <label for="f-notes">Notes (optional)</label
           ><textarea
             class="fta"
             id="f-notes"
@@ -1491,7 +1523,7 @@
         </div>
         <div class="gen-opts">
           <div class="gen-opt">
-            <span>Length</span
+            <label for="gen-len">Length</label
             ><input
               type="range"
               min="8"
@@ -1501,19 +1533,21 @@
             /><span class="gen-num" id="gen-len-val">20</span>
           </div>
           <div class="gen-opt">
-            <span>Uppercase Aâ&#x20AC;&ldquo;Z</span
+            <label for="go-upper" class="tog-label"
+              >Uppercase Aâ&#x20AC;&ldquo;Z</label
             ><label class="tog"
               ><input type="checkbox" id="go-upper" checked /><span></span
             ></label>
           </div>
           <div class="gen-opt">
-            <span>Numbers 0â&#x20AC;&ldquo;9</span
+            <label for="go-nums" class="tog-label"
+              >Numbers 0â&#x20AC;&ldquo;9</label
             ><label class="tog"
               ><input type="checkbox" id="go-nums" checked /><span></span
             ></label>
           </div>
           <div class="gen-opt">
-            <span>Symbols !@#$â&#x20AC;¦</span
+            <label for="go-syms" class="tog-label">Symbols !@#$â&#x20AC;¦</label
             ><label class="tog"
               ><input type="checkbox" id="go-syms" checked /><span></span
             ></label>
@@ -1531,23 +1565,23 @@
       <div class="modal" style="width: 480px">
         <h3 id="job-modal-title">Add application</h3>
         <div class="fg">
-          <label>Company</label
+          <label for="j-company">Company</label
           ><input class="fi" id="j-company" placeholder="e.g. Google" />
         </div>
         <div class="fg">
-          <label>Role</label
+          <label for="j-role">Role</label
           ><input class="fi" id="j-role" placeholder="e.g. Software Engineer" />
         </div>
         <div class="fg">
-          <label>Contact email</label
+          <label for="j-email">Contact email</label
           ><input class="fi" id="j-email" placeholder="hr@company.com" />
         </div>
         <div class="fg">
-          <label>Applied date</label
+          <label for="j-date">Applied date</label
           ><input class="fi" id="j-date" type="date" />
         </div>
         <div class="fg">
-          <label>Status</label>
+          <label for="j-status-picker">Status</label>
           <div class="status-picker" id="j-status-picker">
             <button class="status-pick wait active" data-val="wait">
               â³ Waiting</button
@@ -1559,7 +1593,7 @@
           </div>
         </div>
         <div class="fg">
-          <label>Notes</label
+          <label for="j-notes">Notes</label
           ><textarea
             class="fta"
             id="j-notes"
@@ -1577,15 +1611,15 @@
       <div class="modal" style="width: 440px">
         <h3 id="totp-modal-title">Add 2FA account</h3>
         <div class="fg">
-          <label>Account name</label
+          <label for="t-name">Account name</label
           ><input class="fi" id="t-name" placeholder="e.g. GitHub, Google" />
         </div>
         <div class="fg">
-          <label>Issuer (optional)</label
+          <label for="t-issuer">Issuer (optional)</label
           ><input class="fi" id="t-issuer" placeholder="e.g. GitHub" />
         </div>
         <div class="fg">
-          <label>Secret key (from QR / setup page)</label
+          <label for="t-secret">Secret key (from QR / setup page)</label
           ><input
             class="fi"
             id="t-secret"
@@ -1597,7 +1631,7 @@
           </p>
         </div>
         <div class="fg">
-          <label>Icon (emoji)</label
+          <label for="t-icon">Icon (emoji)</label
           ><input
             class="fi"
             id="t-icon"

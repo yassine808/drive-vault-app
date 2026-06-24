@@ -1,5 +1,5 @@
 import path from "node:path";
-import fs from "fs";
+import fs from "node:fs";
 import type Electron from "electron";
 import { getPinGoogleId } from "./pin";
 

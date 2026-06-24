@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build:all
 
   typecheck:
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
 
   lint:
@@ -37,8 +37,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-      - run: npm ci
-      - run: npx prettier --check .
+      - run: npm ci --ignore-scripts
+      - run: npm exec -- prettier --check .
 
   audit:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
 
   sonar:
@@ -59,12 +59,14 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build:all
       - name: Disable Automatic Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           curl -s -X POST "https://sonarcloud.io/api/autoscan/activation" \
-            -u "${{ secrets.SONAR_TOKEN }}:" \
+            -u "${SONAR_TOKEN}:" \
             -d "projectKey=yassine808_vault-app&enable=false"
       - uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         env:
