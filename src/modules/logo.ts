@@ -62,8 +62,8 @@ function detectMime(imgData: Buffer): string {
 
 function extractDomain(site: string): string {
   return site
-    .replaceAll(/^https?:\/\//g, "")
-    .replaceAll(/\/.*$/gs, "")
+    .replace(/^https?:\/\//g, "")
+    .replace(/\/.*$/g, "")
     .toLowerCase()
     .trim();
 }
@@ -128,7 +128,7 @@ async function fetchLogo(
   if (driveClient) {
     const logos = await driveClient.loadLogos();
     const cached = logos.find((l) => l.domain === domain);
-    if (cached?.url && cached.url.startsWith("data:")) {
+    if (cached?.url?.startsWith("data:")) {
       logger.dbLog("fetchLogo", "Logo from cache", { domain });
       return cached.url;
     }

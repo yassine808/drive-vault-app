@@ -198,6 +198,8 @@ async function driveLoadTrash(
   return items;
 }
 
+type ItemType = "password" | "note" | "job" | "totp";
+
 async function driveSaveItem(
   type: string,
   item: Record<string, unknown>,
@@ -209,7 +211,7 @@ async function driveSaveItem(
   const { _localId, _sort, ...payload } = item;
   const encryptedData = enc(payload as object, encKey);
   const id = driveClient.saveItem(
-    type as "password" | "note" | "job" | "totp",
+    type as ItemType,
     encryptedData,
     _localId as string | undefined,
     _sort as number | undefined,
@@ -1186,7 +1188,6 @@ ipcMain.handle(
   "2fa:disable",
   requireAuth(
     async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
-      const s = getSession()!;
       logger.ipcLog("2fa:disable", "Disabling 2FA");
       try {
         if (isRateLimited()) {
@@ -1383,9 +1384,7 @@ function createWindow(): void {
     },
   });
   const builtIndex = path.join(__dirname, "..", "dist", "index.html");
-  if (fs.existsSync(builtIndex)) {
-    win.loadFile(builtIndex);
-  } else if (!app.isPackaged) {
+  if (!app.isPackaged) {
     win.loadURL("http://localhost:5173/index.html");
     win.webContents.openDevTools({ mode: "detach" });
   } else {

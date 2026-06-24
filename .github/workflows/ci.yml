@@ -38,7 +38,7 @@ jobs:
         with:
           node-version: 20
       - run: npm ci --ignore-scripts
-      - run: npm exec -- prettier --check .
+      - run: npx --no-install prettier --check .
 
   audit:
     runs-on: ubuntu-latest

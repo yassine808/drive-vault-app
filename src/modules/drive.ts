@@ -3,6 +3,7 @@ import type { OAuth2Client } from "googleapis-common";
 import type { drive_v3 as DriveV3 } from "googleapis";
 import * as cache from "./cache";
 import type { CacheData, CacheItem, DirtyItem } from "./cache";
+import type { ItemType } from "../types";
 
 type Logger = {
   dbLog: (ctx: string, msg: string, data?: unknown) => void;
@@ -118,39 +119,11 @@ export class DriveClient {
     this.syncTimer = null;
 
     try {
-      // Save local cache first (always keep local copy fresh)
       cache.saveCache(this.cache);
       this.cacheDirty = false;
 
-      // Process dirty queue
       const queue = [...this.cache.dirtyQueue];
-      const remaining: DirtyItem[] = [];
-
-      for (const item of queue) {
-        if (this.closed) {
-          remaining.push(item);
-          continue;
-        }
-        try {
-          await this.processDirtyItem(item);
-        } catch (e: unknown) {
-          const err = e instanceof Error ? e.message : String(e);
-          this.logger.warn("drive:sync", `Failed to sync item ${item.id}`, {
-            error: err,
-          });
-          item.retryCount++;
-          item.lastAttempt = Date.now();
-          if (item.retryCount < this.MAX_RETRIES) {
-            remaining.push(item);
-          } else {
-            this.logger.error(
-              "drive:sync",
-              `Dropping item after ${this.MAX_RETRIES} retries`,
-              { itemId: item.id },
-            );
-          }
-        }
-      }
+      const remaining = this.processDirtyQueue(queue);
 
       this.cache.dirtyQueue = remaining;
       this.cache.lastSyncedAt = Date.now();
@@ -169,6 +142,36 @@ export class DriveClient {
     } finally {
       this.syncInProgress = false;
     }
+  }
+
+  private processDirtyQueue(queue: DirtyItem[]): DirtyItem[] {
+    const remaining: DirtyItem[] = [];
+    for (const item of queue) {
+      if (this.closed) {
+        remaining.push(item);
+        continue;
+      }
+      try {
+        this.processDirtyItem(item);
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : String(e);
+        this.logger.warn("drive:sync", `Failed to sync item ${item.id}`, {
+          error: err,
+        });
+        item.retryCount++;
+        item.lastAttempt = Date.now();
+        if (item.retryCount < this.MAX_RETRIES) {
+          remaining.push(item);
+        } else {
+          this.logger.error(
+            "drive:sync",
+            `Dropping item after ${this.MAX_RETRIES} retries`,
+            { itemId: item.id },
+          );
+        }
+      }
+    }
+    return remaining;
   }
 
   private async processDirtyItem(item: DirtyItem): Promise<void> {
@@ -521,7 +524,7 @@ export class DriveClient {
   /**
    * Load all non-deleted items of a given type from local cache.
    */
-  loadItems(type: "password" | "note" | "job" | "totp"): CacheItem[] {
+  loadItems(type: ItemType): CacheItem[] {
     const arr = this.getCacheArray(type);
     return arr
       .filter((i) => !i.deletedAt)
@@ -531,7 +534,7 @@ export class DriveClient {
   /**
    * Load all soft-deleted items of a given type from local cache.
    */
-  loadTrash(type: "password" | "note" | "job"): CacheItem[] {
+  loadTrash(type: ItemType): CacheItem[] {
     const arr = this.getCacheArray(type);
     return arr
       .filter((i) => !!i.deletedAt)

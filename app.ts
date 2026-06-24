@@ -117,6 +117,17 @@ const logErr = (ctx: string, msg: string, data?: unknown): void =>
   rlog("ERROR", ctx, msg, data);
 logInfo("app", "Renderer initialized");
 
+const CLIPBOARD_CLEAR_MS = 30000;
+let _clipboardTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleClipboardClear(): void {
+  if (_clipboardTimer) clearTimeout(_clipboardTimer);
+  _clipboardTimer = setTimeout(() => {
+    navigator.clipboard.writeText("")?.catch?.(() => {});
+    logInfo("password", "Clipboard auto-cleared");
+    _clipboardTimer = null;
+  }, CLIPBOARD_CLEAR_MS);
+}
+
 // ═══ UTILS ════════════════════════════════════════════════════════════════════
 const uid = (): string => {
   const buf = new Uint8Array(8);
@@ -127,7 +138,7 @@ const uid = (): string => {
   return Date.now().toString(36) + rnd;
 };
 const wc = (t: unknown): number => {
-  const s = String(t ?? "").trim();
+  const s = t == null ? "" : String(t).trim();
   return s ? s.split(/\s+/).length : 0;
 };
 const days = (d: string): number =>
@@ -1236,6 +1247,96 @@ function buildFileStatusIcon(fs: {
   return '<span class="sync-status-icon"></span>';
 }
 
+function buildFileTreeEl(
+  files: Record<
+    string,
+    { conflict: string; localHash: string | null; driveHash: string | null }
+  >,
+  expandId: string,
+): HTMLDivElement {
+  const fileTree = document.createElement("div");
+  fileTree.className = "sync-file-tree";
+  fileTree.id = expandId;
+  fileTree.hidden = true;
+  const sortedFiles = Object.entries(files).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  );
+  for (const [relPath, fs] of sortedFiles) {
+    const fileRow = document.createElement("div");
+    fileRow.className = "sync-file-row";
+    const fileName = relPath.split("/").pop() || relPath;
+    const fileIcon = buildFileStatusIcon(fs);
+    fileRow.innerHTML =
+      '<div class="sync-file-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="sync-file-name" title="' +
+      escHtml(relPath) +
+      '">' +
+      escHtml(fileName) +
+      '</div><div class="sync-file-detail">' +
+      escHtml(
+        relPath.includes("/") ? relPath.split("/").slice(0, -1).join("/") : "",
+      ) +
+      "</div>" +
+      fileIcon;
+    fileTree.appendChild(fileRow);
+  }
+  if (!sortedFiles.length) {
+    fileTree.innerHTML =
+      '<div class="sync-file-empty">No files synced yet</div>';
+  }
+  return fileTree;
+}
+
+function buildFolderRowHTML(
+  folder: {
+    id: string;
+    localPath: string;
+    driveFolderName?: string;
+    status: string;
+    lastSyncAt?: number | null;
+  },
+  hasConflict: boolean,
+  allSynced: boolean,
+  sc: string,
+  st: string,
+  statusIcon: string,
+  fileCount: number,
+  expandId: string,
+): string {
+  const driveTarget = folder.driveFolderName
+    ? "Vault/sync/" + folder.driveFolderName + "/"
+    : "Vault/sync/";
+  return (
+    '<div class="sync-folder-drag"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.3"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div>' +
+    '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>' +
+    '<div class="sync-folder-info"><div class="sync-folder-path" title="' +
+    escHtml(folder.localPath) +
+    '">' +
+    escHtml(folder.localPath) +
+    '</div><div class="sync-folder-detail">→ ' +
+    escHtml(driveTarget) +
+    ' · <span class="sync-status ' +
+    sc +
+    '">' +
+    escHtml(st) +
+    "</span>" +
+    "</span>" +
+    (fileCount
+      ? " · " + fileCount + " file" + (fileCount !== 1 ? "s" : "")
+      : "") +
+    "</div></div>" +
+    statusIcon +
+    '<div class="sync-folder-actions"><button class="icon-btn sync-folder-expand" data-expand="' +
+    expandId +
+    '" title="Show files"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button><label class="toggle toggle-sm"><input type="checkbox" class="sync-folder-toggle" ' +
+    (folder.enabled ? "checked" : "") +
+    ' data-folder-id="' +
+    folder.id +
+    '" /><span class="toggle-track"></span></label><button class="icon-btn sync-folder-remove" data-folder-id="' +
+    folder.id +
+    '" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>'
+  );
+}
+
 async function loadSyncFolders() {
   const r = await api.sync.foldersList();
   if (!r.ok) {
@@ -1277,7 +1378,6 @@ async function loadSyncFolders() {
   for (const folder of r.folders) {
     const files = _fileStates[folder.id] || {};
     const fileCount = Object.keys(files).length;
-    // Aggregate status from files
     const hasConflict = Object.values(files).some(
       (f) => f.conflict && f.conflict !== "none",
     );
@@ -1298,72 +1398,18 @@ async function loadSyncFolders() {
     row.className = "sync-folder-row";
     row.id = "sync-folder-" + folder.id;
     row.dataset.folderId = folder.id;
-    // Build folder row with expandable file tree
     const expandId = "sync-files-" + folder.id;
-    const driveTarget = folder.driveFolderName
-      ? "Vault/sync/" + folder.driveFolderName + "/"
-      : "Vault/sync/";
-    row.innerHTML =
-      '<div class="sync-folder-drag"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.3"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div>' +
-      '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>' +
-      '<div class="sync-folder-info"><div class="sync-folder-path" title="' +
-      escHtml(folder.localPath) +
-      '">' +
-      escHtml(folder.localPath) +
-      '</div><div class="sync-folder-detail">→ ' +
-      escHtml(driveTarget) +
-      ' · <span class="sync-status ' +
-      sc +
-      '">' +
-      escHtml(st) +
-      "</span>" +
-      (fileCount
-        ? " · " + fileCount + " file" + (fileCount !== 1 ? "s" : "")
-        : "") +
-      "</div></div>" +
-      statusIcon +
-      '<div class="sync-folder-actions"><button class="icon-btn sync-folder-expand" data-expand="' +
-      expandId +
-      '" title="Show files"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button><label class="toggle toggle-sm"><input type="checkbox" class="sync-folder-toggle" ' +
-      (folder.enabled ? "checked" : "") +
-      ' data-folder-id="' +
-      folder.id +
-      '" /><span class="toggle-track"></span></label><button class="icon-btn sync-folder-remove" data-folder-id="' +
-      folder.id +
-      '" title="Remove"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
-    // File tree container (hidden by default)
-    const fileTree = document.createElement("div");
-    fileTree.className = "sync-file-tree";
-    fileTree.id = expandId;
-    fileTree.hidden = true;
-    // Build file rows
-    const sortedFiles = Object.entries(files).sort((a, b) =>
-      a[0].localeCompare(b[0]),
+    row.innerHTML = buildFolderRowHTML(
+      folder,
+      hasConflict,
+      allSynced,
+      sc,
+      st,
+      statusIcon,
+      fileCount,
+      expandId,
     );
-    for (const [relPath, fs] of sortedFiles) {
-      const fileRow = document.createElement("div");
-      fileRow.className = "sync-file-row";
-      const fileName = relPath.split("/").pop() || relPath;
-      const fileIcon = buildFileStatusIcon(fs);
-      fileRow.innerHTML =
-        '<div class="sync-file-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="sync-file-name" title="' +
-        escHtml(relPath) +
-        '">' +
-        escHtml(fileName) +
-        '</div><div class="sync-file-detail">' +
-        escHtml(
-          relPath.includes("/")
-            ? relPath.split("/").slice(0, -1).join("/")
-            : "",
-        ) +
-        "</div>" +
-        fileIcon;
-      fileTree.appendChild(fileRow);
-    }
-    if (!sortedFiles.length) {
-      fileTree.innerHTML =
-        '<div class="sync-file-empty">No files synced yet</div>';
-    }
+    const fileTree = buildFileTreeEl(files, expandId);
     list.appendChild(row);
     list.appendChild(fileTree);
   }
@@ -1885,10 +1931,7 @@ function renderPasswords(): void {
       navigator.clipboard.writeText(pw.password || "");
       toast("Password copied! (clipboard clears in 30s)");
       logInfo("password", "Password copied to clipboard", { site: pw.site });
-      setTimeout(() => {
-        navigator.clipboard.writeText("")?.catch?.(() => {});
-        logInfo("password", "Clipboard auto-cleared");
-      }, 30000);
+      scheduleClipboardClear();
     };
     editBtn.onclick = () => {
       logInfo("password", "Edit password", { site: pw.site });
@@ -2600,96 +2643,7 @@ function renderJobsTable(): void {
     delTd.appendChild(delJobBtn);
     tr.appendChild(delTd);
 
-    (tr.querySelector(".copy-email-btn") as HTMLButtonElement).onclick = (
-      e: MouseEvent,
-    ) => {
-      e.stopPropagation();
-      navigator.clipboard.writeText(job.email || "");
-      toast("Email copied!");
-      logInfo("jobs", "Email copied", { company: job.company });
-    };
-
-    tr.querySelectorAll(".editable-cell").forEach((td) => {
-      td.addEventListener("dblclick", () => {
-        const field = (td as HTMLElement).dataset.field as keyof Job;
-        const current = job[field] || "";
-        logInfo("jobs", "Inline edit started", {
-          jobId: job.id,
-          field,
-          company: job.company,
-        });
-        const inp = document.createElement("input");
-        inp.type = field === "applied_at" ? "date" : "text";
-        inp.value = String(current);
-        inp.className = "inline-cell-input";
-        td.innerHTML = "";
-        td.appendChild(inp);
-        inp.focus();
-        inp.select();
-        const save = () => saveInlineJobEdit(job, field, inp);
-        inp.addEventListener("blur", save);
-        inp.addEventListener("keydown", (e: KeyboardEvent) => {
-          if (e.key === "Enter") inp.blur();
-          if (e.key === "Escape") cancelInlineEdit(td, field, job, current);
-        });
-      });
-    });
-
-    (tr.querySelector(".job-status-cell") as HTMLElement).addEventListener(
-      "click",
-      (e: MouseEvent) => {
-        e.stopPropagation();
-        _statusPopupJob = job;
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        popup.style.top = rect.bottom + 4 + "px";
-        popup.style.left = rect.left + "px";
-        show("status-popup");
-      },
-    );
-
-    (tr.querySelector(".del-job-btn") as HTMLButtonElement).onclick = () => {
-      confirm({
-        title: "Move to Trash?",
-        msg: `"${job.company}" will be moved to Trash.`,
-        icon: "🗑️",
-        okLabel: "Move to Trash",
-        onOk: () => moveJobToTrash(job),
-      });
-    };
-
-    tr.addEventListener("dragstart", (e: DragEvent) => {
-      dragSrc = tr;
-      tr.classList.add("dragging");
-      e.dataTransfer!.effectAllowed = "move";
-      e.dataTransfer!.setData("text/plain", "");
-    });
-    tr.addEventListener("dragend", () => {
-      tr.classList.remove("dragging");
-      dragSrc = null;
-    });
-    tr.addEventListener("dragover", (e: DragEvent) => {
-      e.preventDefault();
-      e.dataTransfer!.dropEffect = "move";
-      if (dragSrc && dragSrc !== tr && dragSrc.tagName === "TR") {
-        const rows = [
-          ...tbody.querySelectorAll("tr.draggable"),
-        ] as HTMLElement[];
-        const si = rows.indexOf(dragSrc),
-          ti = rows.indexOf(tr);
-        if (si < ti) tr.after(dragSrc);
-        else tr.before(dragSrc);
-      }
-    });
-    tr.addEventListener("drop", (e: DragEvent) => {
-      e.preventDefault();
-      const newOrder = [...tbody.querySelectorAll("tr.draggable")].map(
-        (r) => (r as HTMLElement).dataset.id,
-      );
-      S.jobs = newOrder
-        .map((id) => S.jobs.find((j) => String(j.id) === id))
-        .filter(Boolean) as Job[];
-      api.jobsReorder(S.jobs);
-    });
+    bindJobRow(tr, job, popup, tbody);
     tbody.appendChild(tr);
   });
 }
@@ -2721,6 +2675,106 @@ function cancelInlineEdit(
   } else {
     td.textContent = String(current);
   }
+}
+
+function bindInlineEdit(td: HTMLElement, job: Job): void {
+  td.addEventListener("dblclick", () => {
+    const field = (td as HTMLElement).dataset.field as keyof Job;
+    const current = job[field] || "";
+    logInfo("jobs", "Inline edit started", {
+      jobId: job.id,
+      field,
+      company: job.company,
+    });
+    const inp = document.createElement("input");
+    inp.type = field === "applied_at" ? "date" : "text";
+    inp.value = String(current);
+    inp.className = "inline-cell-input";
+    td.innerHTML = "";
+    td.appendChild(inp);
+    inp.focus();
+    inp.select();
+    const save = () => saveInlineJobEdit(job, field, inp);
+    inp.addEventListener("blur", save);
+    inp.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter") inp.blur();
+      if (e.key === "Escape") cancelInlineEdit(td, field, job, current);
+    });
+  });
+}
+
+function bindJobRow(
+  tr: HTMLElement,
+  job: Job,
+  popup: HTMLElement,
+  tbody: HTMLElement,
+): void {
+  (tr.querySelector(".copy-email-btn") as HTMLButtonElement).onclick = (
+    e: MouseEvent,
+  ) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(job.email || "");
+    toast("Email copied!");
+    logInfo("jobs", "Email copied", { company: job.company });
+  };
+
+  tr.querySelectorAll(".editable-cell").forEach((td) => {
+    bindInlineEdit(td as HTMLElement, job);
+  });
+
+  (tr.querySelector(".job-status-cell") as HTMLElement).addEventListener(
+    "click",
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      _statusPopupJob = job;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      popup.style.top = rect.bottom + 4 + "px";
+      popup.style.left = rect.left + "px";
+      show("status-popup");
+    },
+  );
+
+  (tr.querySelector(".del-job-btn") as HTMLButtonElement).onclick = () => {
+    confirm({
+      title: "Move to Trash?",
+      msg: `"${job.company}" will be moved to Trash.`,
+      icon: "🗑️",
+      okLabel: "Move to Trash",
+      onOk: () => moveJobToTrash(job),
+    });
+  };
+
+  tr.addEventListener("dragstart", (e: DragEvent) => {
+    dragSrc = tr;
+    tr.classList.add("dragging");
+    e.dataTransfer!.effectAllowed = "move";
+    e.dataTransfer!.setData("text/plain", "");
+  });
+  tr.addEventListener("dragend", () => {
+    tr.classList.remove("dragging");
+    dragSrc = null;
+  });
+  tr.addEventListener("dragover", (e: DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+    if (dragSrc && dragSrc !== tr && dragSrc.tagName === "TR") {
+      const rows = [...tbody.querySelectorAll("tr.draggable")] as HTMLElement[];
+      const si = rows.indexOf(dragSrc),
+        ti = rows.indexOf(tr);
+      if (si < ti) tr.after(dragSrc);
+      else tr.before(dragSrc);
+    }
+  });
+  tr.addEventListener("drop", (e: DragEvent) => {
+    e.preventDefault();
+    const newOrder = [...tbody.querySelectorAll("tr.draggable")].map(
+      (r) => (r as HTMLElement).dataset.id,
+    );
+    S.jobs = newOrder
+      .map((id) => S.jobs.find((j) => String(j.id) === id))
+      .filter(Boolean) as Job[];
+    api.jobsReorder(S.jobs);
+  });
 }
 
 async function moveJobToTrash(job: Job): Promise<void> {
@@ -3209,7 +3263,7 @@ async function loadSettingsTab(): Promise<void> {
       )[key];
     else {
       const raw = (S.settings as unknown as Record<string, unknown>)[key];
-      el.value = raw != null ? String(raw) : "";
+      el.value = raw == null ? "" : String(raw);
     }
     el.addEventListener("change", () => {
       let val: unknown;
@@ -3265,6 +3319,27 @@ async function loadSettingsTab(): Promise<void> {
   if (pinDeleteRow) pinDeleteRow.hidden = !_pinFileExists;
   if (pinDeleteDivider) pinDeleteDivider.hidden = !_pinFileExists;
 
+  function showPinChangeDeleteView(): void {
+    if (pinSetupRow) pinSetupRow.hidden = true;
+    if (pinChangeRow) pinChangeRow.hidden = false;
+    if (pinDeleteRow) pinDeleteRow.hidden = false;
+    if (pinDeleteDivider) pinDeleteDivider.hidden = false;
+  }
+
+  function showPinSetupView(): void {
+    if (pinSetupRow) pinSetupRow.hidden = false;
+    if (pinChangeRow) pinChangeRow.hidden = true;
+    if (pinDeleteRow) pinDeleteRow.hidden = true;
+    if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+  }
+
+  function hideAllPinRows(): void {
+    if (pinSetupRow) pinSetupRow.hidden = true;
+    if (pinChangeRow) pinChangeRow.hidden = true;
+    if (pinDeleteRow) pinDeleteRow.hidden = true;
+    if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+  }
+
   // PIN enable toggle handler
   const pinEnabledEl = document.getElementById(
     "s-pin-enabled",
@@ -3274,26 +3349,13 @@ async function loadSettingsTab(): Promise<void> {
       const enabled = pinEnabledEl.checked;
       S.settings.pin_login_enabled = enabled;
       if (enabled) {
-        // When enabling, check if PIN file already exists
         if (_pinFileExists) {
-          // PIN already set — show change/delete, hide setup
-          if (pinSetupRow) pinSetupRow.hidden = true;
-          if (pinChangeRow) pinChangeRow.hidden = false;
-          if (pinDeleteRow) pinDeleteRow.hidden = false;
-          if (pinDeleteDivider) pinDeleteDivider.hidden = false;
+          showPinChangeDeleteView();
         } else {
-          // No PIN yet — show setup
-          if (pinSetupRow) pinSetupRow.hidden = false;
-          if (pinChangeRow) pinChangeRow.hidden = true;
-          if (pinDeleteRow) pinDeleteRow.hidden = true;
-          if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+          showPinSetupView();
         }
       } else {
-        // When disabling, hide all PIN rows
-        if (pinSetupRow) pinSetupRow.hidden = true;
-        if (pinChangeRow) pinChangeRow.hidden = true;
-        if (pinDeleteRow) pinDeleteRow.hidden = true;
-        if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+        hideAllPinRows();
       }
       __saveSettings();
       toast(
@@ -3322,6 +3384,14 @@ async function loadSettingsTab(): Promise<void> {
     });
   }
 
+  function switchToPinChangeDeleteView(): void {
+    _pinFileExists = true;
+    S.settings.pin_login_enabled = true;
+    showPinChangeDeleteView();
+    if (pinEnabledEl) pinEnabledEl.checked = true;
+    __saveSettings();
+  }
+
   // Set PIN button
   document.getElementById("s-pin-save")?.addEventListener("click", async () => {
     const pinVal = (document.getElementById("s-pin-value") as HTMLInputElement)
@@ -3329,16 +3399,8 @@ async function loadSettingsTab(): Promise<void> {
     logInfo("pin", "Set PIN clicked");
     const r = await api.pin.setup(pinVal, S.settings.pin_allow_alpha);
     if (!r.ok) {
-      // PIN already exists — make it obvious by showing change/delete rows
       if (r.error?.includes("already set")) {
-        _pinFileExists = true;
-        S.settings.pin_login_enabled = true;
-        if (pinSetupRow) pinSetupRow.hidden = true;
-        if (pinChangeRow) pinChangeRow.hidden = false;
-        if (pinDeleteRow) pinDeleteRow.hidden = false;
-        if (pinDeleteDivider) pinDeleteDivider.hidden = false;
-        if (pinEnabledEl) pinEnabledEl.checked = true;
-        __saveSettings();
+        switchToPinChangeDeleteView();
         toast("PIN is already set — you can change or delete it below", 3000);
       } else {
         toast(r.error || "Failed to set PIN");
@@ -3349,15 +3411,7 @@ async function loadSettingsTab(): Promise<void> {
     toast("PIN set successfully");
     logOk("pin", "PIN set");
     (document.getElementById("s-pin-value") as HTMLInputElement).value = "";
-    // Switch to change/disable view
-    _pinFileExists = true;
-    S.settings.pin_login_enabled = true;
-    if (pinSetupRow) pinSetupRow.hidden = true;
-    if (pinChangeRow) pinChangeRow.hidden = false;
-    if (pinDeleteRow) pinDeleteRow.hidden = false;
-    if (pinDeleteDivider) pinDeleteDivider.hidden = false;
-    if (pinEnabledEl) pinEnabledEl.checked = true;
-    __saveSettings();
+    switchToPinChangeDeleteView();
   });
 
   // Change PIN button

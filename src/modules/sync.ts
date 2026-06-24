@@ -195,24 +195,42 @@ async function walkDir(
     if (shouldIgnore(entry.name)) continue;
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (includeSet) {
-        const relDir = path.relative(localPath, fullPath).replaceAll("\\", "/");
-        const prefix = relDir ? relDir + "/" : "";
-        if (![...includeSet].some((p) => p.startsWith(prefix))) continue;
-      }
-      await walkDir(fullPath, localPath, includeSet, result);
+      await walkDirDirEntry(fullPath, localPath, includeSet, result);
       continue;
     }
     if (!entry.isFile()) continue;
-    const relPath = path.relative(localPath, fullPath).replaceAll("\\", "/");
-    if (includeSet && !includeSet.has(relPath)) continue;
-    try {
-      const stat = await fs.promises.stat(fullPath);
-      const hash = await computeFileHash(fullPath);
-      result.set(relPath, { hash, mtime: stat.mtimeMs });
-    } catch {
-      // skip unreadable files
-    }
+    await walkDirFileEntry(fullPath, localPath, includeSet, result);
+  }
+}
+
+async function walkDirDirEntry(
+  fullPath: string,
+  localPath: string,
+  includeSet: Set<string> | null,
+  result: Map<string, { hash: string; mtime: number }>,
+): Promise<void> {
+  if (includeSet) {
+    const relDir = path.relative(localPath, fullPath).replaceAll("\\", "/");
+    const prefix = relDir ? relDir + "/" : "";
+    if (![...includeSet].some((p) => p.startsWith(prefix))) return;
+  }
+  await walkDir(fullPath, localPath, includeSet, result);
+}
+
+async function walkDirFileEntry(
+  fullPath: string,
+  localPath: string,
+  includeSet: Set<string> | null,
+  result: Map<string, { hash: string; mtime: number }>,
+): Promise<void> {
+  const relPath = path.relative(localPath, fullPath).replaceAll("\\", "/");
+  if (includeSet && !includeSet.has(relPath)) return;
+  try {
+    const stat = await fs.promises.stat(fullPath);
+    const hash = await computeFileHash(fullPath);
+    result.set(relPath, { hash, mtime: stat.mtimeMs });
+  } catch {
+    // skip unreadable files
   }
 }
 
@@ -508,25 +526,37 @@ class SyncEngine {
     return { uploaded, downloaded, errors, resolved };
   }
 
-  private async syncFileChange(
-    relPath: string,
-    local: { hash: string; mtime?: number } | null,
-    drive: { fileId: string; modifiedTime: string; hash: string | null } | null,
-    prev: SyncFolderState["files"][string] | null,
-    folder: SyncFolder,
-    driveSubfolderId: string,
+  private async syncFileChange(opts: {
+    relPath: string;
+    local: { hash: string; mtime?: number } | null;
+    drive: { fileId: string; modifiedTime: string; hash: string | null } | null;
+    prev: SyncFolderState["files"][string] | null;
+    folder: SyncFolder;
+    driveSubfolderId: string;
     driveFiles: Map<
       string,
       { fileId: string; modifiedTime: string; hash: string | null }
-    >,
-    newState: SyncFolderState,
+    >;
+    newState: SyncFolderState;
     counters: {
       uploaded: number;
       downloaded: number;
       conflicts: number;
       errors: number;
-    },
-  ): Promise<void> {
+    };
+  }): Promise<void> {
+    const {
+      relPath,
+      local,
+      drive,
+      prev,
+      folder,
+      driveSubfolderId,
+      driveFiles,
+      newState,
+      counters,
+    } = opts;
+
     newState.files[relPath] = {
       relativePath: relPath,
       localHash: local?.hash || null,
@@ -537,8 +567,8 @@ class SyncEngine {
       conflict: "none",
     };
 
-    const localChanged = !prev || prev.localHash !== (local?.hash || null);
-    const driveChanged = !prev || prev.driveHash !== (drive?.hash || null);
+    const localChanged = !prev || prev.localHash !== local?.hash;
+    const driveChanged = !prev || prev.driveHash !== drive?.hash;
     const localExists = !!local;
     const driveExists = !!drive;
 
@@ -562,38 +592,18 @@ class SyncEngine {
       return;
     }
     if (localChanged && localExists) {
-      try {
-        const existingDrive = driveFiles.get(relPath);
-        if (existingDrive) {
-          await this.updateFile(
-            existingDrive.fileId,
-            path.join(folder.localPath, relPath),
-            local!.hash,
-          );
-        } else {
-          await this.uploadFile(
-            path.join(folder.localPath, relPath),
-            relPath,
-            driveSubfolderId,
-            local!.hash,
-          );
-        }
-        counters.uploaded++;
-      } catch {
-        counters.errors++;
-      }
+      await this.syncLocalChanged(
+        relPath,
+        local!,
+        folder,
+        driveSubfolderId,
+        driveFiles,
+        counters,
+      );
       return;
     }
     if (driveChanged && driveExists) {
-      try {
-        await this.downloadFile(
-          drive!.fileId,
-          path.join(folder.localPath, relPath),
-        );
-        counters.downloaded++;
-      } catch {
-        counters.errors++;
-      }
+      await this.syncDriveChanged(relPath, drive!, folder, counters);
       return;
     }
     if (!localExists && driveExists && prev && drive && this.drive?.driveApi) {
@@ -610,6 +620,56 @@ class SyncEngine {
       } catch {
         counters.errors++;
       }
+    }
+  }
+
+  private async syncLocalChanged(
+    relPath: string,
+    local: { hash: string; mtime?: number },
+    folder: SyncFolder,
+    driveSubfolderId: string,
+    driveFiles: Map<
+      string,
+      { fileId: string; modifiedTime: string; hash: string | null }
+    >,
+    counters: { uploaded: number; errors: number },
+  ): Promise<void> {
+    try {
+      const existingDrive = driveFiles.get(relPath);
+      if (existingDrive) {
+        await this.updateFile(
+          existingDrive.fileId,
+          path.join(folder.localPath, relPath),
+          local.hash,
+        );
+      } else {
+        await this.uploadFile(
+          path.join(folder.localPath, relPath),
+          relPath,
+          driveSubfolderId,
+          local.hash,
+        );
+      }
+      counters.uploaded++;
+    } catch {
+      counters.errors++;
+    }
+  }
+
+  private async syncDriveChanged(
+    relPath: string,
+    drive: { fileId: string; modifiedTime: string; hash: string | null },
+    folder: SyncFolder,
+    counters: { downloaded: number; errors: number },
+  ): Promise<void> {
+    try {
+      await this.downloadFile(
+        drive.fileId,
+        path.join(folder.localPath, relPath),
+      );
+      counters.downloaded++;
+    } catch {
+      counters.errors++;
     }
   }
 
@@ -672,7 +732,7 @@ class SyncEngine {
         const local = localFiles.get(relPath) || null;
         const drive = driveFiles.get(relPath) || null;
         const prev = folderState.files[relPath] || null;
-        await this.syncFileChange(
+        await this.syncFileChange({
           relPath,
           local,
           drive,
@@ -682,7 +742,7 @@ class SyncEngine {
           driveFiles,
           newState,
           counters,
-        );
+        });
       }
 
       uploaded = counters.uploaded;
