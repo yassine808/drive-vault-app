@@ -110,127 +110,83 @@ Vault is an **Electron desktop application** for secure local storage of sensiti
 
 ### Process Model
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
-skinparam componentStyle rectangle
+```mermaid
+graph TB
+    subgraph Renderer["Renderer Process"]
+        R["app.ts\n(index.html + app.css)"]
+    end
 
-title Vault — Process Model
+    subgraph Preload["Preload Bridge"]
+        P["preload.ts\n(contextBridge)"]
+    end
 
-package "Renderer Process" {
-  [app.ts\n(index.html + app.css)] as Renderer
-  note right of Renderer
-    Vanilla TypeScript
-    Vite/esbuild bundle
-    No framework
-  end note
-}
+    subgraph Main["Main Process"]
+        M["main.ts\n(~1550 lines)"]
+        MOD["modules/"]
+        CRYPTO["Crypto\nAES-256-CBC+HMAC"]
+        AUTH["Session + 2FA"]
+        OAUTH["OAuth Server\n127.0.0.1:42813"]
+        LOGGER["Logger\nPer-level files"]
+    end
 
-package "Preload Bridge" {
-  [preload.ts\n(contextBridge)] as Preload
-  note right of Preload
-    sessionToken in closure
-    Auto-prepended to sensitive IPC
-    Exposes window.api
-  end note
-}
+    subgraph Drive["Google Drive"]
+        VF["Vault/"]
+        PW["passwords/"]
+        NOTES["notes/"]
+        JOBS["jobs/"]
+        TOTP["totp/"]
+        SETTINGS["settings/"]
+        SYNC["sync/"]
+    end
 
-package "Main Process" {
-  [main.ts\n(~1550 lines)] as Main
-  [modules/] as Modules
-  [Crypto\nAES-256-CBC+HMAC] as Crypto
-  [Auth\nSession + 2FA] as Auth
-  [OAuth Server\n127.0.0.1:42813] as OAuth
-  [Logger\nPer-level files] as Logger
+    subgraph Cache["Local Cache"]
+        CF["vault_cache.json"]
+    end
 
-  database "Google Drive" as Drive {
-    [Vault/] as VaultFolder
-    [passwords/] as PW
-    [notes/] as Notes
-    [jobs/] as Jobs
-    [totp/] as TOTP
-    [settings/] as Settings
-    [sync/] as Sync
-  }
+    subgraph Local["Local Files"]
+        PIN["vault_user_key\n(PIN)"]
+        ACC["vault_accounts\n(Saved)"]
+        UIS["vault_settings\n(UI)"]
+        LOGS["Logs/"]
+    end
 
-  database "Local Cache" as Cache {
-    [vault_cache.json] as CacheFile
-  }
-
-  folder "Local Files" as Local {
-    [vault_user_key\n(PIN)] as PIN
-    [vault_accounts\n(Saved)] as Accounts
-    [vault_settings\n(UI)] as UISettings
-    [Logs/] as Logs
-  }
-}
-
-Renderer --> Preload : window.api.*()
-Preload --> Main : IPC (contextBridge)
-Main --> Crypto : enc() / dec()
-Main --> Auth : requireAuth() / requireAuthNoArgs()
-Main --> OAuth : googleOAuth()
-OAuth --> Drive : googleapis (Drive v3)
-Main --> Cache : loadCache() / saveCache()
-Main --> Logger : info() / error() / authLog() / ...
-Main --> Local : fs (PIN, accounts, settings)
-Main --> Modules : registerJobs(), registerTotp(), ...
-
-Modules --> Drive : DriveClient
-Modules --> Cache : DriveClient.cache
-Modules --> Crypto : enc() / dec()
-
-@enduml
+    R -->|window.api.*()| P
+    P -->|IPC| M
+    M -->|enc/dec| CRYPTO
+    M -->|requireAuth| AUTH
+    M -->|googleOAuth| OAUTH
+    OAUTH -->|googleapis| Drive
+    M -->|load/save| Cache
+    M -->|info/error/authLog| LOGGER
+    M -->|fs| Local
+    M -->|registerJobs/Totp| MOD
+    MOD -->|DriveClient| Drive
+    MOD -->|cache| Cache
+    MOD -->|enc/dec| CRYPTO
 ```
 
 ### Module Registration Pattern
 
 All domain modules export a `register()` function called inside `app.whenReady()`. Each receives a standard set of dependencies:
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
+```mermaid
+graph LR
+    E["main.ts\napp.whenReady()"]
+    J["registerJobs()"]
+    T["registerTotp()"]
+    S["registerSettings()"]
+    L["registerLogo()"]
+    P["registerPin()"]
+    A["registerAccounts()"]
+    SY["registerSync()"]
 
-title Module Registration Pattern
-
-rectangle "main.ts\napp.whenReady()" as Entry
-rectangle "registerJobs()" as Jobs
-rectangle "registerTotp()" as Totp
-rectangle "registerSettings()" as Settings
-rectangle "registerLogo()" as Logo
-rectangle "registerPin()" as Pin
-rectangle "registerAccounts()" as Accounts
-rectangle "registerSync()" as Sync
-
-Entry --> Jobs
-Entry --> Totp
-Entry --> Settings
-Entry --> Logo
-Entry --> Pin
-Entry --> Accounts
-Entry --> Sync
-
-note bottom of Jobs
-  ipcMain, requireAuth, requireAuthNoArgs,
-  driveClient, validation, getSession,
-  logger, enc, dec, logError
-end note
-
-note bottom of Pin
-  ipcMain, requireAuth, requireAuthNoArgs,
-  getSession, logger, logError,
-  driveClient, setUserDataPath()
-end note
-
-note bottom of Sync
-  ipcMain, requireAuth, requireAuthNoArgs,
-  driveClient, getSession, logger, logError
-  Returns { updateDriveClient }
-end note
-
-@enduml
+    E --> J
+    E --> T
+    E --> S
+    E --> L
+    E --> P
+    E --> A
+    E --> SY
 ```
 
 ### File Structure
@@ -265,56 +221,34 @@ end note
 
 #### Algorithm: AES-256-CBC + HMAC-SHA256 (Encrypt-then-MAC)
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
-
-title Encryption Flow (enc)
-
-start
-:Input: plaintext object;
-:JSON.stringify(plaintext);
-:Generate random 16-byte IV;
-:encKey = SHA-256(hexKey);
-:macKey = SHA-256(hexKey + "mac");
-:AES-256-CBC encrypt with encKey + IV;
-:Compute HMAC-SHA256 over (IV || ciphertext) using macKey;
-:Pack: HMAC(32) || IV(16) || ciphertext;
-:Base64 encode;
-stop
-
-@enduml
+```mermaid
+flowchart TD
+    A[Plaintext object] -->|JSON.stringify| B[Plaintext string]
+    B --> C[Generate random 16-byte IV]
+    C --> D[encKey = SHA-256(hexKey)]
+    C --> E[macKey = SHA-256(hexKey + "mac")]
+    D --> F[AES-256-CBC encrypt]
+    E --> G[HMAC-SHA256 over IV + ciphertext]
+    F --> H[Pack: HMAC || IV || ciphertext]
+    G --> H
+    H -->|Base64 encode| I[Base64 string]
 ```
 
 #### Decryption Flow
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
-
-title Decryption Flow (dec)
-
-start
-:Input: base64 string;
-if (starts with "U2FsdGVk"?) then (yes — legacy)
-  :CryptoJS.AES.decrypt(str, key);
-else (no — new format)
-  :Base64 decode;
-  :Extract HMAC(32), IV(16), ciphertext;
-  :Recompute HMAC-SHA256(IV || ct) with macKey;
-  if (timingSafeEqual?) then (yes)
-    :AES-256-CBC decrypt with encKey + IV;
-    :JSON.parse plaintext;
-  else (no)
-    :Return null (tampered);
-  endif
-endif
-:Return decrypted object;
-stop
-
-@enduml
+```mermaid
+flowchart TD
+    A[Base64 string] --> B{Starts with U2FsdGVk?}
+    B -->|Yes — legacy| C[CryptoJS.AES.decrypt]
+    B -->|No — new format| D[Base64 decode]
+    D --> E[Extract HMAC, IV, ciphertext]
+    E --> F[Recompute HMAC-SHA256]
+    F --> G{timingSafeEqual?}
+    G -->|Yes| H[AES-256-CBC decrypt]
+    G -->|No| I[Return null — tampered]
+    H --> J[JSON.parse plaintext]
+    C --> K[Return decrypted object]
+    J --> K
 ```
 
 #### Key Derivation
@@ -417,58 +351,51 @@ Sensitive data copied to clipboard is auto-cleared after **30 seconds**.
 
 ### Module Dependency Graph
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
+```mermaid
+graph TD
+    MAIN["main.ts"]
+    AUTH["auth.ts"]
+    CRYPTO["crypto.ts"]
+    VALID["validation.ts"]
+    DRIVE["drive.ts"]
+    CACHE["cache.ts"]
+    PIN["pin.ts"]
+    ACC["accounts.ts"]
+    JOBS["jobs.ts"]
+    TOTP["totp.ts"]
+    SETTINGS["settings.ts"]
+    LOGO["logo.ts"]
+    SYNC["sync.ts"]
+    LOGGER["logger.ts"]
 
-title Module Dependency Graph
+    MAIN --> AUTH
+    MAIN --> CRYPTO
+    MAIN --> VALID
+    MAIN --> DRIVE
+    MAIN --> CACHE
+    MAIN --> LOGGER
+    MAIN --> PIN
+    MAIN --> ACC
+    MAIN --> JOBS
+    MAIN --> TOTP
+    MAIN --> SETTINGS
+    MAIN --> LOGO
+    MAIN --> SYNC
 
-rectangle "main.ts" as Main
-rectangle "auth.ts" as Auth
-rectangle "crypto.ts" as Crypto
-rectangle "validation.ts" as Validation
-rectangle "drive.ts" as Drive
-rectangle "cache.ts" as Cache
-rectangle "pin.ts" as Pin
-rectangle "accounts.ts" as Accounts
-rectangle "jobs.ts" as Jobs
-rectangle "totp.ts" as Totp
-rectangle "settings.ts" as Settings
-rectangle "logo.ts" as Logo
-rectangle "sync.ts" as Sync
-rectangle "logger.ts" as Logger
+    JOBS --> DRIVE
+    JOBS --> CRYPTO
+    JOBS --> VALID
+    TOTP --> DRIVE
+    TOTP --> CRYPTO
+    TOTP --> VALID
+    SETTINGS --> DRIVE
+    LOGO --> DRIVE
+    PIN --> CRYPTO
+    PIN --> CACHE
+    ACC --> PIN
+    SYNC --> DRIVE
 
-Main --> Auth
-Main --> Crypto
-Main --> Validation
-Main --> Drive
-Main --> Cache
-Main --> Logger
-Main --> Pin
-Main --> Accounts
-Main --> Jobs
-Main --> Totp
-Main --> Settings
-Main --> Logo
-Main --> Sync
-
-Jobs --> Drive
-Jobs --> Crypto
-Jobs --> Validation
-Totp --> Drive
-Totp --> Crypto
-Totp --> Validation
-Settings --> Drive
-Logo --> Drive
-Pin --> Crypto
-Pin --> Cache
-Accounts --> Pin
-Sync --> Drive
-
-Drive --> Cache
-
-@enduml
+    DRIVE --> CACHE
 ```
 
 ---
@@ -602,214 +529,161 @@ All handlers use `ipcMain.handle`. Every handler returns `{ ok: boolean, ... }`.
 
 ### Login Flow
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant R as Renderer
+    participant P as Preload
+    participant M as Main
+    participant G as Google OAuth
+    participant D as Drive
 
-title Login Flow (Google OAuth)
-
-actor User
-participant "Renderer" as R
-participant "Preload" as P
-participant "Main" as M
-participant "Google OAuth" as G
-participant "Drive" as D
-
-User -> R : Click "Sign in with Google"
-R -> P : window.api.login()
-P -> M : ipcRenderer.invoke("auth:login")
-M -> M : clearSession()
-M -> G : googleOAuth()
-G -> M : Open browser to Google consent
-User -> G : Authenticate + consent
-G -> M : GET /oauth2callback?code=...&state=...
-M -> M : Validate state + expiry
-M -> G : Exchange code for tokens
-G -> M : tokens
-M -> M : people.get("people/me")
-M -> M : Build GoogleProfile
-M -> M : Load/generate per-account salt
-M -> M : deriveKey(googleId, salt) → encKey
-M -> M : new DriveClient(googleId, encKey)
-M -> D : driveClient.init(oauth2Client)
-M -> D : ensureVaultFolder() + ensureSubfolders()
-M -> D : resolveConflicts()
-M -> M : driveLoadItems(encKey)
-M -> M : decWithFallback() each item
-M -> M : genSessionToken()
-M -> M : setSession(session)
-M --> P : { ok, token, user, vault }
-P --> R : window.__vaultToken.set(token)
-R --> User : Show vault UI
-
-@enduml
+    U->>R: Click "Sign in with Google"
+    R->>P: window.api.login()
+    P->>M: invoke("auth:login")
+    M->>M: clearSession()
+    M->>G: googleOAuth()
+    G->>U: Open browser to consent
+    U->>G: Authenticate + consent
+    G->>M: GET /oauth2callback
+    M->>M: Validate state + expiry
+    M->>G: Exchange code for tokens
+    G-->>M: tokens
+    M->>G: people.get("people/me")
+    M->>M: Build GoogleProfile
+    M->>M: Load/generate per-account salt
+    M->>M: deriveKey → encKey
+    M->>D: driveClient.init(oauth2Client)
+    M->>D: ensureVaultFolder + ensureSubfolders
+    M->>D: resolveConflicts
+    M->>M: driveLoadItems + decWithFallback
+    M->>M: genSessionToken + setSession
+    M-->>P: { ok, token, user, vault }
+    P->>R: __vaultToken.set(token)
+    R-->>U: Show vault UI
 ```
 
 ### PIN Login Flow
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant R as Renderer
+    participant P as Preload
+    participant M as Main
+    participant L as Local Storage
 
-title PIN Login Flow
-
-actor User
-participant "Renderer" as R
-participant "Preload" as P
-participant "Main" as M
-participant "Local Storage" as L
-
-User -> R : Enter PIN
-R -> P : window.api.verify(pin)
-P -> M : ipcRenderer.invoke("pin:verify", { pin })
-M -> M : Check rate limit
-M -> L : Read vault_user_key
-M -> M : derivePinKey(pin, salt)
-M -> M : dec(fileData.data, pinKey)
-M -> M : PBKDF2(pin, salt) → computedHash
-M -> M : timingSafeEqual(computedHash, storedHash)
-M -> M : storePinVerify(googleId, email) → verifyId
-M --> P : { ok, verifyId, email }
-P --> R : Show verifyId
-R -> P : window.api.loginWithPin(verifyId)
-P -> M : ipcRenderer.invoke("auth:loginWithPin", { verifyId })
-M -> M : consumePinVerify(verifyId)
-M -> M : Load/generate salt → deriveKey()
-M -> M : new DriveClient(googleId, encKey)
-M -> M : driveLoadItems(encKey)
-M -> M : genSessionToken()
-M --> P : { ok, token, user, vault }
-P --> R : window.__vaultToken.set(token)
-R --> User : Show vault UI
-
-@enduml
+    U->>R: Enter PIN
+    R->>P: window.api.verify(pin)
+    P->>M: invoke("pin:verify", { pin })
+    M->>M: Check rate limit
+    M->>L: Read vault_user_key
+    M->>M: derivePinKey(pin, salt)
+    M->>M: dec(fileData.data, pinKey)
+    M->>M: PBKDF2 → computedHash
+    M->>M: timingSafeEqual(computedHash, storedHash)
+    M->>M: storePinVerify → verifyId
+    M-->>P: { ok, verifyId, email }
+    P-->>R: Show verifyId
+    R->>P: window.api.loginWithPin(verifyId)
+    P->>M: invoke("auth:loginWithPin", { verifyId })
+    M->>M: consumePinVerify(verifyId)
+    M->>M: Load/generate salt → deriveKey()
+    M->>M: new DriveClient(googleId, encKey)
+    M->>M: driveLoadItems(encKey)
+    M->>M: genSessionToken()
+    M-->>P: { ok, token, user, vault }
+    P->>R: __vaultToken.set(token)
+    R-->>U: Show vault UI
 ```
 
 ### Encrypt/Decrypt Flow
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
+```mermaid
+flowchart LR
+    subgraph Encrypt["Encrypt"]
+        E1[Plaintext object] -->|JSON.stringify| E2[Plaintext string]
+        E2 --> E3[Random 16-byte IV]
+        E3 --> E4[encKey = SHA-256(hexKey)]
+        E3 --> E5[macKey = SHA-256(hexKey + mac)]
+        E4 --> E6[AES-256-CBC encrypt]
+        E5 --> E7[HMAC-SHA256 over IV + ct]
+        E6 --> E8[Pack: HMAC || IV || ct]
+        E7 --> E8
+        E8 -->|Base64| E9[Base64 string]
+    end
 
-title Encrypt/Decrypt Flow
-
-|Encrypt|
-start
-:Plaintext object;
-:JSON.stringify;
-:Random 16-byte IV;
-:encKey = SHA-256(hexKey);
-:macKey = SHA-256(hexKey + "mac");
-:AES-256-CBC encrypt;
-:HMAC-SHA256(IV || ct);
-:Pack: mac || iv || ct;
-:Base64 encode;
-:Return base64 string;
-stop
-
-|Decrypt|
-start
-:Base64 string;
-if (Legacy "U2FsdGVk" prefix?) then (yes)
-  :CryptoJS.AES.decrypt;
-else (no — new format)
-  :Base64 decode;
-  :Split mac(32), iv(16), ct;
-  :Recompute HMAC;
-  if (timingSafeEqual?) then (yes)
-    :AES-256-CBC decrypt;
-  else (no)
-    :Return null;
-  endif
-endif
-:JSON.parse;
-:Return object;
-stop
-
-@enduml
+    subgraph Decrypt["Decrypt"]
+        D1[Base64 string] --> D2{U2FsdGVk prefix?}
+        D2 -->|Yes — legacy| D3[CryptoJS.AES.decrypt]
+        D2 -->|No — new format| D4[Base64 decode]
+        D4 --> D5[Split HMAC, IV, CT]
+        D5 --> D6[Recompute HMAC-SHA256]
+        D6 --> D7{timingSafeEqual?}
+        D7 -->|Yes| D8[AES-256-CBC decrypt]
+        D7 -->|No| D9[Return null — tampered]
+        D8 --> D10[JSON.parse plaintext]
+        D3 --> D11[Return decrypted object]
+        D10 --> D11
+    end
 ```
 
 ### Drive Sync Flow
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
-
-title Drive Sync Flow
-
-start
-:User modifies item;
-:vault:save / vault:delete;
-:driveSaveItem / driveSoftDelete;
-:Add to dirtyQueue;
-:markDirty();
-:Schedule 2-second debounce timer;
-note right: Timer resets on each change
-repeat
-  :Wait for debounce expiry;
-backward :Reset timer on new change
-repeat while (more changes within 2s?) is (yes) not (no)
-:Flush dirtyQueue;
-:Process each DirtyItem;
-if (action?) then (create)
-  :driveApi.files.create;
-else if (update)
-  :driveApi.files.update;
-else (delete)
-  :driveApi.files.delete;
-endif
-if (success?) then (yes)
-  :Remove from queue;
-else if (retries < 3?) then (yes)
-  :Re-queue with retryCount++;
-else (no)
-  :Drop item (log error);
-endif
-:cache.saveCache();
-:lastSyncedAt = now;
-stop
-
-@enduml
+```mermaid
+flowchart TD
+    A[User modifies item] --> B[vault:save / vault:delete]
+    B --> C[Add to dirtyQueue]
+    C --> D[markDirty — schedule 2s debounce]
+    D{More changes within 2s?}
+    D -->|Yes| D
+    D -->|No| E[Flush dirtyQueue]
+    E --> F[Process each DirtyItem]
+    F --> G{Action?}
+    G -->|Create| H[driveApi.files.create]
+    G -->|Update| I[driveApi.files.update]
+    G -->|Delete| J[driveApi.files.delete]
+    H --> K{Success?}
+    I --> K
+    J --> K
+    K -->|Yes| L[Remove from queue]
+    K -->|No| M{Retries < 3?}
+    M -->|Yes| N[Re-queue with retryCount++]
+    M -->|No| O[Drop item — log error]
+    L --> P[cache.saveCache]
+    N --> P
+    O --> P
+    P --> Q[lastSyncedAt = now]
 ```
 
 ### Sync Engine Two-Way Flow
 
-```plantuml
-@startuml
-!theme plain
-skinparam backgroundColor #0a0a0f
-
-title Two-Way Sync Flow (sync.ts)
-
-start
-:File watcher detects change;
-:Debounce 2s;
-:syncFolder(folderId);
-:Walk local files → localFiles Map;
-:Scan Drive files → driveFiles Map;
-:Merge all paths;
-for (each relPath) do
-  if (local changed AND drive changed) then (yes)
-    :Create conflict file "(drive)" suffix;
-    :Upload local version;
-  else if (local changed) then (yes)
-    :Upload to Drive;
-  else if (drive changed) then (yes)
-    :Download from Drive;
-  else if (deleted locally) then (yes)
-    :Delete from Drive;
-  else if (deleted on Drive) then (yes)
-    :Delete locally;
-  endif
-endfor
-:Save state;
-stop
-
-@enduml
+```mermaid
+flowchart TD
+    A[File watcher detects change] --> B[Debounce 2s]
+    B --> C[syncFolder]
+    C --> D[Walk local files → localFiles Map]
+    C --> E[Scan Drive files → driveFiles Map]
+    D --> F[Merge all paths]
+    E --> F
+    F --> G{For each relPath}
+    G --> H{Local changed AND drive changed?}
+    H -->|Yes| I[Create conflict file + upload local]
+    H -->|No| J{Local changed only?}
+    J -->|Yes| K[Upload to Drive]
+    J -->|No| L{Drive changed only?}
+    L -->|Yes| M[Download from Drive]
+    L -->|No| N{Deleted locally?}
+    N -->|Yes| O[Delete from Drive]
+    N -->|No| P{Deleted on Drive?}
+    P -->|Yes| Q[Delete locally]
+    P -->|No| R[No action]
+    I --> S[Save state]
+    K --> S
+    M --> S
+    O --> S
+    Q --> S
+    R --> S
 ```
 
 ---
