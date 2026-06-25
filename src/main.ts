@@ -11,7 +11,6 @@ const { app } = electron;
 import http from "node:http";
 import url from "node:url";
 import crypto from "node:crypto";
-import fs from "node:fs";
 
 import * as logger from "./logger";
 logger.init();
@@ -32,6 +31,13 @@ function requireEnv(name: string): string {
   logger.debug("config", `Loaded env var: ${name}`);
   return v;
 }
+
+type GoogleProfile = {
+  googleId: string;
+  email: string;
+  name: string;
+  avatar: string | null;
+};
 
 const GOOGLE_CLIENT_ID = requireEnv("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = requireEnv("GOOGLE_CLIENT_SECRET");
@@ -109,13 +115,6 @@ const {
 } = authModule;
 
 const { MAX_NOTES_LEN, sanitizeStr, validType } = validation;
-
-type GoogleProfile = {
-  googleId: string;
-  email: string;
-  name: string;
-  avatar: string | null;
-};
 
 // ── Drive-backed data operations ──
 
@@ -1449,18 +1448,18 @@ app.whenReady().then(() => {
   logger.success("app", "Dependencies loaded (CryptoJS, speakeasy)");
 
   // Register modules — pass driveClient (will be null until login, modules handle this)
-  registerJobs(
+  registerJobs({
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
     driveClient,
-    validation,
-    getSessionFn,
-    logger as any,
+    _validation: validation,
+    getSession: getSessionFn,
+    logger: logger as any,
     enc,
     dec,
     logError,
-  );
+  });
   registerTotp({
     ipcMain,
     requireAuth,

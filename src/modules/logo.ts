@@ -63,7 +63,7 @@ function detectMime(imgData: Buffer): string {
 function extractDomain(site: string): string {
   return site
     .replace(/^https?:\/\//g, "")
-    .replace(/\/.*$/g, "")
+    .replace(/\/[^/]*$/g, "")
     .toLowerCase()
     .trim();
 }

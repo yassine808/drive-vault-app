@@ -431,7 +431,7 @@ function confirm(opts: ConfirmOpts): void {
   newOk.addEventListener("click", () => {
     hideOverlay("confirm-overlay");
     logInfo("ui", "Confirm dialog accepted", { title: opts.title });
-    opts.onOk();
+    opts.onOk?.();
   });
   showOverlay("confirm-overlay");
 }
@@ -3345,11 +3345,10 @@ async function loadSettingsTab(): Promise<void> {
   // If PIN file exists → show change + delete rows (regardless of toggle)
   // If no PIN file → show setup row only when toggle is on
   // If PIN is disabled and no file → hide all
-  const initialPinView = _pinFileExists
-    ? "changeDelete"
-    : pinEnabled
-      ? "setup"
-      : "none";
+  let initialPinView: "setup" | "changeDelete" | "none";
+  if (_pinFileExists) initialPinView = "changeDelete";
+  else if (pinEnabled) initialPinView = "setup";
+  else initialPinView = "none";
   setPinRowsView(initialPinView);
 
   function setPinRowsView(view: "setup" | "changeDelete" | "none"): void {
@@ -3566,7 +3565,7 @@ const LOWER = "abcdefghijklmnopqrstuvwxyz",
   UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
   NUMS = "0123456789",
   SYMS = "!@#$%^&*()_+-=[]{}|;:,.<>?";
-function doGenerate(): string {
+async function doGenerate(): Promise<string> {
   const len = Number.parseInt(
     (document.getElementById("gen-len") as HTMLInputElement).value,
     10,
@@ -3614,7 +3613,7 @@ function doGenerate(): string {
   }
   if (S.settings.gen_copy) {
     try {
-      navigator.clipboard.writeText(pwStr);
+      await navigator.clipboard.writeText(pwStr);
     } catch {
       /* noop */
     }

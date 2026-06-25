@@ -30,6 +30,7 @@ const SUBFOLDERS = {
 } as const;
 
 type SubfolderType = keyof typeof SUBFOLDERS;
+type DeletableType = "password" | "note" | "job";
 
 /**
  * DriveClient — Google Drive storage operations.
@@ -123,7 +124,7 @@ export class DriveClient {
       this.cacheDirty = false;
 
       const queue = [...this.cache.dirtyQueue];
-      const remaining = this.processDirtyQueue(queue);
+      const remaining = await this.processDirtyQueue(queue);
 
       this.cache.dirtyQueue = remaining;
       this.cache.lastSyncedAt = Date.now();
@@ -144,7 +145,7 @@ export class DriveClient {
     }
   }
 
-  private processDirtyQueue(queue: DirtyItem[]): DirtyItem[] {
+  private async processDirtyQueue(queue: DirtyItem[]): Promise<DirtyItem[]> {
     const remaining: DirtyItem[] = [];
     for (const item of queue) {
       if (this.closed) {
@@ -152,7 +153,7 @@ export class DriveClient {
         continue;
       }
       try {
-        this.processDirtyItem(item);
+        await this.processDirtyItem(item);
       } catch (e: unknown) {
         const err = e instanceof Error ? e.message : String(e);
         this.logger.warn("drive:sync", `Failed to sync item ${item.id}`, {
@@ -603,7 +604,7 @@ export class DriveClient {
   /**
    * Soft-delete an item.
    */
-  softDelete(type: "password" | "note" | "job", id: string): void {
+  softDelete(type: DeletableType, id: string): void {
     const arr = this.getCacheArray(type);
     const item = arr.find((i) => i.id === id);
     if (item) {
@@ -626,7 +627,7 @@ export class DriveClient {
   /**
    * Restore a soft-deleted item.
    */
-  restore(type: "password" | "note" | "job", id: string): void {
+  restore(type: DeletableType, id: string): void {
     const arr = this.getCacheArray(type);
     const item = arr.find((i) => i.id === id);
     if (item) {
@@ -672,7 +673,7 @@ export class DriveClient {
    * Update sort order for a list of items.
    */
   updateSortOrder(
-    type: "password" | "note" | "job",
+    type: DeletableType,
     items: Array<{ id?: string }>,
   ): void {
     const arr = this.getCacheArray(type);

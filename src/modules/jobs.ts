@@ -48,22 +48,36 @@ function validateAppliedDate(appliedAt: string): string | null {
   return null;
 }
 
-function register(
-  ipcMain: Electron.IpcMain,
-  requireAuth: AuthWrapper,
-  requireAuthNoArgs: AuthWrapper,
-  driveClient: DriveClient | null,
+interface JobsRegisterOpts {
+  ipcMain: Electron.IpcMain;
+  requireAuth: AuthWrapper;
+  requireAuthNoArgs: AuthWrapper;
+  driveClient: DriveClient | null;
   _validation: {
     sanitizeStr: typeof sanitizeStr;
     validEmail: typeof validEmail;
     MAX_NOTES_LEN: number;
-  },
-  getSession: () => Session | null,
-  logger: Logger,
-  enc: (data: object, key: string) => string,
-  dec: (data: string, key: string) => object | null,
-  logError: LogError,
-) {
+  };
+  getSession: () => Session | null;
+  logger: Logger;
+  enc: (data: object, key: string) => string;
+  dec: (data: string, key: string) => object | null;
+  logError: LogError;
+}
+
+function register(opts: JobsRegisterOpts) {
+  const {
+    ipcMain,
+    requireAuth,
+    requireAuthNoArgs,
+    driveClient,
+    _validation,
+    getSession,
+    logger,
+    enc,
+    dec,
+    logError,
+  } = opts;
   function dbLoadJobs(): Job[] {
     logger.dbLog("dbLoadJobs", "Loading jobs from cache");
     if (!driveClient) return [];

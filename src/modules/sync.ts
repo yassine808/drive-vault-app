@@ -526,25 +526,27 @@ class SyncEngine {
     return { uploaded, downloaded, errors, resolved };
   }
 
-  private async syncFileChange(
-    relPath: string,
-    local: { hash: string; mtime?: number } | null,
-    drive: { fileId: string; modifiedTime: string; hash: string | null } | null,
-    prev: SyncFolderState["files"][string] | null,
-    folder: SyncFolder,
-    driveSubfolderId: string,
+  private async syncFileChange(opts: {
+    relPath: string;
+    local: { hash: string; mtime?: number } | null;
+    drive: { fileId: string; modifiedTime: string; hash: string | null } | null;
+    prev: SyncFolderState["files"][string] | null;
+    folder: SyncFolder;
+    driveSubfolderId: string;
     driveFiles: Map<
       string,
       { fileId: string; modifiedTime: string; hash: string | null }
-    >,
-    newState: SyncFolderState,
+    >;
+    newState: SyncFolderState;
     counters: {
       uploaded: number;
       downloaded: number;
       conflicts: number;
       errors: number;
-    },
-  ): Promise<void> {
+    };
+  }): Promise<void> {
+    const { relPath, local, drive, prev, folder, driveSubfolderId, driveFiles, newState, counters } =
+      opts;
     newState.files[relPath] = {
       relativePath: relPath,
       localHash: local?.hash || null,
@@ -691,7 +693,7 @@ class SyncEngine {
   }> {
     const config = loadConfig();
     const folder = config.folders.find((f) => f.id === folderId);
-    if (!folder || !folder.enabled)
+    if (!folder?.enabled)
       return { uploaded: 0, downloaded: 0, conflicts: 0, errors: 0 };
     if (this.syncingFolders.has(folderId))
       return { uploaded: 0, downloaded: 0, conflicts: 0, errors: 0 };
@@ -741,7 +743,7 @@ class SyncEngine {
         const local = localFiles.get(relPath) || null;
         const drive = driveFiles.get(relPath) || null;
         const prev = folderState.files[relPath] || null;
-        await this.syncFileChange(
+        await this.syncFileChange({
           relPath,
           local,
           drive,
@@ -751,7 +753,7 @@ class SyncEngine {
           driveFiles,
           newState,
           counters,
-        );
+        });
       }
 
       uploaded = counters.uploaded;
@@ -908,8 +910,7 @@ class SyncEngine {
 
   removeFolder(folderId: string): void {
     const config = loadConfig();
-    const folder = config.folders.find((f) => f.id === folderId);
-    if (folder) {
+    if (config.folders.some((f) => f.id === folderId)) {
       this.fileWatcher.unwatch(folderId);
       // Remove state
       const state = loadState();

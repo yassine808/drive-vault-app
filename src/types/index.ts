@@ -148,7 +148,8 @@ export interface ConfirmOpts {
   icon?: string;
   okLabel?: string;
   okClass?: string;
-  onOk: () => void;
+  /** Used by confirm(); confirmDialog() uses Promise closure instead. */
+  onOk?: () => void;
 }
 
 export interface TotpConfig {
