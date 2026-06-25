@@ -138,7 +138,9 @@ const uid = (): string => {
   return Date.now().toString(36) + rnd;
 };
 const wc = (t: unknown): number => {
-  const s = t == null || t === undefined ? "" : String(t).trim();
+  // Only strings carry meaningful word counts; objects would stringify to
+  // "[object Object]", so we coerce everything else to an empty string.
+  const s = typeof t === "string" ? t.trim() : "";
   return s ? s.split(/\s+/).length : 0;
 };
 const days = (d: string): number =>
@@ -164,7 +166,7 @@ function formatLockTimer(ms: number): string {
   return `${s}s`;
 }
 function toast(msg: string, ms?: number): void {
-  if (ms === undefined || ms === null) ms = S.settings.toast_duration || 2400;
+  ms ??= S.settings.toast_duration || 2400;
   logInfo("ui", "Toast: " + msg);
   const el = document.getElementById("toast") as HTMLElement;
   el.textContent = msg;
@@ -256,7 +258,7 @@ const AudioCtx: typeof AudioContext =
     .webkitAudioContext;
 let actx: AudioContext | null = null;
 function getACtx(): AudioContext {
-  if (!actx) actx = new AudioCtx();
+  actx ??= new AudioCtx();
   return actx;
 }
 function playTone(
@@ -672,7 +674,7 @@ function selectPinAccount(account: {
   ) as HTMLElement;
   avatarEl.innerHTML = "";
   avatarEl.className = "";
-  if (account.avatar && account.avatar.startsWith("https://")) {
+  if (account.avatar?.startsWith("https://")) {
     const img = document.createElement("img");
     img.className = "pin-selected-avatar";
     img.src = account.avatar.split("?")[0];
@@ -714,7 +716,7 @@ function buildPinAccountItem(
   const item = document.createElement("div");
   item.className = "pin-account-item";
   const init = (acct.name || acct.email || "?")[0].toUpperCase();
-  if (acct.avatar && acct.avatar.startsWith("https://")) {
+  if (acct.avatar?.startsWith("https://")) {
     const img = document.createElement("img");
     img.className = "pin-account-avatar";
     img.src = acct.avatar.split("?")[0];
@@ -1128,7 +1130,7 @@ function initSyncDropZone(): void {
   // Use globalThis-level dragenter/dragleave so we can detect when the drag leaves the tab entirely
   globalThis.addEventListener("dragenter", (e: DragEvent) => {
     // Only activate when files are being dragged (not internal row reordering)
-    if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+    if (!e.dataTransfer?.types.includes("Files")) return;
     dragCounter++;
     if (dragCounter === 1) {
       // Create overlay
@@ -1141,7 +1143,7 @@ function initSyncDropZone(): void {
   });
 
   globalThis.addEventListener("dragleave", (e: DragEvent) => {
-    if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+    if (!e.dataTransfer?.types.includes("Files")) return;
     dragCounter--;
     if (dragCounter <= 0) {
       dragCounter = 0;
@@ -1160,7 +1162,7 @@ function initSyncDropZone(): void {
       dropOverlay = null;
     }
     // Only handle file drops (not internal row reordering)
-    if (!e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+    if (!e.dataTransfer?.types.includes("Files")) return;
     e.preventDefault();
     e.stopPropagation();
     const files = e.dataTransfer.files;
@@ -1293,25 +1295,31 @@ function buildFileTreeEl(
   return fileTree;
 }
 
-function buildFolderRowHTML(
+function buildFolderRowHTML(opts: {
   folder: {
     id: string;
     localPath: string;
     driveFolderName?: string;
     status: string;
     lastSyncAt?: number | null;
-  },
-  hasConflict: boolean,
-  allSynced: boolean,
-  sc: string,
-  st: string,
-  statusIcon: string,
-  fileCount: number,
-  expandId: string,
-): string {
+    enabled?: boolean;
+  };
+  hasConflict: boolean;
+  allSynced: boolean;
+  sc: string;
+  st: string;
+  statusIcon: string;
+  fileCount: number;
+  expandId: string;
+}): string {
+  const { folder, sc, st, statusIcon, fileCount, expandId } = opts;
   const driveTarget = folder.driveFolderName
     ? "Vault/sync/" + folder.driveFolderName + "/"
     : "Vault/sync/";
+  // Extract the singular/plural suffix to avoid a nested ternary.
+  const fileSuffix = fileCount === 1 ? "file" : "files";
+  const fileLabel =
+    fileCount > 0 ? " · " + fileCount + " " + fileSuffix : "";
   return (
     '<div class="sync-folder-drag"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.3"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div>' +
     '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>' +
@@ -1327,9 +1335,7 @@ function buildFolderRowHTML(
     escHtml(st) +
     "</span>" +
     "</span>" +
-    (fileCount
-      ? " · " + fileCount + " file" + (fileCount !== 1 ? "s" : "")
-      : "") +
+    fileLabel +
     "</div></div>" +
     statusIcon +
     '<div class="sync-folder-actions"><button class="icon-btn sync-folder-expand" data-expand="' +
@@ -1406,7 +1412,7 @@ async function loadSyncFolders() {
     row.id = "sync-folder-" + folder.id;
     row.dataset.folderId = folder.id;
     const expandId = "sync-files-" + folder.id;
-    row.innerHTML = buildFolderRowHTML(
+    row.innerHTML = buildFolderRowHTML({
       folder,
       hasConflict,
       allSynced,
@@ -1415,7 +1421,7 @@ async function loadSyncFolders() {
       statusIcon,
       fileCount,
       expandId,
-    );
+    });
     const fileTree = buildFileTreeEl(files, expandId);
     list.appendChild(row);
     list.appendChild(fileTree);
@@ -2391,7 +2397,10 @@ async function loadAndRenderTrash(): Promise<void> {
       sub = vaultItem.username || "";
     }
     const d = days(item._deletedAt);
-    const icon = isNote ? "📝" : isJob ? "💼" : "🔑";
+    // Resolve the row icon via a lookup to avoid a nested ternary.
+    const trashIcons = { note: "📝", job: "💼", password: "🔑" } as const;
+    const icon =
+      trashIcons[(item._type as keyof typeof trashIcons) || "password"] || "🔑";
     const row = document.createElement("div");
     row.className = "trash-row";
     const trashIcon = document.createElement("div");
@@ -3283,7 +3292,12 @@ async function loadSettingsTab(): Promise<void> {
       )[key];
     else {
       const raw = (S.settings as unknown as Record<string, unknown>)[key];
-      el.value = raw == null || raw === undefined ? "" : String(raw);
+      // Only strings/numbers/primitives are meaningful here; objects would
+      // stringify to "[object Object]".
+      el.value =
+        typeof raw === "string" || typeof raw === "number"
+          ? String(raw)
+          : "";
     }
     el.addEventListener("change", () => {
       let val: unknown;
