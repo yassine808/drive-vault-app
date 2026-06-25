@@ -120,38 +120,38 @@ graph TB
         P["preload.ts\n(contextBridge)"]
     end
 
-    subgraph Main["Main Process"]
-        M["main.ts\n(~1550 lines)"]
-        MOD["modules/"]
-        CRYPTO["Crypto\nAES-256-CBC+HMAC"]
-        AUTH["Session + 2FA"]
-        OAUTH["OAuth Server\n127.0.0.1:42813"]
-        LOGGER["Logger\nPer-level files"]
+    subgraph Main ["Main Process"]
+        M ["main.ts (~1550 lines)"]
+        MOD ["modules/"]
+        CRYPTO ["Crypto AES-256-CBC+HMAC"]
+        AUTH ["Session + 2FA"]
+        OAUTH ["OAuth Server 127.0.0.1:42813"]
+        LOGGER ["Logger Per-level files"]
     end
 
-    subgraph Drive["Google Drive"]
-        VF["Vault/"]
-        PW["passwords/"]
-        NOTES["notes/"]
-        JOBS["jobs/"]
-        TOTP["totp/"]
-        SETTINGS["settings/"]
-        SYNC["sync/"]
+    subgraph Drive ["Google Drive"]
+        VF ["Vault/"]
+        PW ["passwords/"]
+        NOTES ["notes/"]
+        JOBS ["jobs/"]
+        TOTP ["totp/"]
+        SETTINGS ["settings/"]
+        SYNC ["sync/"]
     end
 
-    subgraph Cache["Local Cache"]
-        CF["vault_cache.json"]
+    subgraph Cache ["Local Cache"]
+        CF ["vault_cache.json"]
     end
 
-    subgraph Local["Local Files"]
-        PIN["vault_user_key\n(PIN)"]
-        ACC["vault_accounts\n(Saved)"]
-        UIS["vault_settings\n(UI)"]
-        LOGS["Logs/"]
+    subgraph Local ["Local Files"]
+        PIN ["vault_user_key (PIN)"]
+        ACC ["vault_accounts (Saved)"]
+        UIS ["vault_settings (UI)"]
+        LOGS ["Logs/"]
     end
 
-    R -->|window.api.*()| P
-    P -->|IPC| M
+    R -->|"window.api.*()"| P
+    P -->|"IPC"| M
     M -->|enc/dec| CRYPTO
     M -->|requireAuth| AUTH
     M -->|googleOAuth| OAUTH
@@ -601,29 +601,29 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    subgraph Encrypt["Encrypt"]
-        E1[Plaintext object] -->|JSON.stringify| E2[Plaintext string]
-        E2 --> E3[Random 16-byte IV]
-        E3 --> E4[encKey = SHA-256(hexKey)]
-        E3 --> E5[macKey = SHA-256(hexKey + mac)]
-        E4 --> E6[AES-256-CBC encrypt]
-        E5 --> E7[HMAC-SHA256 over IV + ct]
-        E6 --> E8[Pack: HMAC || IV || ct]
+    subgraph Encrypt ["Encrypt"]
+        E1 ["Plaintext object"] -->|"JSON.stringify"| E2 ["Plaintext string"]
+        E2 --> E3 ["Random 16-byte IV"]
+        E3 --> E4 ["encKey = SHA-256(hexKey)"]
+        E3 --> E5 ["macKey = SHA-256(hexKey + 'mac')"]
+        E4 --> E6 ["AES-256-CBC encrypt"]
+        E5 --> E7 ["HMAC-SHA256 over IV + ciphertext"]
+        E6 --> E8 ["Pack: HMAC || IV || ct"]
         E7 --> E8
-        E8 -->|Base64| E9[Base64 string]
+        E8 -->|"Base64"| E9 ["Base64 string"]
     end
 
-    subgraph Decrypt["Decrypt"]
-        D1[Base64 string] --> D2{U2FsdGVk prefix?}
-        D2 -->|Yes — legacy| D3[CryptoJS.AES.decrypt]
-        D2 -->|No — new format| D4[Base64 decode]
-        D4 --> D5[Split HMAC, IV, CT]
-        D5 --> D6[Recompute HMAC-SHA256]
-        D6 --> D7{timingSafeEqual?}
-        D7 -->|Yes| D8[AES-256-CBC decrypt]
-        D7 -->|No| D9[Return null — tampered]
-        D8 --> D10[JSON.parse plaintext]
-        D3 --> D11[Return decrypted object]
+    subgraph Decrypt ["Decrypt"]
+        D1 ["Base64 string"] --> D2 {"U2FsdGVk prefix?"}
+        D2 -->|"Yes — legacy"| D3 ["CryptoJS.AES.decrypt"]
+        D2 -->|"No — new format"| D4 ["Base64 decode"]
+        D4 --> D5 ["Split HMAC, IV, CT"]
+        D5 --> D6 ["Recompute HMAC-SHA256"]
+        D6 --> D7 {"timingSafeEqual?"}
+        D7 -->|"Yes"| D8 ["AES-256-CBC decrypt"]
+        D7 -->|"No"| D9 ["Return null — tampered"]
+        D8 --> D10 ["JSON.parse plaintext"]
+        D3 --> D11 ["Return decrypted object"]
         D10 --> D11
     end
 ```
