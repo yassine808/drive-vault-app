@@ -12,6 +12,7 @@ import http from "node:http";
 import url from "node:url";
 import crypto from "node:crypto";
 
+import type { DeletableType } from "./modules/drive";
 import * as logger from "./logger";
 logger.init();
 logger.info("main", "Main process starting");
@@ -222,14 +223,14 @@ async function driveSaveItem(
 async function driveSoftDelete(localId: string, type: string): Promise<void> {
   logger.db("driveSoftDelete", "Soft-deleting item", { localId, type });
   if (!driveClient) throw new TypeError("Drive not initialized");
-  driveClient.softDelete(type as "password" | "note" | "job", localId);
+  driveClient.softDelete(type as DeletableType, localId);
   logger.db("driveSoftDelete", "Success", { localId });
 }
 
 async function driveRestore(localId: string, type: string): Promise<void> {
   logger.db("driveRestore", "Restoring item", { localId, type });
   if (!driveClient) throw new TypeError("Drive not initialized");
-  driveClient.restore(type as "password" | "note" | "job", localId);
+  driveClient.restore(type as DeletableType, localId);
   logger.db("driveRestore", "Success", { localId });
 }
 

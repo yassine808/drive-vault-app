@@ -30,7 +30,7 @@ const SUBFOLDERS = {
 } as const;
 
 type SubfolderType = keyof typeof SUBFOLDERS;
-type DeletableType = "password" | "note" | "job";
+export type DeletableType = "password" | "note" | "job";
 
 /**
  * DriveClient — Google Drive storage operations.
