@@ -45,3 +45,5 @@ node-gyp/
 
 .claude
 .claude/
+
+dist/
