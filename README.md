@@ -662,8 +662,8 @@ flowchart TD
 flowchart TD
     A[File watcher detects change] --> B[Debounce 2s]
     B --> C[syncFolder]
-    C --> D[Walk local files → localFiles Map]
-    C --> E[Scan Drive files → driveFiles Map]
+    C --> D["Walk local files → localFiles Map"]
+    C --> E["Scan Drive files → driveFiles Map"]
     D --> F[Merge all paths]
     E --> F
     F --> G{For each relPath}
