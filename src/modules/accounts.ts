@@ -39,8 +39,7 @@ function getFallbackUserDataPath(): string {
 }
 
 function getAccountsFilePath(): string {
-  const userData =
-    _userDataPath || process.env.APPDATA || getFallbackUserDataPath();
+  const userData = _userDataPath || process.env.APPDATA || getFallbackUserDataPath();
   const dir = path.join(userData, "Vault");
   fs.mkdirSync(dir, { recursive: true });
   return path.join(dir, "vault_accounts");
@@ -179,18 +178,12 @@ function register(
   // ── accounts:removeById — no auth (removes a saved account by googleId from PIN screen)
   ipcMain.handle(
     "accounts:removeById",
-    async (
-      _e: Electron.IpcMainInvokeEvent,
-      { googleId }: { googleId: string },
-    ) => {
+    async (_e: Electron.IpcMainInvokeEvent, { googleId }: { googleId: string }) => {
       logger.ipcLog("accounts:removeById", "Removing account by ID", {
         googleId: googleId?.slice(0, 8),
       });
       try {
-        if (
-          typeof googleId !== "string" ||
-          !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)
-        ) {
+        if (typeof googleId !== "string" || !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)) {
           return { ok: false, error: "Invalid account ID" };
         }
         let accounts = loadAccounts();
@@ -216,18 +209,12 @@ function register(
   // ── accounts:touch — no auth (updates lastUsed when PIN login succeeds)
   ipcMain.handle(
     "accounts:touch",
-    async (
-      _e: Electron.IpcMainInvokeEvent,
-      { googleId }: { googleId: string },
-    ) => {
+    async (_e: Electron.IpcMainInvokeEvent, { googleId }: { googleId: string }) => {
       logger.ipcLog("accounts:touch", "Touching account", {
         googleId: googleId?.slice(0, 8),
       });
       try {
-        if (
-          typeof googleId !== "string" ||
-          !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)
-        )
+        if (typeof googleId !== "string" || !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId))
           return { ok: false };
         const accounts = loadAccounts();
         const idx = accounts.findIndex((a) => a.googleId === googleId);

@@ -25,16 +25,7 @@ const LEVELS: Record<string, number> = {
   DB: 7,
 };
 
-const LEVEL_NAMES = [
-  "DEBUG",
-  "INFO",
-  "SUCCESS",
-  "WARN",
-  "ERROR",
-  "AUTH",
-  "IPC",
-  "DB",
-];
+const LEVEL_NAMES = ["DEBUG", "INFO", "SUCCESS", "WARN", "ERROR", "AUTH", "IPC", "DB"];
 
 let initialized = false;
 
@@ -73,7 +64,9 @@ function write(level: number, ctx: string, msg: string, data?: unknown): void {
       const dataStr =
         typeof data === "object" && data !== null
           ? JSON.stringify(data, null, 0)
-          : String(data ?? "");
+          : data == null
+            ? ""
+            : String(data);
       line += ` | data: ${dataStr}`;
     } catch {
       line += " | data: [unserializable]";
@@ -100,9 +93,7 @@ function writeError(ctx: string, err: unknown): void {
     stack?: string;
     response?: { data?: unknown; status?: number };
   };
-  const extra = e?.response?.data
-    ? ` | response: ${JSON.stringify(e.response.data)}`
-    : "";
+  const extra = e?.response?.data ? ` | response: ${JSON.stringify(e.response.data)}` : "";
   const line = `[${ts()}] [${ctx}] ${e?.message || String(err)}${extra}\ncode: ${e?.code || "none"} | status: ${e?.response?.status || "none"}\n${e?.stack || ""}\n---\n`;
   try {
     fs.appendFileSync(fileForLevel("ERROR"), line);
@@ -178,8 +169,7 @@ function rotateIfNeeded(maxSize: number = 5 * 1024 * 1024): void {
 function readLog(levelName: string, maxChars: number = 10000): string {
   try {
     const filePath = fileForLevel(levelName);
-    if (!fs.existsSync(filePath))
-      return `(no ${levelName.toLowerCase()}.log file)`;
+    if (!fs.existsSync(filePath)) return `(no ${levelName.toLowerCase()}.log file)`;
     const content = fs.readFileSync(filePath, "utf8");
     return content.slice(-maxChars);
   } catch {

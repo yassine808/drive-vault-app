@@ -26,9 +26,7 @@ function storePinVerify(googleId: string, email: string): string {
   pinVerifyStore.set(id, { googleId, email, expiresAt: Date.now() + 30_000 });
   return id;
 }
-function consumePinVerify(
-  id: string,
-): { googleId: string; email: string } | null {
+function consumePinVerify(id: string): { googleId: string; email: string } | null {
   const entry = pinVerifyStore.get(id);
   if (!entry) return null;
   pinVerifyStore.delete(id);
@@ -113,9 +111,7 @@ const PIN_LOCKOUT_MS = 15 * 60 * 1000;
 function isPinRateLimited(): boolean {
   const now = Date.now();
   if (now < pinRateLimit.lockoutUntil) return true;
-  pinRateLimit.attempts = pinRateLimit.attempts.filter(
-    (t) => now - t < PIN_WINDOW_MS,
-  );
+  pinRateLimit.attempts = pinRateLimit.attempts.filter((t) => now - t < PIN_WINDOW_MS);
   if (pinRateLimit.attempts.length >= PIN_MAX_ATTEMPTS) {
     pinRateLimit.lockoutUntil = now + PIN_LOCKOUT_MS;
     savePersistedRateLimit(pinRateLimit);
@@ -217,10 +213,7 @@ function register(
           }
 
           if (fileExists()) {
-            logger.warn(
-              "pin:setup",
-              "PIN already exists — use pin:change instead",
-            );
+            logger.warn("pin:setup", "PIN already exists — use pin:change instead");
             return {
               ok: false,
               error: "PIN is already set. Use change PIN instead.",
@@ -235,9 +228,7 @@ function register(
 
           const salt = crypto.randomBytes(32);
           const pinKey = derivePinKey(pin, salt);
-          const pinHash = crypto
-            .pbkdf2Sync(pin, salt, 600000, 32, "sha256")
-            .toString("hex");
+          const pinHash = crypto.pbkdf2Sync(pin, salt, 600000, 32, "sha256").toString("hex");
 
           const payload = {
             pinHash,
@@ -313,15 +304,11 @@ function register(
         // Compute expected hash REGARDLESS of decryption success.
         // This ensures the code path always takes the same amount of time,
         // preventing timing-based distinction between "wrong PIN" and "decryption failed".
-        const computedHash = crypto
-          .pbkdf2Sync(pin, salt, 600000, 32, "sha256")
-          .toString("hex");
+        const computedHash = crypto.pbkdf2Sync(pin, salt, 600000, 32, "sha256").toString("hex");
         const computedBuf = Buffer.from(computedHash, "hex");
 
         // Use a dummy buffer if payload is null — same length (32 bytes) for timing safety
-        const storedBuf = payload?.pinHash
-          ? Buffer.from(payload.pinHash, "hex")
-          : Buffer.alloc(32);
+        const storedBuf = payload?.pinHash ? Buffer.from(payload.pinHash, "hex") : Buffer.alloc(32);
 
         // Timing-safe comparison FIRST — no early returns before this
         const hashMatch = crypto.timingSafeEqual(computedBuf, storedBuf);
@@ -372,11 +359,7 @@ function register(
     requireAuth(
       async (
         _e: Electron.IpcMainInvokeEvent,
-        {
-          oldPin,
-          newPin,
-          allowAlpha,
-        }: { oldPin: string; newPin: string; allowAlpha: boolean },
+        { oldPin, newPin, allowAlpha }: { oldPin: string; newPin: string; allowAlpha: boolean },
       ) => {
         logger.ipcLog("pin:change", "PIN change requested");
         try {
@@ -418,10 +401,7 @@ function register(
           const oldStoredBuf = payload?.pinHash
             ? Buffer.from(payload.pinHash, "hex")
             : Buffer.alloc(32);
-          const oldHashMatch = crypto.timingSafeEqual(
-            oldComputedBuf,
-            oldStoredBuf,
-          );
+          const oldHashMatch = crypto.timingSafeEqual(oldComputedBuf, oldStoredBuf);
           const oldPayloadValid =
             payload && typeof payload.pinHash === "string" && !!payload.userKey;
 

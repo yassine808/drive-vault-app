@@ -19,20 +19,16 @@ type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 const FAVICON_ENDPOINT = "https://www.google.com/s2/favicons";
 
 function isPrivateIP(d: string): boolean {
-  if (d === "localhost" || d === "0.0.0.0" || d === "[::1]" || d.includes(":"))
-    return true;
+  if (d === "localhost" || d === "0.0.0.0" || d === "[::1]" || d.includes(":")) return true;
   const octets = d.split(".");
   if (octets.length < 4) return false;
   const a = Number.parseInt(octets[0], 10);
   const b = Number.parseInt(octets[1], 10);
   if (!Number.isNaN(a) && !Number.isNaN(b) && a === 10) return true;
   if (!Number.isNaN(a) && !Number.isNaN(b) && a === 127) return true;
-  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 192 && b === 168)
-    return true;
-  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 172 && b >= 16 && b <= 31)
-    return true;
-  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 169 && b === 254)
-    return true;
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 192 && b === 168) return true;
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 172 && b >= 16 && b <= 31) return true;
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a === 169 && b === 254) return true;
   if (!Number.isNaN(a) && a === 100 && b >= 64 && b <= 127) return true;
   return false;
 }
@@ -43,19 +39,9 @@ function detectMime(imgData: Buffer): string {
   if (imgData[0] === 0x47 && imgData[1] === 0x49) return "image/gif";
   if (imgData[0] === 0x3c && imgData[1] === 0x3f) return "image/svg+xml";
   if (imgData.toString("utf8", 0, 4).includes("<svg")) return "image/svg+xml";
-  if (
-    imgData[0] === 0x00 &&
-    imgData[1] === 0x00 &&
-    imgData[2] === 0x01 &&
-    imgData[3] === 0x00
-  )
+  if (imgData[0] === 0x00 && imgData[1] === 0x00 && imgData[2] === 0x01 && imgData[3] === 0x00)
     return "image/x-icon";
-  if (
-    imgData[0] === 0x52 &&
-    imgData[1] === 0x49 &&
-    imgData[2] === 0x46 &&
-    imgData[3] === 0x46
-  )
+  if (imgData[0] === 0x52 && imgData[1] === 0x49 && imgData[2] === 0x46 && imgData[3] === 0x46)
     return "image/webp";
   return "image/png";
 }
@@ -72,11 +58,7 @@ function isAllowedRedirect(hostname: string): boolean {
   return hostname.endsWith("google.com") || hostname.endsWith("gstatic.com");
 }
 
-function fetchImage(
-  targetUrl: string,
-  timeoutMs: number,
-  logger: Logger,
-): Promise<Buffer> {
+function fetchImage(targetUrl: string, timeoutMs: number, logger: Logger): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const req = https.get(targetUrl, { timeout: timeoutMs }, (res) => {
       const statusCode = res.statusCode ?? 0;
@@ -88,10 +70,7 @@ function fetchImage(
           });
           return reject(new Error("redirect blocked"));
         }
-        fetchImage(redirectUrl.toString(), timeoutMs, logger).then(
-          resolve,
-          reject,
-        );
+        fetchImage(redirectUrl.toString(), timeoutMs, logger).then(resolve, reject);
         return;
       }
       const chunks: Buffer[] = [];
@@ -168,8 +147,7 @@ function register(
     "logo:fetch",
     requireAuth(async (_e, { site }: { site: string }) => {
       logger.ipcLog("logo:fetch", "Fetching logo", { site });
-      if (typeof site !== "string" || !site.trim())
-        return { ok: false, error: "Invalid site" };
+      if (typeof site !== "string" || !site.trim()) return { ok: false, error: "Invalid site" };
       try {
         const logoUrl = await fetchLogo(site, driveClient, logger);
         return { ok: true, url: logoUrl };

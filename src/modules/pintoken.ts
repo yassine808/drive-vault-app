@@ -27,9 +27,7 @@ export function storeToken(googleId: string, email: string): string {
   return token;
 }
 
-export function consumeToken(
-  token: string,
-): { googleId: string; email: string } | null {
+export function consumeToken(token: string): { googleId: string; email: string } | null {
   const entry = tokens.get(token);
   if (!entry) return null;
   tokens.delete(token);

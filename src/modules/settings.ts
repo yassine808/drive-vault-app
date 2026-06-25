@@ -72,9 +72,7 @@ function validateSettings(
     return { ok: false, error: "Invalid lock action" };
   }
 
-  const accent: ValidAccent = (VALID_ACCENTS as readonly string[]).includes(
-    input.accent as string,
-  )
+  const accent: ValidAccent = (VALID_ACCENTS as readonly string[]).includes(input.accent as string)
     ? (input.accent as ValidAccent)
     : "violet";
 
@@ -82,9 +80,9 @@ function validateSettings(
   const gen_length = Number.isNaN(gl) || gl < 8 || gl > 128 ? 20 : gl;
 
   const td = Number.parseInt(input.toast_duration as string);
-  const toast_duration: ValidToastDuration = (
-    VALID_TOAST_DURATIONS as readonly number[]
-  ).includes(td)
+  const toast_duration: ValidToastDuration = (VALID_TOAST_DURATIONS as readonly number[]).includes(
+    td,
+  )
     ? (td as ValidToastDuration)
     : 2400;
 
@@ -98,9 +96,9 @@ function validateSettings(
   )
     ? (input.sound_exit_tone as ValidTone)
     : "chime";
-  const soundHoverTone: ValidHoverTone = (
-    VALID_HOVER_TONES as readonly string[]
-  ).includes(input.sound_hover_tone as string)
+  const soundHoverTone: ValidHoverTone = (VALID_HOVER_TONES as readonly string[]).includes(
+    input.sound_hover_tone as string,
+  )
     ? (input.sound_hover_tone as ValidHoverTone)
     : "click";
 
@@ -153,9 +151,7 @@ function register(
   async function dbSaveSettings(settings: Settings): Promise<void> {
     logger.dbLog("dbSaveSettings", "Saving settings");
     if (!driveClient) throw new Error("Drive not initialized");
-    await driveClient.saveSettings(
-      settings as unknown as Record<string, unknown>,
-    );
+    await driveClient.saveSettings(settings as unknown as Record<string, unknown>);
     logger.dbLog("dbSaveSettings", "Success");
   }
 
@@ -206,30 +202,28 @@ function register(
 
   ipcMain.handle(
     "settings:save",
-    requireAuth(
-      async (_e, { settings }: { settings: Record<string, unknown> }) => {
-        const session = getSession();
-        if (!session) throw new Error("No session");
-        logger.ipcLog("settings:save", "Saving settings", settings);
-        try {
-          const validation = validateSettings(settings, logger);
-          if (!validation.ok) {
-            logger.warn("settings:save", validation.error, {
-              lock_timeout: settings?.lock_timeout,
-              lock_action: settings?.lock_action,
-            });
-            return validation;
-          }
-          await dbSaveSettings(validation.settings);
-          logger.success("settings:save", "Settings saved");
-          return { ok: true };
-        } catch (e: unknown) {
-          const err = e as Error;
-          logError("settings:save", err);
-          return { ok: false, error: "Failed to save settings" };
+    requireAuth(async (_e, { settings }: { settings: Record<string, unknown> }) => {
+      const session = getSession();
+      if (!session) throw new Error("No session");
+      logger.ipcLog("settings:save", "Saving settings", settings);
+      try {
+        const validation = validateSettings(settings, logger);
+        if (!validation.ok) {
+          logger.warn("settings:save", validation.error, {
+            lock_timeout: settings?.lock_timeout,
+            lock_action: settings?.lock_action,
+          });
+          return validation;
         }
-      },
-    ),
+        await dbSaveSettings(validation.settings);
+        logger.success("settings:save", "Settings saved");
+        return { ok: true };
+      } catch (e: unknown) {
+        const err = e as Error;
+        logError("settings:save", err);
+        return { ok: false, error: "Failed to save settings" };
+      }
+    }),
   );
 }
 

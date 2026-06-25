@@ -48,9 +48,7 @@ export interface PreloadApi {
   logoFetch(site: string): Promise<{ ok: boolean; url?: string }>;
 
   jobsLoad(): Promise<{ ok: boolean; jobs: Job[]; error?: string }>;
-  jobsSave(
-    job: Record<string, unknown>,
-  ): Promise<{ ok: boolean; id?: string; error?: string }>;
+  jobsSave(job: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }>;
   jobsDelete(id: string): Promise<{ ok: boolean; error?: string }>;
   jobsReorder(jobs: unknown[]): Promise<{ ok: boolean }>;
   jobsTrash: {
@@ -60,9 +58,7 @@ export interface PreloadApi {
   };
 
   totpLoad(): Promise<{ ok: boolean; items: TotpItem[]; error?: string }>;
-  totpSave(
-    item: Record<string, unknown>,
-  ): Promise<{ ok: boolean; id?: string; error?: string }>;
+  totpSave(item: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }>;
   totpDelete(id: string): Promise<{ ok: boolean; error?: string }>;
 
   twofa: {
@@ -106,10 +102,7 @@ export interface PreloadApi {
   onTrayLogout(cb: () => void): void;
 
   pin: {
-    setup(
-      pin: string,
-      allowAlpha: boolean,
-    ): Promise<{ ok: boolean; error?: string }>;
+    setup(pin: string, allowAlpha: boolean): Promise<{ ok: boolean; error?: string }>;
     verify(pin: string): Promise<PinVerifyResult>;
     change(
       oldPin: string,
@@ -131,10 +124,7 @@ export interface PreloadApi {
       driveFolderName: string,
     ): Promise<{ ok: boolean; folder?: SyncFolder; error?: string }>;
     foldersRemove(folderId: string): Promise<{ ok: boolean; error?: string }>;
-    foldersToggle(
-      folderId: string,
-      enabled: boolean,
-    ): Promise<{ ok: boolean; error?: string }>;
+    foldersToggle(folderId: string, enabled: boolean): Promise<{ ok: boolean; error?: string }>;
     status(): Promise<{ ok: boolean; config: SyncConfig; error?: string }>;
     syncNow(): Promise<{
       ok: boolean;

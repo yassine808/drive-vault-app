@@ -92,11 +92,7 @@ function enc(obj: object, key: string): string {
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv("aes-256-cbc", encKey, iv);
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const mac = crypto
-    .createHmac("sha256", macKey)
-    .update(iv)
-    .update(ct)
-    .digest();
+  const mac = crypto.createHmac("sha256", macKey).update(iv).update(ct).digest();
   const packed = Buffer.concat([mac, iv, ct]);
   return packed.toString("base64");
 }
@@ -111,11 +107,7 @@ function _decryptNewFormat(
   const mac = packed.subarray(0, 32);
   const iv = packed.subarray(32, 48);
   const ct = packed.subarray(48);
-  const expectedMac = crypto
-    .createHmac("sha256", macKey)
-    .update(iv)
-    .update(ct)
-    .digest();
+  const expectedMac = crypto.createHmac("sha256", macKey).update(iv).update(ct).digest();
   if (!crypto.timingSafeEqual(mac, expectedMac)) {
     return null;
   }
@@ -124,14 +116,9 @@ function _decryptNewFormat(
   return JSON.parse(pt.toString("utf8"));
 }
 
-function _decryptLegacy(
-  str: string,
-  key: string,
-): Record<string, unknown> | null {
+function _decryptLegacy(str: string, key: string): Record<string, unknown> | null {
   if (!_CryptoJS) return null;
-  return JSON.parse(
-    _CryptoJS.AES.decrypt(str, key).toString(_CryptoJS.enc.Utf8 as any),
-  );
+  return JSON.parse(_CryptoJS.AES.decrypt(str, key).toString(_CryptoJS.enc.Utf8 as any));
 }
 
 function dec(str: string, key: string): Record<string, unknown> | null {
@@ -171,20 +158,8 @@ function decWithFallback(
   return dec(str, legacyKey);
 }
 
-function derivePinKey(
-  pin: string,
-  salt: Buffer,
-  iterations: number = 600000,
-): string {
+function derivePinKey(pin: string, salt: Buffer, iterations: number = 600000): string {
   return crypto.pbkdf2Sync(pin, salt, iterations, 32, "sha256").toString("hex");
 }
 
-export {
-  deriveKey,
-  generateUserSalt,
-  derivePinKey,
-  enc,
-  dec,
-  decWithFallback,
-  setCryptoJS,
-};
+export { deriveKey, generateUserSalt, derivePinKey, enc, dec, decWithFallback, setCryptoJS };

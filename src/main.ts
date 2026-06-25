@@ -5,8 +5,7 @@ import path from "node:path";
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
 import electron from "electron";
-const { ipcMain, BrowserWindow, shell, Tray, Menu, nativeImage, dialog } =
-  electron;
+const { ipcMain, BrowserWindow, shell, Tray, Menu, nativeImage, dialog } = electron;
 const { app } = electron;
 import http from "node:http";
 import url from "node:url";
@@ -42,21 +41,13 @@ type GoogleProfile = {
 
 const GOOGLE_CLIENT_ID = requireEnv("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = requireEnv("GOOGLE_CLIENT_SECRET");
-const REDIRECT_URI =
-  process.env.REDIRECT_URI || "http://localhost:42813/oauth2callback";
-const SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/drive.file",
-];
+const REDIRECT_URI = process.env.REDIRECT_URI || "http://localhost:42813/oauth2callback";
+const SCOPES = ["openid", "email", "profile", "https://www.googleapis.com/auth/drive.file"];
 
 logger.info("config", "Environment loaded", { redirectUri: REDIRECT_URI });
 
 const LOG_PATH = path.join(
-  process.env.PORTABLE_EXECUTABLE_DIR ||
-    path.dirname(process.execPath) ||
-    app.getPath("userData"),
+  process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath) || app.getPath("userData"),
   "vault-errors.log",
 );
 logger.info("main", "Log paths", {
@@ -81,9 +72,7 @@ logger.info("main", "Global error handlers registered");
 
 let win: electron.BrowserWindow | null = null;
 let driveClient: import("./modules/drive").DriveClient | null = null;
-let updateDriveClient: (
-  dc: import("./modules/drive").DriveClient | null,
-) => void = () => {};
+let updateDriveClient: (dc: import("./modules/drive").DriveClient | null) => void = () => {};
 let CryptoJS: any = null;
 let speakeasy: any = null;
 let tray: electron.Tray | null = null;
@@ -175,9 +164,7 @@ async function driveLoadItems(
   return { passwords, notes };
 }
 
-async function driveLoadTrash(
-  encKey: string,
-): Promise<Record<string, unknown>[]> {
+async function driveLoadTrash(encKey: string): Promise<Record<string, unknown>[]> {
   logger.db("driveLoadTrash", "Loading trash from cache");
   if (!driveClient) throw new TypeError("Drive not initialized");
 
@@ -432,11 +419,7 @@ a{color:#a78bfa}
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Content-Security-Policy":
-          "default-src 'none'; style-src 'nonce-" +
-          nonce +
-          "'; script-src 'nonce-" +
-          nonce +
-          "';",
+          "default-src 'none'; style-src 'nonce-" + nonce + "'; script-src 'nonce-" + nonce + "';",
       });
       res.end(`<!DOCTYPE html><html><head><title>Vault — Authenticated</title>
 <style nonce="${nonce}">
@@ -459,14 +442,9 @@ a{color:#a78bfa}
         win.focus();
         if (win.isMinimized()) win.restore();
       }
-      logger.authLog(
-        "oauth",
-        "OAuth callback received, exchanging code for tokens",
-      );
+      logger.authLog("oauth", "OAuth callback received, exchanging code for tokens");
       try {
-        const { tokens } = await oauth2Client.getToken(
-          parsed.query.code as string,
-        );
+        const { tokens } = await oauth2Client.getToken(parsed.query.code as string);
         oauth2Client.setCredentials(tokens);
         const people = google.google.people({
           version: "v1",
@@ -478,8 +456,7 @@ a{color:#a78bfa}
         });
         const profile: GoogleProfile = {
           googleId:
-            (me.data.metadata?.sources?.[0]?.id as string) ||
-            crypto.randomBytes(8).toString("hex"),
+            (me.data.metadata?.sources?.[0]?.id as string) || crypto.randomBytes(8).toString("hex"),
           email: (me.data.emailAddresses?.[0]?.value as string) || "",
           name: (me.data.names?.[0]?.displayName as string) || "",
           avatar: (me.data.photos?.[0]?.url as string) || null,
@@ -528,15 +505,8 @@ import { register as registerJobs } from "./modules/jobs";
 import { register as registerTotp } from "./modules/totp";
 import { register as registerSettings } from "./modules/settings";
 import { register as registerLogo } from "./modules/logo";
-import {
-  consumePinVerify,
-  register as registerPin,
-  setUserDataPath,
-} from "./modules/pin";
-import {
-  register as registerAccounts,
-  setUserDataPathAccounts,
-} from "./modules/accounts";
+import { consumePinVerify, register as registerPin, setUserDataPath } from "./modules/pin";
+import { register as registerAccounts, setUserDataPathAccounts } from "./modules/accounts";
 import { register as registerSync } from "./modules/sync";
 import { DriveClient } from "./modules/drive";
 
@@ -560,8 +530,7 @@ ipcMain.handle("auth:login", async () => {
     // (even on another machine that synced the cache), the salt will be there.
     const cacheMod = await import("./modules/cache");
     const cachedData = cacheMod.loadCache(profile.googleId);
-    let userSalt = (cachedData.settings as Record<string, unknown>)
-      ?.userSalt as string | undefined;
+    let userSalt = (cachedData.settings as Record<string, unknown>)?.userSalt as string | undefined;
     if (!userSalt) {
       userSalt = generateUserSalt();
       logger.info("crypto", "Generated new per-account salt", {
@@ -644,63 +613,58 @@ ipcMain.handle("auth:login", async () => {
 
 ipcMain.handle(
   "auth:verify2fa",
-  requireAuth(
-    async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
-      logger.ipcLog("auth:verify2fa", "2FA verification attempt");
-      try {
-        if (isRateLimited()) {
-          logger.warn("auth:verify2fa", "2FA rejected — rate limited");
-          return {
-            ok: false,
-            error: "Too many attempts. Try again in 15 minutes.",
-          };
-        }
-        if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
-          recordFailedAttempt();
-          logger.warn("auth:verify2fa", "2FA rejected — invalid token format");
-          return {
-            ok: false,
-            error: "Invalid code format. Enter a 6-digit number.",
-          };
-        }
-        const s = getSession();
-        if (!s?.pending2fa) {
-          recordFailedAttempt();
-          logger.warn(
-            "auth:verify2fa",
-            "2FA rejected — no pending 2FA session",
-          );
-          return { ok: false, error: "No pending 2FA" };
-        }
-        const twofa = await drive2faGet();
-        if (!verify2fa(twofa!.secret, token)) {
-          recordFailedAttempt();
-          logger.warn("auth:verify2fa", "2FA rejected — invalid code");
-          return { ok: false, error: "Invalid code" };
-        }
-        resetRateLimit();
-        s.pending2fa = false;
-        setSession(s);
-        const newToken = genSessionToken();
-        const vault = await driveLoadItems(s.encKey, s.googleId);
-        playSound("login");
-        logger.authLog("auth:verify2fa", "2FA verified successfully", {
-          email: s.email,
-        });
+  requireAuth(async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
+    logger.ipcLog("auth:verify2fa", "2FA verification attempt");
+    try {
+      if (isRateLimited()) {
+        logger.warn("auth:verify2fa", "2FA rejected — rate limited");
         return {
-          ok: true,
-          token: newToken,
-          vault,
-          user: { name: s.name, email: s.email, avatar: s.avatar },
+          ok: false,
+          error: "Too many attempts. Try again in 15 minutes.",
         };
-      } catch (e: unknown) {
-        const err = e as Error;
-        logger.error("auth:verify2fa", "2FA verification error", err.message);
-        logError("auth:verify2fa", err);
-        return { ok: false, error: "Verification failed. Please try again." };
       }
-    },
-  ),
+      if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
+        recordFailedAttempt();
+        logger.warn("auth:verify2fa", "2FA rejected — invalid token format");
+        return {
+          ok: false,
+          error: "Invalid code format. Enter a 6-digit number.",
+        };
+      }
+      const s = getSession();
+      if (!s?.pending2fa) {
+        recordFailedAttempt();
+        logger.warn("auth:verify2fa", "2FA rejected — no pending 2FA session");
+        return { ok: false, error: "No pending 2FA" };
+      }
+      const twofa = await drive2faGet();
+      if (!verify2fa(twofa!.secret, token)) {
+        recordFailedAttempt();
+        logger.warn("auth:verify2fa", "2FA rejected — invalid code");
+        return { ok: false, error: "Invalid code" };
+      }
+      resetRateLimit();
+      s.pending2fa = false;
+      setSession(s);
+      const newToken = genSessionToken();
+      const vault = await driveLoadItems(s.encKey, s.googleId);
+      playSound("login");
+      logger.authLog("auth:verify2fa", "2FA verified successfully", {
+        email: s.email,
+      });
+      return {
+        ok: true,
+        token: newToken,
+        vault,
+        user: { name: s.name, email: s.email, avatar: s.avatar },
+      };
+    } catch (e: unknown) {
+      const err = e as Error;
+      logger.error("auth:verify2fa", "2FA verification error", err.message);
+      logError("auth:verify2fa", err);
+      return { ok: false, error: "Verification failed. Please try again." };
+    }
+  }),
 );
 
 ipcMain.handle(
@@ -757,8 +721,9 @@ ipcMain.handle("auth:reauth", async () => {
     }
     const cacheMod2 = await import("./modules/cache");
     const cachedData2 = cacheMod2.loadCache(profile.googleId);
-    let userSalt2 = (cachedData2.settings as Record<string, unknown>)
-      ?.userSalt as string | undefined;
+    let userSalt2 = (cachedData2.settings as Record<string, unknown>)?.userSalt as
+      | string
+      | undefined;
     if (!userSalt2) {
       userSalt2 = generateUserSalt();
       logger.info("crypto", "Generated new per-account salt (reauth)", {
@@ -824,10 +789,7 @@ ipcMain.handle("auth:reauth", async () => {
 
 ipcMain.handle(
   "auth:loginWithPin",
-  async (
-    _e: electron.IpcMainInvokeEvent,
-    { verifyId }: { verifyId: string },
-  ) => {
+  async (_e: electron.IpcMainInvokeEvent, { verifyId }: { verifyId: string }) => {
     logger.ipcLog("auth:loginWithPin", "PIN login attempt");
     try {
       // Consume the PIN verify entry — proves pin:verify was just called successfully
@@ -844,24 +806,17 @@ ipcMain.handle(
       const { googleId, email } = verified;
 
       // Input validation
-      if (
-        typeof googleId !== "string" ||
-        !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)
-      ) {
+      if (typeof googleId !== "string" || !/^[a-zA-Z0-9_-]{8,64}$/.test(googleId)) {
         return { ok: false, error: "Invalid session" };
       }
-      if (
-        typeof email !== "string" ||
-        !/^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/u.test(email)
-      ) {
+      if (typeof email !== "string" || !/^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/u.test(email)) {
         return { ok: false, error: "Invalid session" };
       }
 
       // Load or generate per-account salt for PIN login
       const pinCacheMod = await import("./modules/cache");
       const pinCached = pinCacheMod.loadCache(googleId);
-      let pinSalt = (pinCached.settings as Record<string, unknown>)
-        ?.userSalt as string | undefined;
+      let pinSalt = (pinCached.settings as Record<string, unknown>)?.userSalt as string | undefined;
       if (!pinSalt) {
         // First PIN login on this machine — generate and persist
         pinSalt = generateUserSalt();
@@ -879,14 +834,9 @@ ipcMain.handle(
           await driveClient.init(oauth2Client);
           updateDriveClient(driveClient);
         } catch (driveErr) {
-          logger.warn(
-            "auth:loginWithPin",
-            "Drive init failed, using local cache only",
-            {
-              error:
-                driveErr instanceof Error ? driveErr.message : String(driveErr),
-            },
-          );
+          logger.warn("auth:loginWithPin", "Drive init failed, using local cache only", {
+            error: driveErr instanceof Error ? driveErr.message : String(driveErr),
+          });
           driveClient = null;
         }
       }
@@ -977,10 +927,7 @@ ipcMain.handle(
 ipcMain.handle(
   "vault:delete",
   requireAuth(
-    async (
-      _e: electron.IpcMainInvokeEvent,
-      { id, type }: { id: string; type: string },
-    ) => {
+    async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
       logger.ipcLog("vault:delete", "Delete vault item", { id, type });
       try {
         await driveSoftDelete(id, type as "password" | "note" | "job");
@@ -1003,8 +950,9 @@ ipcMain.handle(
       if (driveClient) await driveClient.syncToDrive();
       const syncCacheMod = await import("./modules/cache");
       const syncCached = syncCacheMod.loadCache(s.googleId);
-      const syncSalt = (syncCached.settings as Record<string, unknown>)
-        ?.userSalt as string | undefined;
+      const syncSalt = (syncCached.settings as Record<string, unknown>)?.userSalt as
+        | string
+        | undefined;
       const vault = await driveLoadItems(s.encKey, s.googleId, syncSalt);
       logger.success("vault:sync", "Vault synced", {
         passwords: vault.passwords.length,
@@ -1060,10 +1008,7 @@ ipcMain.handle(
 ipcMain.handle(
   "trash:restore",
   requireAuth(
-    async (
-      _e: electron.IpcMainInvokeEvent,
-      { id, type }: { id: string; type: string },
-    ) => {
+    async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
       logger.ipcLog("trash:restore", "Restoring from trash", { id, type });
       try {
         await driveRestore(id, type as "password" | "note" | "job");
@@ -1080,10 +1025,7 @@ ipcMain.handle(
 ipcMain.handle(
   "trash:purge",
   requireAuth(
-    async (
-      _e: electron.IpcMainInvokeEvent,
-      { id, type }: { id: string; type: string },
-    ) => {
+    async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
       logger.ipcLog("trash:purge", "Purging from trash", { id, type });
       try {
         await drivePermDelete(id, type as "password" | "note" | "job" | "totp");
@@ -1121,14 +1063,10 @@ ipcMain.handle(
     try {
       const existing = await drive2faGet();
       if (existing?.enabled) {
-        logger.warn(
-          "2fa:setup",
-          "2FA already enabled, cannot re-setup without disabling first",
-        );
+        logger.warn("2fa:setup", "2FA already enabled, cannot re-setup without disabling first");
         return {
           ok: false,
-          error:
-            "2FA is already enabled. Disable it first before setting up again.",
+          error: "2FA is already enabled. Disable it first before setting up again.",
         };
       }
       const secret = speakeasy!.generateSecret({
@@ -1147,80 +1085,76 @@ ipcMain.handle(
 
 ipcMain.handle(
   "2fa:enable",
-  requireAuth(
-    async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
-      logger.ipcLog("2fa:enable", "Enabling 2FA");
-      try {
-        if (isRateLimited()) {
-          logger.warn("2fa:enable", "Rate limited");
-          return {
-            ok: false,
-            error: "Too many attempts. Try again in 15 minutes.",
-          };
-        }
-        if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
-          recordFailedAttempt();
-          logger.warn("2fa:enable", "Invalid token format");
-          return {
-            ok: false,
-            error: "Invalid code format. Enter a 6-digit number.",
-          };
-        }
-        const d = await drive2faGet();
-        if (!d || !verify2fa(d.secret, token)) {
-          recordFailedAttempt();
-          logger.warn("2fa:enable", "Invalid 2FA code");
-          return { ok: false, error: "Invalid code" };
-        }
-        resetRateLimit();
-        await drive2faSave(d.secret, true);
-        logger.success("2fa:enable", "2FA enabled");
-        return { ok: true };
-      } catch (e: unknown) {
-        logError("2fa:enable", e);
-        return { ok: false, error: "Operation failed" };
+  requireAuth(async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
+    logger.ipcLog("2fa:enable", "Enabling 2FA");
+    try {
+      if (isRateLimited()) {
+        logger.warn("2fa:enable", "Rate limited");
+        return {
+          ok: false,
+          error: "Too many attempts. Try again in 15 minutes.",
+        };
       }
-    },
-  ),
+      if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
+        recordFailedAttempt();
+        logger.warn("2fa:enable", "Invalid token format");
+        return {
+          ok: false,
+          error: "Invalid code format. Enter a 6-digit number.",
+        };
+      }
+      const d = await drive2faGet();
+      if (!d || !verify2fa(d.secret, token)) {
+        recordFailedAttempt();
+        logger.warn("2fa:enable", "Invalid 2FA code");
+        return { ok: false, error: "Invalid code" };
+      }
+      resetRateLimit();
+      await drive2faSave(d.secret, true);
+      logger.success("2fa:enable", "2FA enabled");
+      return { ok: true };
+    } catch (e: unknown) {
+      logError("2fa:enable", e);
+      return { ok: false, error: "Operation failed" };
+    }
+  }),
 );
 
 ipcMain.handle(
   "2fa:disable",
-  requireAuth(
-    async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
-      logger.ipcLog("2fa:disable", "Disabling 2FA");
-      try {
-        if (isRateLimited()) {
-          logger.warn("2fa:disable", "Rate limited");
-          return {
-            ok: false,
-            error: "Too many attempts. Try again in 15 minutes.",
-          };
-        }
-        if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
-          recordFailedAttempt();
-          logger.warn("2fa:disable", "Invalid token format");
-          return {
-            ok: false,
-            error: "Enter your current 6-digit 2FA code to disable.",
-          };
-        }
-        const d = await drive2faGet();
-        if (!d || !verify2fa(d.secret, token)) {
-          recordFailedAttempt();
-          logger.warn("2fa:disable", "Invalid 2FA code");
-          return { ok: false, error: "Invalid code" };
-        }
-        resetRateLimit();
-        await drive2faSave(d.secret, false);
-        logger.success("2fa:disable", "2FA disabled");
-        return { ok: true };
-      } catch (e: unknown) {
-        logError("2fa:disable", e);
-        return { ok: false, error: "Operation failed" };
+  requireAuth(async (_e: electron.IpcMainInvokeEvent, { token }: { token: string }) => {
+    logger.ipcLog("2fa:disable", "Disabling 2FA");
+    try {
+      if (isRateLimited()) {
+        logger.warn("2fa:disable", "Rate limited");
+        return {
+          ok: false,
+          error: "Too many attempts. Try again in 15 minutes.",
+        };
       }
-    },
-  ),
+      if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
+        recordFailedAttempt();
+        logger.warn("2fa:disable", "Invalid token format");
+        return {
+          ok: false,
+          error: "Enter your current 6-digit 2FA code to disable.",
+        };
+      }
+      const d = await drive2faGet();
+      if (!d || !verify2fa(d.secret, token)) {
+        recordFailedAttempt();
+        logger.warn("2fa:disable", "Invalid 2FA code");
+        return { ok: false, error: "Invalid code" };
+      }
+      resetRateLimit();
+      await drive2faSave(d.secret, false);
+      logger.success("2fa:disable", "2FA disabled");
+      return { ok: true };
+    } catch (e: unknown) {
+      logError("2fa:disable", e);
+      return { ok: false, error: "Operation failed" };
+    }
+  }),
 );
 
 ipcMain.handle(
@@ -1241,8 +1175,7 @@ ipcMain.handle(
       win?.maximize();
     }
     setTimeout(() => {
-      if (!win!.isDestroyed())
-        win!.webContents.send("win:maximized-state", win!.isMaximized());
+      if (!win!.isDestroyed()) win!.webContents.send("win:maximized-state", win!.isMaximized());
     }, 50);
     return { ok: true };
   }),
@@ -1432,13 +1365,11 @@ function createWindow(): void {
     if (!win!.isDestroyed()) win!.webContents.send("win:maximized-state", true);
   });
   win.on("unmaximize", () => {
-    if (!win!.isDestroyed())
-      win!.webContents.send("win:maximized-state", false);
+    if (!win!.isDestroyed()) win!.webContents.send("win:maximized-state", false);
   });
 
   logger.success("window", "Main window created and loaded");
-  if (process.argv.includes("--dev"))
-    win.webContents.openDevTools({ mode: "detach" });
+  if (process.argv.includes("--dev")) win.webContents.openDevTools({ mode: "detach" });
 }
 
 app.whenReady().then(() => {
@@ -1481,14 +1412,7 @@ app.whenReady().then(() => {
     logger as any,
     logError,
   );
-  registerLogo(
-    ipcMain,
-    requireAuth,
-    driveClient,
-    logger as any,
-    getSessionFn,
-    logError,
-  );
+  registerLogo(ipcMain, requireAuth, driveClient, logger as any, getSessionFn, logError);
   setUserDataPath(app.getPath("userData"));
   setUserDataPathAccounts(app.getPath("userData"));
   registerPin(
@@ -1500,13 +1424,7 @@ app.whenReady().then(() => {
     logError,
     driveClient,
   );
-  registerAccounts(
-    ipcMain,
-    requireAuthNoArgs,
-    getSessionFn,
-    logger as any,
-    logError,
-  );
+  registerAccounts(ipcMain, requireAuthNoArgs, getSessionFn, logger as any, logError);
   updateDriveClient = registerSync(
     ipcMain,
     requireAuth,

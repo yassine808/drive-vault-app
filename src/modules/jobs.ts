@@ -27,22 +27,11 @@ function validateAppliedDate(appliedAt: string): string | null {
   const year = Number.parseInt(appliedAt.slice(0, 4), 10);
   const month = Number.parseInt(appliedAt.slice(5, 7), 10);
   const day = Number.parseInt(appliedAt.slice(8, 10), 10);
-  if (
-    year < 2000 ||
-    year > 2100 ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31
-  ) {
+  if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
     return "Applied date must be a valid date between 2000 and 2100";
   }
   const d = new Date(appliedAt + "T00:00:00.000Z");
-  if (
-    Number.isNaN(d.getTime()) ||
-    d.getUTCMonth() + 1 !== month ||
-    d.getUTCDate() !== day
-  ) {
+  if (Number.isNaN(d.getTime()) || d.getUTCMonth() + 1 !== month || d.getUTCDate() !== day) {
     return "Applied date is not a valid calendar date";
   }
   return null;
@@ -86,10 +75,7 @@ function register(opts: JobsRegisterOpts) {
     const encKey = session.encKey;
     const items = driveClient.loadItems("job");
     const jobs: Job[] = items.map((item) => {
-      const decrypted = dec(item.encryptedData, encKey) as Record<
-        string,
-        unknown
-      >;
+      const decrypted = dec(item.encryptedData, encKey) as Record<string, unknown>;
       return {
         id: item.id,
         company: (decrypted.company as string) || "",
@@ -158,10 +144,7 @@ function register(opts: JobsRegisterOpts) {
     const encKey = session.encKey;
     const items = driveClient.loadTrash("job");
     const jobs: Job[] = items.map((item) => {
-      const decrypted = dec(item.encryptedData, encKey) as Record<
-        string,
-        unknown
-      >;
+      const decrypted = dec(item.encryptedData, encKey) as Record<string, unknown>;
       return {
         id: item.id,
         company: (decrypted.company as string) || "",

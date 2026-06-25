@@ -51,17 +51,10 @@ function getSession(): Session | null {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type IpcMainHandler = (
-  event: Electron.IpcMainInvokeEvent,
-  ...args: any[]
-) => any;
+type IpcMainHandler = (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any;
 
 function requireAuth(fn: IpcMainHandler): IpcMainHandler {
-  return async (
-    event: Electron.IpcMainInvokeEvent,
-    token: string,
-    ...args: unknown[]
-  ) => {
+  return async (event: Electron.IpcMainInvokeEvent, token: string, ...args: unknown[]) => {
     if (!validateToken(token)) {
       return { ok: false, error: "Not authenticated" };
     }
@@ -89,9 +82,7 @@ const rateLimit: RateLimitState = {
 function isRateLimited(): boolean {
   const now = Date.now();
   if (now < rateLimit.lockoutUntil) return true;
-  rateLimit.attempts = rateLimit.attempts.filter(
-    (t) => now - t < rateLimit.WINDOW_MS,
-  );
+  rateLimit.attempts = rateLimit.attempts.filter((t) => now - t < rateLimit.WINDOW_MS);
   if (rateLimit.attempts.length >= rateLimit.MAX_ATTEMPTS) {
     rateLimit.lockoutUntil = now + rateLimit.LOCKOUT_MS;
     return true;

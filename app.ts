@@ -97,9 +97,7 @@ const RLOG_MAX = 2000;
 function rlog(level: string, ctx: string, msg: string, data?: unknown): void {
   const entry = { ts: new Date().toISOString(), level, ctx, msg, data };
   try {
-    const arr: (typeof entry)[] = JSON.parse(
-      localStorage.getItem(RLOG_KEY) || "[]",
-    );
+    const arr: (typeof entry)[] = JSON.parse(localStorage.getItem(RLOG_KEY) || "[]");
     arr.push(entry);
     if (arr.length > RLOG_MAX) arr.splice(0, arr.length - RLOG_MAX);
     localStorage.setItem(RLOG_KEY, JSON.stringify(arr));
@@ -107,14 +105,10 @@ function rlog(level: string, ctx: string, msg: string, data?: unknown): void {
     /* noop */
   }
 }
-const logInfo = (ctx: string, msg: string, data?: unknown): void =>
-  rlog("INFO", ctx, msg, data);
-const logOk = (ctx: string, msg: string, data?: unknown): void =>
-  rlog("OK", ctx, msg, data);
-const logWarn = (ctx: string, msg: string, data?: unknown): void =>
-  rlog("WARN", ctx, msg, data);
-const logErr = (ctx: string, msg: string, data?: unknown): void =>
-  rlog("ERROR", ctx, msg, data);
+const logInfo = (ctx: string, msg: string, data?: unknown): void => rlog("INFO", ctx, msg, data);
+const logOk = (ctx: string, msg: string, data?: unknown): void => rlog("OK", ctx, msg, data);
+const logWarn = (ctx: string, msg: string, data?: unknown): void => rlog("WARN", ctx, msg, data);
+const logErr = (ctx: string, msg: string, data?: unknown): void => rlog("ERROR", ctx, msg, data);
 logInfo("app", "Renderer initialized");
 
 const CLIPBOARD_CLEAR_MS = 30000;
@@ -144,12 +138,7 @@ const wc = (t: unknown): number => {
   return s ? s.split(/\s+/).length : 0;
 };
 const days = (d: string): number =>
-  Math.max(
-    0,
-    Math.ceil(
-      (30 * 86400000 - (Date.now() - new Date(d).getTime())) / 86400000,
-    ),
-  );
+  Math.max(0, Math.ceil((30 * 86400000 - (Date.now() - new Date(d).getTime())) / 86400000));
 
 function formatLockTimer(ms: number): string {
   const totalSec = Math.ceil(ms / 1000);
@@ -179,9 +168,7 @@ function confirmDialog(opts: ConfirmOpts): Promise<boolean> {
     const title = document.getElementById("confirm-title") as HTMLElement;
     const msg = document.getElementById("confirm-msg") as HTMLElement;
     const icon = document.getElementById("confirm-icon") as HTMLElement;
-    const cancelBtn = document.getElementById(
-      "confirm-cancel",
-    ) as HTMLButtonElement;
+    const cancelBtn = document.getElementById("confirm-cancel") as HTMLButtonElement;
     const okBtn = document.getElementById("confirm-ok") as HTMLButtonElement;
     if (opts.title) title.textContent = opts.title;
     if (opts.msg) msg.textContent = opts.msg;
@@ -223,9 +210,7 @@ const _OVERLAY_IDS = [
   "confirm-overlay",
 ];
 function _updateModalBlur(): void {
-  const anyOpen = _OVERLAY_IDS.some(
-    (id) => !(document.getElementById(id) as HTMLElement).hidden,
-  );
+  const anyOpen = _OVERLAY_IDS.some((id) => !(document.getElementById(id) as HTMLElement).hidden);
   document.querySelector(".screen")?.classList.toggle("modal-open", anyOpen);
 }
 function showOverlay(id: string): void {
@@ -254,8 +239,7 @@ function clearAllInputs(): void {
 // ═══ SOUNDS ═══════════════════════════════════════════════════════════════════
 const AudioCtx: typeof AudioContext =
   globalThis.AudioContext ||
-  (globalThis as unknown as { webkitAudioContext: typeof AudioContext })
-    .webkitAudioContext;
+  (globalThis as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
 let actx: AudioContext | null = null;
 function getACtx(): AudioContext {
   actx ??= new AudioCtx();
@@ -309,15 +293,10 @@ const TONES: Record<string, ToneConfig> = {
 };
 function playToneSeq(toneName: string): void {
   const t = TONES[toneName] || TONES.chime;
-  t.freqs.forEach((f: number, i: number) =>
-    playTone(f, t.type, t.dur, t.vol, i * t.gap),
-  );
+  t.freqs.forEach((f: number, i: number) => playTone(f, t.type, t.dur, t.vol, i * t.gap));
 }
 function playSound(type: string): void {
-  if (
-    (globalThis as unknown as Record<string, boolean>).__soundsEnabled === false
-  )
-    return;
+  if ((globalThis as unknown as Record<string, boolean>).__soundsEnabled === false) return;
   const s = S.settings;
   switch (type) {
     case "login":
@@ -332,9 +311,7 @@ function playSound(type: string): void {
         t.freqs
           .slice()
           .reverse()
-          .forEach((f: number, i: number) =>
-            playTone(f, t.type, t.dur, t.vol * 0.8, i * t.gap),
-          );
+          .forEach((f: number, i: number) => playTone(f, t.type, t.dur, t.vol * 0.8, i * t.gap));
       } else {
         [784, 659, 523].forEach((f: number, i: number) =>
           playTone(f, "sine", 0.18, 0.12, i * 0.09),
@@ -365,10 +342,7 @@ api.onTrayLogout(() => {
 
 // ═══ SOUND TEST BUTTONS ════════════════════════════════════════════════════════
 function testSound(soundType: string): void {
-  if (
-    (globalThis as unknown as Record<string, boolean>).__soundsEnabled === false
-  )
-    return;
+  if ((globalThis as unknown as Record<string, boolean>).__soundsEnabled === false) return;
   const s = S.settings;
   switch (soundType) {
     case "login":
@@ -380,9 +354,7 @@ function testSound(soundType: string): void {
         t.freqs
           .slice()
           .reverse()
-          .forEach((f: number, i: number) =>
-            playTone(f, t.type, t.dur, t.vol * 0.8, i * t.gap),
-          );
+          .forEach((f: number, i: number) => playTone(f, t.type, t.dur, t.vol * 0.8, i * t.gap));
       } else {
         [784, 659, 523].forEach((f: number, i: number) =>
           playTone(f, "sine", 0.18, 0.12, i * 0.09),
@@ -394,15 +366,18 @@ function testSound(soundType: string): void {
       break;
   }
 }
-(
-  document.getElementById("btn-test-login-sound") as HTMLButtonElement
-).addEventListener("click", () => testSound("login"));
-(
-  document.getElementById("btn-test-exit-sound") as HTMLButtonElement
-).addEventListener("click", () => testSound("exit"));
-(
-  document.getElementById("btn-test-hover-sound") as HTMLButtonElement
-).addEventListener("click", () => testSound("hover"));
+(document.getElementById("btn-test-login-sound") as HTMLButtonElement).addEventListener(
+  "click",
+  () => testSound("login"),
+);
+(document.getElementById("btn-test-exit-sound") as HTMLButtonElement).addEventListener(
+  "click",
+  () => testSound("exit"),
+);
+(document.getElementById("btn-test-hover-sound") as HTMLButtonElement).addEventListener(
+  "click",
+  () => testSound("hover"),
+);
 
 // ═══ WINDOWS SNAP ═════════════════════════════════════════════════════════════
 (document.getElementById("titlebar") as HTMLElement).addEventListener(
@@ -419,10 +394,8 @@ function confirm(opts: ConfirmOpts): void {
   logInfo("ui", "Confirm dialog shown", { title: opts.title });
   (document.getElementById("confirm-title") as HTMLElement).textContent =
     opts.title || "Are you sure?";
-  (document.getElementById("confirm-msg") as HTMLElement).textContent =
-    opts.msg || "";
-  (document.getElementById("confirm-icon") as HTMLElement).textContent =
-    opts.icon || "🗑️";
+  (document.getElementById("confirm-msg") as HTMLElement).textContent = opts.msg || "";
+  (document.getElementById("confirm-icon") as HTMLElement).textContent = opts.icon || "🗑️";
   const okBtn = document.getElementById("confirm-ok") as HTMLButtonElement;
   const newOk = okBtn.cloneNode(true) as HTMLButtonElement;
   okBtn.parentNode!.replaceChild(newOk, okBtn);
@@ -435,18 +408,14 @@ function confirm(opts: ConfirmOpts): void {
   });
   showOverlay("confirm-overlay");
 }
-(
-  document.getElementById("confirm-cancel") as HTMLButtonElement
-).addEventListener("click", () => {
+(document.getElementById("confirm-cancel") as HTMLButtonElement).addEventListener("click", () => {
   hideOverlay("confirm-overlay");
   logInfo("ui", "Confirm dialog cancelled");
 });
 (document.getElementById("confirm-overlay") as HTMLElement).addEventListener(
   "click",
   (e: MouseEvent) => {
-    if (
-      e.target === (document.getElementById("confirm-overlay") as HTMLElement)
-    ) {
+    if (e.target === (document.getElementById("confirm-overlay") as HTMLElement)) {
       hideOverlay("confirm-overlay");
       logInfo("ui", "Confirm dialog dismissed (overlay click)");
     }
@@ -535,103 +504,92 @@ function doLock(): void {
   ),
 );
 
-(document.getElementById("btn-unlock") as HTMLButtonElement).addEventListener(
-  "click",
-  async () => {
-    const btn = document.getElementById("btn-unlock") as HTMLButtonElement;
-    if (btn.disabled) return;
-    logInfo("auth", "Unlock button clicked");
-    btn.textContent = "Opening browser…";
-    btn.disabled = true;
-    const r = await api.reauth();
-    if (r.ok) {
-      if (r.token)
-        (
-          globalThis as unknown as { __vaultToken: { set(t: string): void } }
-        ).__vaultToken.set(r.token);
-      S.user = r.user;
-      loadVault(r.vault);
-      screen("s-app");
-      armLock();
-      toast("Vault unlocked");
-      logOk("auth", "Vault unlocked via reauth", { email: S.user?.email });
-    } else {
-      btn.textContent = "Unlock with Google";
-      btn.disabled = false;
-      toast("Unlock failed: " + r.error);
-      logErr("auth", "Unlock failed", r.error);
-    }
-  },
-);
-
-// ═══ AUTH ═════════════════════════════════════════════════════════════════════
-(document.getElementById("btn-login") as HTMLButtonElement).addEventListener(
-  "click",
-  async () => {
-    const btn = document.getElementById("btn-login") as HTMLButtonElement;
-    if (btn.disabled) return;
-    logInfo("auth", "Login button clicked");
-    btn.textContent = "Opening browser…";
-    btn.disabled = true;
-    const r = await api.login();
-    if (!r.ok) {
-      const err = document.getElementById("login-err") as HTMLElement;
-      err.hidden = false;
-      err.textContent = r.error ?? "";
-      logErr("auth", "Login failed", r.error);
-      btn.textContent = "Sign in with Google";
-      btn.disabled = false;
-      return;
-    }
-    if (r.needs2fa) {
-      S.user = r.user;
-      screen("s-2fa");
-      btn.textContent = "Sign in with Google";
-      btn.disabled = false;
-      logInfo("auth", "Login requires 2FA", { email: S.user?.email });
-      return;
-    }
+(document.getElementById("btn-unlock") as HTMLButtonElement).addEventListener("click", async () => {
+  const btn = document.getElementById("btn-unlock") as HTMLButtonElement;
+  if (btn.disabled) return;
+  logInfo("auth", "Unlock button clicked");
+  btn.textContent = "Opening browser…";
+  btn.disabled = true;
+  const r = await api.reauth();
+  if (r.ok) {
     if (r.token)
-      (
-        globalThis as unknown as { __vaultToken: { set(t: string): void } }
-      ).__vaultToken.set(r.token);
+      (globalThis as unknown as { __vaultToken: { set(t: string): void } }).__vaultToken.set(
+        r.token,
+      );
     S.user = r.user;
     loadVault(r.vault);
-    await loadSettings();
-    enterApp();
-    logOk("auth", "Login successful", { email: S.user?.email });
-  },
-);
-(
-  document.getElementById("btn-verify2fa") as HTMLButtonElement
-).addEventListener("click", async () => {
-  const token = (
-    document.getElementById("twofa-code") as HTMLInputElement
-  ).value.trim();
-  logInfo("auth", "2FA verify attempt");
-  const r = await api.verify2fa(token);
+    screen("s-app");
+    armLock();
+    toast("Vault unlocked");
+    logOk("auth", "Vault unlocked via reauth", { email: S.user?.email });
+  } else {
+    btn.textContent = "Unlock with Google";
+    btn.disabled = false;
+    toast("Unlock failed: " + r.error);
+    logErr("auth", "Unlock failed", r.error);
+  }
+});
+
+// ═══ AUTH ═════════════════════════════════════════════════════════════════════
+(document.getElementById("btn-login") as HTMLButtonElement).addEventListener("click", async () => {
+  const btn = document.getElementById("btn-login") as HTMLButtonElement;
+  if (btn.disabled) return;
+  logInfo("auth", "Login button clicked");
+  btn.textContent = "Opening browser…";
+  btn.disabled = true;
+  const r = await api.login();
   if (!r.ok) {
-    (document.getElementById("twofa-err") as HTMLElement).hidden = false;
-    (document.getElementById("twofa-err") as HTMLElement).textContent =
-      r.error ?? "";
-    logWarn("auth", "2FA verify failed", r.error);
+    const err = document.getElementById("login-err") as HTMLElement;
+    err.hidden = false;
+    err.textContent = r.error ?? "";
+    logErr("auth", "Login failed", r.error);
+    btn.textContent = "Sign in with Google";
+    btn.disabled = false;
+    return;
+  }
+  if (r.needs2fa) {
+    S.user = r.user;
+    screen("s-2fa");
+    btn.textContent = "Sign in with Google";
+    btn.disabled = false;
+    logInfo("auth", "Login requires 2FA", { email: S.user?.email });
     return;
   }
   if (r.token)
-    (
-      globalThis as unknown as { __vaultToken: { set(t: string): void } }
-    ).__vaultToken.set(r.token);
+    (globalThis as unknown as { __vaultToken: { set(t: string): void } }).__vaultToken.set(r.token);
   S.user = r.user;
   loadVault(r.vault);
   await loadSettings();
   enterApp();
-  logOk("auth", "2FA verified, login complete");
+  logOk("auth", "Login successful", { email: S.user?.email });
 });
+(document.getElementById("btn-verify2fa") as HTMLButtonElement).addEventListener(
+  "click",
+  async () => {
+    const token = (document.getElementById("twofa-code") as HTMLInputElement).value.trim();
+    logInfo("auth", "2FA verify attempt");
+    const r = await api.verify2fa(token);
+    if (!r.ok) {
+      (document.getElementById("twofa-err") as HTMLElement).hidden = false;
+      (document.getElementById("twofa-err") as HTMLElement).textContent = r.error ?? "";
+      logWarn("auth", "2FA verify failed", r.error);
+      return;
+    }
+    if (r.token)
+      (globalThis as unknown as { __vaultToken: { set(t: string): void } }).__vaultToken.set(
+        r.token,
+      );
+    S.user = r.user;
+    loadVault(r.vault);
+    await loadSettings();
+    enterApp();
+    logOk("auth", "2FA verified, login complete");
+  },
+);
 (document.getElementById("twofa-code") as HTMLInputElement).addEventListener(
   "keydown",
   (e: KeyboardEvent) => {
-    if (e.key === "Enter")
-      (document.getElementById("btn-verify2fa") as HTMLButtonElement).click();
+    if (e.key === "Enter") (document.getElementById("btn-verify2fa") as HTMLButtonElement).click();
   },
 );
 
@@ -669,9 +627,7 @@ function selectPinAccount(account: {
   hide("pin-user-label");
   show("pin-selected-account");
 
-  const avatarEl = document.getElementById(
-    "pin-selected-avatar",
-  ) as HTMLElement;
+  const avatarEl = document.getElementById("pin-selected-avatar") as HTMLElement;
   avatarEl.innerHTML = "";
   avatarEl.className = "";
   if (account.avatar?.startsWith("https://")) {
@@ -686,22 +642,16 @@ function selectPinAccount(account: {
     avatarEl.appendChild(img);
   } else {
     avatarEl.className = "pin-selected-avatar-fb";
-    avatarEl.textContent = (account.name ||
-      account.email ||
-      "?")[0].toUpperCase();
+    avatarEl.textContent = (account.name || account.email || "?")[0].toUpperCase();
   }
 
   (document.getElementById("pin-selected-name") as HTMLElement).textContent =
     account.name || account.email;
-  (document.getElementById("pin-selected-email") as HTMLElement).textContent =
-    account.email;
+  (document.getElementById("pin-selected-email") as HTMLElement).textContent = account.email;
   (document.getElementById("pin-code") as HTMLInputElement).value = "";
   (document.getElementById("pin-err") as HTMLElement).hidden = true;
   show("pin-input-area");
-  setTimeout(
-    () => (document.getElementById("pin-code") as HTMLInputElement).focus(),
-    60,
-  );
+  setTimeout(() => (document.getElementById("pin-code") as HTMLInputElement).focus(), 60);
 }
 
 function buildPinAccountItem(
@@ -811,10 +761,7 @@ async function loadPinAccounts() {
       show("pin-input-area");
       (document.getElementById("pin-code") as HTMLInputElement).value = "";
       (document.getElementById("pin-err") as HTMLElement).hidden = true;
-      setTimeout(
-        () => (document.getElementById("pin-code") as HTMLInputElement).focus(),
-        60,
-      );
+      setTimeout(() => (document.getElementById("pin-code") as HTMLInputElement).focus(), 60);
       return;
     }
     _selectedAccount = null;
@@ -833,62 +780,56 @@ async function loadPinAccounts() {
   }
 }
 
-(
-  document.getElementById("btn-pin-unlock") as HTMLButtonElement
-).addEventListener("click", async () => {
-  const pin = (document.getElementById("pin-code") as HTMLInputElement).value;
-  logInfo("auth", "PIN unlock attempt");
-  const r = await api.pin.verify(pin);
-  if (!r.ok) {
-    (document.getElementById("pin-err") as HTMLElement).hidden = false;
-    (document.getElementById("pin-err") as HTMLElement).textContent =
-      r.error ?? "Incorrect PIN";
-    logWarn("auth", "PIN verify failed", r.error);
-    return;
-  }
-  logOk("auth", "PIN verified, completing login", { email: r.email });
-  // Update lastUsed for the account
-  if (_selectedAccount?.googleId) {
-    api.accounts.touch(_selectedAccount.googleId).catch(() => {});
-  }
-  const r2 = await api.loginWithPin(r.verifyId!);
-  if (!r2.ok) {
-    (document.getElementById("pin-err") as HTMLElement).hidden = false;
-    (document.getElementById("pin-err") as HTMLElement).textContent =
-      r2.error ?? "Login failed";
-    logErr("auth", "PIN login failed", r2.error);
-    return;
-  }
-  if (r2.token)
-    (
-      (globalThis as unknown as Record<string, unknown>).__vaultToken as {
-        set: (t: string) => void;
-      }
-    ).set(r2.token);
-  S.user = r2.user;
-  loadVault(r2.vault);
-  await loadSettings();
-  enterApp();
-  logOk("auth", "PIN login successful", { email: S.user?.email });
-});
+(document.getElementById("btn-pin-unlock") as HTMLButtonElement).addEventListener(
+  "click",
+  async () => {
+    const pin = (document.getElementById("pin-code") as HTMLInputElement).value;
+    logInfo("auth", "PIN unlock attempt");
+    const r = await api.pin.verify(pin);
+    if (!r.ok) {
+      (document.getElementById("pin-err") as HTMLElement).hidden = false;
+      (document.getElementById("pin-err") as HTMLElement).textContent = r.error ?? "Incorrect PIN";
+      logWarn("auth", "PIN verify failed", r.error);
+      return;
+    }
+    logOk("auth", "PIN verified, completing login", { email: r.email });
+    // Update lastUsed for the account
+    if (_selectedAccount?.googleId) {
+      api.accounts.touch(_selectedAccount.googleId).catch(() => {});
+    }
+    const r2 = await api.loginWithPin(r.verifyId!);
+    if (!r2.ok) {
+      (document.getElementById("pin-err") as HTMLElement).hidden = false;
+      (document.getElementById("pin-err") as HTMLElement).textContent = r2.error ?? "Login failed";
+      logErr("auth", "PIN login failed", r2.error);
+      return;
+    }
+    if (r2.token)
+      (
+        (globalThis as unknown as Record<string, unknown>).__vaultToken as {
+          set: (t: string) => void;
+        }
+      ).set(r2.token);
+    S.user = r2.user;
+    loadVault(r2.vault);
+    await loadSettings();
+    enterApp();
+    logOk("auth", "PIN login successful", { email: S.user?.email });
+  },
+);
 (document.getElementById("pin-code") as HTMLInputElement).addEventListener(
   "keydown",
   (e: KeyboardEvent) => {
-    if (e.key === "Enter")
-      (document.getElementById("btn-pin-unlock") as HTMLButtonElement).click();
+    if (e.key === "Enter") (document.getElementById("btn-pin-unlock") as HTMLButtonElement).click();
   },
 );
-(
-  document.getElementById("btn-pin-google") as HTMLButtonElement
-).addEventListener("click", () => {
+(document.getElementById("btn-pin-google") as HTMLButtonElement).addEventListener("click", () => {
   logInfo("auth", "Switching to Google OAuth from PIN screen");
   clearAllInputs();
   (document.getElementById("pin-err") as HTMLElement).hidden = true;
   screen("s-login");
 });
-const _pinBackBtn = document.getElementById(
-  "pin-account-back",
-) as HTMLButtonElement;
+const _pinBackBtn = document.getElementById("pin-account-back") as HTMLButtonElement;
 if (_pinBackBtn)
   _pinBackBtn.addEventListener("click", () => {
     showPinAccounts();
@@ -914,17 +855,14 @@ async function doLogout(): Promise<void> {
     logOk("auth", "Logged out, showing PIN entry screen");
   } else {
     screen("s-login");
-    (document.getElementById("btn-login") as HTMLButtonElement).textContent =
-      "Sign in with Google";
-    (document.getElementById("btn-login") as HTMLButtonElement).disabled =
-      false;
+    (document.getElementById("btn-login") as HTMLButtonElement).textContent = "Sign in with Google";
+    (document.getElementById("btn-login") as HTMLButtonElement).disabled = false;
     (document.getElementById("login-err") as HTMLElement).hidden = true;
     logOk("auth", "Logged out, state cleared");
   }
 }
-(document.getElementById("btn-logout") as HTMLButtonElement).addEventListener(
-  "click",
-  () => doLogout(),
+(document.getElementById("btn-logout") as HTMLButtonElement).addEventListener("click", () =>
+  doLogout(),
 );
 
 function loadVault(v: VaultData | null | undefined): void {
@@ -941,12 +879,8 @@ async function loadSettings(): Promise<void> {
   applyLockSettings();
   applyAccent(S.settings.accent || "violet");
   document.body.classList.toggle("compact", !!S.settings.compact);
-  document.body.style.setProperty(
-    "--transition",
-    S.settings.animations ? "" : "0s",
-  );
-  (globalThis as unknown as Record<string, unknown>).__soundsEnabled =
-    S.settings.sounds !== false;
+  document.body.style.setProperty("--transition", S.settings.animations ? "" : "0s");
+  (globalThis as unknown as Record<string, unknown>).__soundsEnabled = S.settings.sounds !== false;
   // Show PIN indicator in sidebar when PIN login is enabled
   const pinIndicator = document.getElementById("pin-indicator") as HTMLElement;
   if (pinIndicator) pinIndicator.hidden = !S.settings.pin_login_enabled;
@@ -1010,15 +944,7 @@ function switchTab(tab: string): void {
     const el = b as HTMLElement;
     el.classList.toggle("active", el.dataset.tab === tab);
   });
-  for (const t of [
-    "passwords",
-    "notes",
-    "jobs",
-    "totp",
-    "trash",
-    "sync",
-    "settings",
-  ]) {
+  for (const t of ["passwords", "notes", "jobs", "totp", "trash", "sync", "settings"]) {
     (document.getElementById("tab-" + t) as HTMLElement).hidden = t !== tab;
   }
   const tabLoaders: Record<string, () => void> = {
@@ -1059,52 +985,36 @@ function switchTab(tab: string): void {
   updateCounts();
 }
 function updateCounts(): void {
-  (document.getElementById("cnt-pw") as HTMLElement).textContent = String(
-    S.passwords.length,
-  );
-  (document.getElementById("cnt-notes") as HTMLElement).textContent = String(
-    S.notes.length,
-  );
-  (document.getElementById("cnt-trash") as HTMLElement).textContent = String(
-    S.trash.length,
-  );
-  (document.getElementById("cnt-jobs") as HTMLElement).textContent = String(
-    S.jobs.length,
-  );
-  (document.getElementById("cnt-totp") as HTMLElement).textContent = String(
-    S.totp.length,
-  );
+  (document.getElementById("cnt-pw") as HTMLElement).textContent = String(S.passwords.length);
+  (document.getElementById("cnt-notes") as HTMLElement).textContent = String(S.notes.length);
+  (document.getElementById("cnt-trash") as HTMLElement).textContent = String(S.trash.length);
+  (document.getElementById("cnt-jobs") as HTMLElement).textContent = String(S.jobs.length);
+  (document.getElementById("cnt-totp") as HTMLElement).textContent = String(S.totp.length);
 }
-(document.getElementById("btn-sync") as HTMLButtonElement).addEventListener(
-  "click",
-  async () => {
-    logInfo("vault", "Sync triggered");
-    const btn = document.getElementById("btn-sync") as HTMLButtonElement;
-    btn.style.opacity = ".5";
-    btn.style.pointerEvents = "none";
-    const r = await api.vaultSync();
-    btn.style.opacity = "";
-    btn.style.pointerEvents = "";
-    if (r.ok) {
-      loadVault(r.vault);
-      switchTab("passwords");
-      toast("Synced ✓");
-      logOk("vault", "Sync successful");
-    } else {
-      toast("Sync error: " + r.error);
-      logErr("vault", "Sync failed", r.error);
-    }
-  },
-);
+(document.getElementById("btn-sync") as HTMLButtonElement).addEventListener("click", async () => {
+  logInfo("vault", "Sync triggered");
+  const btn = document.getElementById("btn-sync") as HTMLButtonElement;
+  btn.style.opacity = ".5";
+  btn.style.pointerEvents = "none";
+  const r = await api.vaultSync();
+  btn.style.opacity = "";
+  btn.style.pointerEvents = "";
+  if (r.ok) {
+    loadVault(r.vault);
+    switchTab("passwords");
+    toast("Synced ✓");
+    logOk("vault", "Sync successful");
+  } else {
+    toast("Sync error: " + r.error);
+    logErr("vault", "Sync failed", r.error);
+  }
+});
 
 // ═══ PASSWORDS ════════════════════════════════════════════════════════════════
-(document.getElementById("btn-add-pw") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    logInfo("password", "Add password clicked");
-    openPwModal();
-  },
-);
+(document.getElementById("btn-add-pw") as HTMLButtonElement).addEventListener("click", () => {
+  logInfo("password", "Add password clicked");
+  openPwModal();
+});
 async function loadSyncTab() {
   logInfo("sync", "Loading sync tab");
   await loadSyncFolders();
@@ -1179,9 +1089,7 @@ function initSyncDropZone(): void {
     logInfo("sync", "OS drop: " + paths.length + " item(s)", paths);
     const r = await api.sync.handleDrop(paths);
     if (r.ok) {
-      const added = (r.results as { ok: boolean }[]).filter(
-        (x: { ok: boolean }) => x.ok,
-      ).length;
+      const added = (r.results as { ok: boolean }[]).filter((x: { ok: boolean }) => x.ok).length;
       toast(added + " sync folder(s) added — syncing...");
       loadSyncFolders();
       syncNowWithDriveRetry().then((syncResult) => {
@@ -1197,10 +1105,7 @@ function initSyncDropZone(): void {
 // Per-file status cache (refreshed on each loadSyncFolders call)
 let _fileStates: Record<
   string,
-  Record<
-    string,
-    { conflict: string; localHash: string | null; driveHash: string | null }
-  >
+  Record<string, { conflict: string; localHash: string | null; driveHash: string | null }>
 > = {};
 
 function classifyFolderStatus(status: string, hasConflict: boolean): string {
@@ -1233,12 +1138,9 @@ function buildFolderStatusIcon(
 ): string {
   if (status === "syncing")
     return '<span class="sync-status-icon sync-status-syncing"><span class="sync-spinner"></span></span>';
-  if (status === "error")
-    return '<span class="sync-status-icon sync-status-error">✗</span>';
-  if (hasConflict)
-    return '<span class="sync-status-icon sync-status-conflict">⚡</span>';
-  if (allSynced || lastSyncAt)
-    return '<span class="sync-status-icon sync-status-synced">✓</span>';
+  if (status === "error") return '<span class="sync-status-icon sync-status-error">✗</span>';
+  if (hasConflict) return '<span class="sync-status-icon sync-status-conflict">⚡</span>';
+  if (allSynced || lastSyncAt) return '<span class="sync-status-icon sync-status-synced">✓</span>';
   return '<span class="sync-status-icon"></span>';
 }
 
@@ -1257,19 +1159,14 @@ function buildFileStatusIcon(fs: {
 }
 
 function buildFileTreeEl(
-  files: Record<
-    string,
-    { conflict: string; localHash: string | null; driveHash: string | null }
-  >,
+  files: Record<string, { conflict: string; localHash: string | null; driveHash: string | null }>,
   expandId: string,
 ): HTMLDivElement {
   const fileTree = document.createElement("div");
   fileTree.className = "sync-file-tree";
   fileTree.id = expandId;
   fileTree.hidden = true;
-  const sortedFiles = Object.entries(files).sort((a, b) =>
-    a[0].localeCompare(b[0]),
-  );
+  const sortedFiles = Object.entries(files).sort((a, b) => a[0].localeCompare(b[0]));
   for (const [relPath, fs] of sortedFiles) {
     const fileRow = document.createElement("div");
     fileRow.className = "sync-file-row";
@@ -1281,16 +1178,13 @@ function buildFileTreeEl(
       '">' +
       escHtml(fileName) +
       '</div><div class="sync-file-detail">' +
-      escHtml(
-        relPath.includes("/") ? relPath.split("/").slice(0, -1).join("/") : "",
-      ) +
+      escHtml(relPath.includes("/") ? relPath.split("/").slice(0, -1).join("/") : "") +
       "</div>" +
       fileIcon;
     fileTree.appendChild(fileRow);
   }
   if (!sortedFiles.length) {
-    fileTree.innerHTML =
-      '<div class="sync-file-empty">No files synced yet</div>';
+    fileTree.innerHTML = '<div class="sync-file-empty">No files synced yet</div>';
   }
   return fileTree;
 }
@@ -1390,14 +1284,10 @@ async function loadSyncFolders() {
   for (const folder of r.folders) {
     const files = _fileStates[folder.id] || {};
     const fileCount = Object.keys(files).length;
-    const hasConflict = Object.values(files).some(
-      (f) => f.conflict && f.conflict !== "none",
-    );
+    const hasConflict = Object.values(files).some((f) => f.conflict && f.conflict !== "none");
     const allSynced =
       fileCount > 0 &&
-      Object.values(files).every(
-        (f) => f.localHash && f.driveHash && f.localHash === f.driveHash,
-      );
+      Object.values(files).every((f) => f.localHash && f.driveHash && f.localHash === f.driveHash);
     const sc = classifyFolderStatus(folder.status, hasConflict);
     const st = buildFolderStatusText(folder, hasConflict);
     const statusIcon = buildFolderStatusIcon(
@@ -1518,9 +1408,7 @@ async function loadSyncFolders() {
         }
       }
       // Also move the file-tree after its folder row
-      const srcTree = document.getElementById(
-        "sync-files-" + dragSrcRow.dataset.folderId,
-      );
+      const srcTree = document.getElementById("sync-files-" + dragSrcRow.dataset.folderId);
       if (srcTree) {
         dragSrcRow.nextSibling?.before(srcTree);
       }
@@ -1555,15 +1443,10 @@ function escHtml(s: string) {
 
 async function syncNowWithDriveRetry(): Promise<any> {
   let r = await api.sync.syncNow();
-  if (
-    !r.ok &&
-    typeof r.error === "string" &&
-    r.error.includes("Drive not initialized")
-  ) {
+  if (!r.ok && typeof r.error === "string" && r.error.includes("Drive not initialized")) {
     toast("Google Drive connection needed — signing in...");
     const auth = await api.reauth();
-    if (!auth.ok)
-      return { ok: false, error: auth.error || "Google sign-in required" };
+    if (!auth.ok) return { ok: false, error: auth.error || "Google sign-in required" };
     if (auth.token)
       (
         (globalThis as unknown as Record<string, unknown>).__vaultToken as {
@@ -1596,11 +1479,7 @@ if (_syncNowBtn)
       if (r.downloaded) parts.push(r.downloaded + " downloaded");
       if (r.conflicts) parts.push(r.conflicts + " conflicts");
       if (r.errors) parts.push(r.errors + " errors");
-      toast(
-        parts.length
-          ? "Sync complete: " + parts.join(", ")
-          : "Everything up to date",
-      );
+      toast(parts.length ? "Sync complete: " + parts.join(", ") : "Everything up to date");
       logOk("sync", "Sync complete", r);
     } else {
       toast("Sync error: " + r.error);
@@ -1635,8 +1514,7 @@ if (_syncAddBtn)
       const inp = document.createElement("input");
       inp.id = inputId;
       inp.className = "fi";
-      inp.style.cssText =
-        "width:100%;margin-top:10px;text-align:center;font-size:14px;";
+      inp.style.cssText = "width:100%;margin-top:10px;text-align:center;font-size:14px;";
       inp.value = defaultName;
       inp.placeholder = "Folder name";
       msg.appendChild(inp);
@@ -1681,13 +1559,10 @@ if (_syncAddBtn)
     }
   });
 
-(document.getElementById("btn-add-pw") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    logInfo("password", "Add password clicked");
-    openPwModal();
-  },
-);
+(document.getElementById("btn-add-pw") as HTMLButtonElement).addEventListener("click", () => {
+  logInfo("password", "Add password clicked");
+  openPwModal();
+});
 (document.getElementById("pw-search") as HTMLInputElement).addEventListener(
   "input",
   renderPasswords,
@@ -1710,14 +1585,12 @@ async function getLogo(site: string): Promise<string | null> {
 // HIBP breach check — k-anonymity model with proper line-by-line suffix matching.
 // Cache stores parsed suffix maps (suffix → count) to avoid false-positive substring matches.
 const breachCache: Record<string, Map<string, number>> = {};
-async function checkBreach(
-  password: string,
-): Promise<{ breached: boolean; count: number }> {
+async function checkBreach(password: string): Promise<{ breached: boolean; count: number }> {
   try {
-    const sha1 = await crypto.subtle.digest(
-      "SHA-1", // NOSONAR: SHA-1 required by HIBP k-anonymity API
-      new TextEncoder().encode(password),
-    );
+    // SHA-1 is required by the HIBP k-anonymity API: the protocol only
+    // accepts a 5-character SHA-1 prefix lookup. The full hash never leaves
+    // the client, so this is not a sensitive crypto context. // NOSONAR
+    const sha1 = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(password));
     const hex = Array.from(new Uint8Array(sha1))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("")
@@ -1733,12 +1606,9 @@ async function checkBreach(
     let text = "";
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(
-          `https://api.pwnedpasswords.com/range/${prefix}`,
-          {
-            headers: { "Add-Padding": "true" },
-          },
-        );
+        const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+          headers: { "Add-Padding": "true" },
+        });
         if (res.ok) {
           text = await res.text();
           break;
@@ -1747,9 +1617,7 @@ async function checkBreach(
           await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
           continue;
         }
-        console.warn(
-          `[breach] HIBP returned ${res.status} for prefix ${prefix}`,
-        );
+        console.warn(`[breach] HIBP returned ${res.status} for prefix ${prefix}`);
         return { breached: false, count: 0 };
       } catch (e) {
         if (attempt === 2) throw e;
@@ -1777,14 +1645,9 @@ async function checkBreach(
 }
 
 function renderPasswords(): void {
-  const q = (
-    document.getElementById("pw-search") as HTMLInputElement
-  ).value.toLowerCase();
+  const q = (document.getElementById("pw-search") as HTMLInputElement).value.toLowerCase();
   const list = S.passwords.filter(
-    (p) =>
-      !q ||
-      p.site?.toLowerCase().includes(q) ||
-      p.username?.toLowerCase().includes(q),
+    (p) => !q || p.site?.toLowerCase().includes(q) || p.username?.toLowerCase().includes(q),
   );
   const wrap = document.getElementById("pw-list") as HTMLElement;
   wrap.querySelectorAll(".pw-row").forEach((e) => (e as HTMLElement).remove());
@@ -1990,23 +1853,17 @@ function updateInlineSm(wrap: HTMLElement, pw: string): void {
 let _pwEx: VaultItem | null = null;
 function openPwModal(existing: VaultItem | null = null): void {
   _pwEx = existing;
-  logInfo(
-    "password",
-    existing ? "Opening edit password modal" : "Opening add password modal",
-    { site: existing?.site },
-  );
+  logInfo("password", existing ? "Opening edit password modal" : "Opening add password modal", {
+    site: existing?.site,
+  });
   (document.getElementById("modal-title") as HTMLElement).textContent = existing
     ? "Edit password"
     : "Add password";
-  (document.getElementById("f-site") as HTMLInputElement).value =
-    existing?.site || "";
-  (document.getElementById("f-user") as HTMLInputElement).value =
-    existing?.username || "";
-  (document.getElementById("f-pw") as HTMLInputElement).value =
-    existing?.password || "";
+  (document.getElementById("f-site") as HTMLInputElement).value = existing?.site || "";
+  (document.getElementById("f-user") as HTMLInputElement).value = existing?.username || "";
+  (document.getElementById("f-pw") as HTMLInputElement).value = existing?.password || "";
   (document.getElementById("f-pw") as HTMLInputElement).type = "password";
-  (document.getElementById("f-notes") as HTMLTextAreaElement).value =
-    existing?.notes || "";
+  (document.getElementById("f-notes") as HTMLTextAreaElement).value = existing?.notes || "";
   updateSm("sm", existing?.password || "");
   const pwInp = document.getElementById("f-pw") as HTMLInputElement;
   const newInp = pwInp.cloneNode(true) as HTMLInputElement;
@@ -2015,63 +1872,45 @@ function openPwModal(existing: VaultItem | null = null): void {
   newInp.type = "password";
   newInp.addEventListener("input", () => updateSm("sm", newInp.value));
   showOverlay("modal-overlay");
-  setTimeout(
-    () => (document.getElementById("f-site") as HTMLInputElement).focus(),
-    60,
-  );
+  setTimeout(() => (document.getElementById("f-site") as HTMLInputElement).focus(), 60);
 }
-(document.getElementById("eye-btn") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    const f = document.getElementById("f-pw") as HTMLInputElement;
-    f.type = f.type === "password" ? "text" : "password";
-  },
+(document.getElementById("eye-btn") as HTMLButtonElement).addEventListener("click", () => {
+  const f = document.getElementById("f-pw") as HTMLInputElement;
+  f.type = f.type === "password" ? "text" : "password";
+});
+(document.getElementById("use-gen-btn") as HTMLButtonElement).addEventListener("click", () =>
+  openGen(true),
 );
-(document.getElementById("use-gen-btn") as HTMLButtonElement).addEventListener(
-  "click",
-  () => openGen(true),
-);
-(document.getElementById("modal-ok") as HTMLButtonElement).addEventListener(
-  "click",
-  async () => {
-    const site = (
-      document.getElementById("f-site") as HTMLInputElement
-    ).value.trim();
-    const username = (
-      document.getElementById("f-user") as HTMLInputElement
-    ).value.trim();
-    const password = (document.getElementById("f-pw") as HTMLInputElement)
-      .value;
-    const notes = (
-      document.getElementById("f-notes") as HTMLTextAreaElement
-    ).value.trim();
-    if (!site || !password) {
-      toast("Site and password required");
-      return;
-    }
-    const existing = _pwEx;
-    hideOverlay("modal-overlay");
-    if (existing) {
-      Object.assign(existing, { site, username, password, notes });
-      const r = await api.save("password", existing);
-      if (r.ok && !existing._localId) existing._localId = r.id;
-      toast("Updated");
-      logOk("password", "Password updated", { site });
-    } else {
-      const item: VaultItem = { id: uid(), site, username, password, notes };
-      const r = await api.save("password", item);
-      if (r.ok) item._localId = r.id;
-      S.passwords.unshift(item);
-      toast("Saved");
-      logOk("password", "Password created", { site });
-    }
-    renderPasswords();
-    updateCounts();
-  },
-);
-(document.getElementById("modal-cancel") as HTMLButtonElement).addEventListener(
-  "click",
-  () => hideOverlay("modal-overlay"),
+(document.getElementById("modal-ok") as HTMLButtonElement).addEventListener("click", async () => {
+  const site = (document.getElementById("f-site") as HTMLInputElement).value.trim();
+  const username = (document.getElementById("f-user") as HTMLInputElement).value.trim();
+  const password = (document.getElementById("f-pw") as HTMLInputElement).value;
+  const notes = (document.getElementById("f-notes") as HTMLTextAreaElement).value.trim();
+  if (!site || !password) {
+    toast("Site and password required");
+    return;
+  }
+  const existing = _pwEx;
+  hideOverlay("modal-overlay");
+  if (existing) {
+    Object.assign(existing, { site, username, password, notes });
+    const r = await api.save("password", existing);
+    if (r.ok && !existing._localId) existing._localId = r.id;
+    toast("Updated");
+    logOk("password", "Password updated", { site });
+  } else {
+    const item: VaultItem = { id: uid(), site, username, password, notes };
+    const r = await api.save("password", item);
+    if (r.ok) item._localId = r.id;
+    S.passwords.unshift(item);
+    toast("Saved");
+    logOk("password", "Password created", { site });
+  }
+  renderPasswords();
+  updateCounts();
+});
+(document.getElementById("modal-cancel") as HTMLButtonElement).addEventListener("click", () =>
+  hideOverlay("modal-overlay"),
 );
 (document.getElementById("modal-overlay") as HTMLElement).addEventListener(
   "click",
@@ -2098,16 +1937,12 @@ function openPwModal(existing: VaultItem | null = null): void {
 
 function renderNotesList(): void {
   const wrap = document.getElementById("notes-list") as HTMLElement;
-  wrap
-    .querySelectorAll(".note-chip")
-    .forEach((e) => (e as HTMLElement).remove());
-  (document.getElementById("notes-empty") as HTMLElement).hidden =
-    !!S.notes.length;
+  wrap.querySelectorAll(".note-chip").forEach((e) => (e as HTMLElement).remove());
+  (document.getElementById("notes-empty") as HTMLElement).hidden = !!S.notes.length;
   if (!S.notes.length) return;
   S.notes.forEach((n) => {
     const el = document.createElement("div");
-    el.className =
-      "note-chip draggable" + (String(n.id) === S.activeNote ? " active" : "");
+    el.className = "note-chip draggable" + (String(n.id) === S.activeNote ? " active" : "");
     el.draggable = true;
     el.dataset.id = String(n.id);
     const dragHandle = document.createElement("span");
@@ -2133,9 +1968,7 @@ function renderNotesList(): void {
 
 function openNote(id: string): void {
   S.activeNote = id;
-  const note = S.notes.find((n) => String(n.id) === id) as
-    | VaultItem
-    | undefined;
+  const note = S.notes.find((n) => String(n.id) === id) as VaultItem | undefined;
   if (!note) return;
   logInfo("note", "Note opened", { noteId: id, title: note.title });
   renderNotesList();
@@ -2176,67 +2009,51 @@ function openNote(id: string): void {
   let st: ReturnType<typeof setTimeout> | undefined;
   const autoSave = async (): Promise<void> => {
     note.title = (document.getElementById("n-title") as HTMLInputElement).value;
-    note.body = (
-      document.getElementById("n-body") as HTMLTextAreaElement
-    ).value;
-    (document.getElementById("n-wc") as HTMLElement).textContent =
-      wc(note.body) + " words";
+    note.body = (document.getElementById("n-body") as HTMLTextAreaElement).value;
+    (document.getElementById("n-wc") as HTMLElement).textContent = wc(note.body) + " words";
     renderNotesList();
-    (document.getElementById("n-status") as HTMLElement).textContent =
-      "Saving…";
+    (document.getElementById("n-status") as HTMLElement).textContent = "Saving…";
     const r = await api.save("note", note);
     if (r.ok && !note._localId) note._localId = r.id;
     const s = document.getElementById("n-status") as HTMLElement;
     if (s) s.textContent = "Saved";
     logOk("note", "Note auto-saved", { noteId: id, title: note.title });
   };
-  (document.getElementById("n-title") as HTMLInputElement).addEventListener(
-    "input",
-    () => {
-      clearTimeout(st);
-      st = setTimeout(autoSave, 700);
-    },
-  );
-  (document.getElementById("n-body") as HTMLTextAreaElement).addEventListener(
-    "input",
-    () => {
-      clearTimeout(st);
-      st = setTimeout(autoSave, 700);
-    },
-  );
-  (document.getElementById("n-del") as HTMLButtonElement).addEventListener(
-    "click",
-    () =>
-      confirm({
-        title: "Move to Trash?",
-        msg: `"${note.title || "Untitled"}" will be moved to Trash.`,
-        icon: "🗑️",
-        okLabel: "Move to Trash",
-        onOk: async () => {
-          logInfo("note", "Note moved to trash", {
-            noteId: id,
-            title: note.title,
-          });
-          if (note._localId) await api.delete(note._localId, "note");
-          S.notes = S.notes.filter((n) => n.id !== id);
-          S.activeNote = null;
-          renderNotesList();
-          updateCounts();
-          (document.getElementById("note-editor") as HTMLElement).innerHTML =
-            '<p class="note-placeholder">Select or create a note</p>';
-          toast("Moved to Trash");
-        },
-      }),
+  (document.getElementById("n-title") as HTMLInputElement).addEventListener("input", () => {
+    clearTimeout(st);
+    st = setTimeout(autoSave, 700);
+  });
+  (document.getElementById("n-body") as HTMLTextAreaElement).addEventListener("input", () => {
+    clearTimeout(st);
+    st = setTimeout(autoSave, 700);
+  });
+  (document.getElementById("n-del") as HTMLButtonElement).addEventListener("click", () =>
+    confirm({
+      title: "Move to Trash?",
+      msg: `"${note.title || "Untitled"}" will be moved to Trash.`,
+      icon: "🗑️",
+      okLabel: "Move to Trash",
+      onOk: async () => {
+        logInfo("note", "Note moved to trash", {
+          noteId: id,
+          title: note.title,
+        });
+        if (note._localId) await api.delete(note._localId, "note");
+        S.notes = S.notes.filter((n) => n.id !== id);
+        S.activeNote = null;
+        renderNotesList();
+        updateCounts();
+        (document.getElementById("note-editor") as HTMLElement).innerHTML =
+          '<p class="note-placeholder">Select or create a note</p>';
+        toast("Moved to Trash");
+      },
+    }),
   );
 }
 
 // ═══ VERTICAL-ONLY DRAG ═══════════════════════════════════════════════════════
 let dragSrc: HTMLElement | null = null;
-function addVerticalDrag(
-  el: HTMLElement,
-  listId: string,
-  onReorder: () => void,
-): void {
+function addVerticalDrag(el: HTMLElement, listId: string, onReorder: () => void): void {
   el.addEventListener("dragstart", (e: DragEvent) => {
     dragSrc = el;
     e.dataTransfer!.effectAllowed = "move";
@@ -2265,9 +2082,7 @@ function addVerticalDrag(
     const newOrder = [...wrap.querySelectorAll(".draggable")].map(
       (e) => (e as HTMLElement).dataset.id,
     );
-    S.notes = newOrder
-      .map((id) => S.notes.find((n) => n.id === id))
-      .filter(Boolean) as VaultItem[];
+    S.notes = newOrder.map((id) => S.notes.find((n) => n.id === id)).filter(Boolean) as VaultItem[];
     onReorder();
   });
 }
@@ -2294,9 +2109,7 @@ async function restoreTrashItem(
     return;
   }
   const itemDbId = (item as unknown as VaultItem)._localId;
-  S.trash = S.trash.filter(
-    (t) => (t as unknown as VaultItem)._localId !== itemDbId,
-  );
+  S.trash = S.trash.filter((t) => (t as unknown as VaultItem)._localId !== itemDbId);
   loadAndRenderTrash();
   updateCounts();
   toast("Restored ✓");
@@ -2315,16 +2128,12 @@ async function purgeTrashItem(
   if (isJob) await api.jobsTrash.purge(jobItem.id!);
   else await api.trashPurge(vaultItem._localId!, item._type);
   S.trash = S.trash.filter((t) => {
-    const tId =
-      t._type === "job"
-        ? (t as unknown as Job).id
-        : (t as unknown as VaultItem)._localId;
+    const tId = t._type === "job" ? (t as unknown as Job).id : (t as unknown as VaultItem)._localId;
     const itemId = isJob ? jobItem.id : vaultItem._localId;
     return tId !== itemId;
   });
   row.remove();
-  if (!S.trash.length)
-    (document.getElementById("trash-empty") as HTMLElement).hidden = false;
+  if (!S.trash.length) (document.getElementById("trash-empty") as HTMLElement).hidden = false;
   updateCounts();
   toast("Permanently deleted");
   logOk("trash", "Item purged", { label });
@@ -2333,9 +2142,7 @@ async function purgeTrashItem(
 async function loadAndRenderTrash(): Promise<void> {
   logInfo("trash", "Loading trash");
   const wrap = document.getElementById("trash-list") as HTMLElement;
-  wrap
-    .querySelectorAll(".trash-row")
-    .forEach((e) => (e as HTMLElement).remove());
+  wrap.querySelectorAll(".trash-row").forEach((e) => (e as HTMLElement).remove());
   (wrap.querySelector(".trash-loading") as HTMLElement)?.remove();
   const loading = document.createElement("div");
   loading.className = "empty trash-loading";
@@ -2352,25 +2159,22 @@ async function loadAndRenderTrash(): Promise<void> {
     logErr("trash", "Failed to load job trash", r2.error);
     toast("Failed to load job trash");
   }
-  const vaultItems: (VaultItem & { _type: string; _deletedAt: string })[] =
-    r1.ok
-      ? (r1.items as (VaultItem & { _type: string; _deletedAt: string })[])
-      : [];
-  const jobItems: (Job & { _type: string; _deletedAt: string })[] = (
-    r2.ok ? r2.items : []
-  ).map((j: Job) => ({
-    ...j,
-    _type: "job",
-    _localId: j.id,
-    _deletedAt: j.deleted_at!,
-  }));
+  const vaultItems: (VaultItem & { _type: string; _deletedAt: string })[] = r1.ok
+    ? (r1.items as (VaultItem & { _type: string; _deletedAt: string })[])
+    : [];
+  const jobItems: (Job & { _type: string; _deletedAt: string })[] = (r2.ok ? r2.items : []).map(
+    (j: Job) => ({
+      ...j,
+      _type: "job",
+      _localId: j.id,
+      _deletedAt: j.deleted_at!,
+    }),
+  );
   S.trash = [...vaultItems, ...jobItems].sort(
-    (a, b) =>
-      new Date(b._deletedAt).getTime() - new Date(a._deletedAt).getTime(),
+    (a, b) => new Date(b._deletedAt).getTime() - new Date(a._deletedAt).getTime(),
   );
   updateCounts();
-  (document.getElementById("trash-empty") as HTMLElement).hidden =
-    !!S.trash.length;
+  (document.getElementById("trash-empty") as HTMLElement).hidden = !!S.trash.length;
   logOk("trash", "Trash loaded", { count: S.trash.length });
   if (!S.trash.length) return;
 
@@ -2398,8 +2202,7 @@ async function loadAndRenderTrash(): Promise<void> {
     const d = days(item._deletedAt);
     // Resolve the row icon via a lookup to avoid a nested ternary.
     const trashIcons = { note: "📝", job: "💼", password: "🔑" } as const;
-    const icon =
-      trashIcons[(item._type as keyof typeof trashIcons) || "password"] || "🔑";
+    const icon = trashIcons[(item._type as keyof typeof trashIcons) || "password"] || "🔑";
     const row = document.createElement("div");
     row.className = "trash-row";
     const trashIcon = document.createElement("div");
@@ -2458,9 +2261,7 @@ async function loadAndRenderTrash(): Promise<void> {
     wrap.appendChild(row);
   });
 }
-(
-  document.getElementById("btn-empty-trash") as HTMLButtonElement
-).addEventListener("click", () => {
+(document.getElementById("btn-empty-trash") as HTMLButtonElement).addEventListener("click", () => {
   if (!S.trash.length) {
     toast("Trash is already empty");
     return;
@@ -2479,9 +2280,7 @@ async function emptyTrash(): Promise<void> {
   const vaultItems = S.trash.filter((t) => t._type !== "job");
   const jobItems = S.trash.filter((t) => t._type === "job");
   await Promise.all([
-    ...vaultItems.map((t) =>
-      api.trashPurge((t as unknown as VaultItem)._localId!, t._type),
-    ),
+    ...vaultItems.map((t) => api.trashPurge((t as unknown as VaultItem)._localId!, t._type)),
     ...jobItems.map((t) => api.jobsTrash.purge((t as unknown as Job).id!)),
   ]);
   S.trash = [];
@@ -2507,15 +2306,12 @@ async function loadAndRenderJobs(): Promise<void> {
 }
 
 function getFilteredJobs(): Job[] {
-  const q =
-    (
-      document.getElementById("jobs-search") as HTMLInputElement
-    )?.value.toLowerCase() || "";
+  const q = (document.getElementById("jobs-search") as HTMLInputElement)?.value.toLowerCase() || "";
   let list = S.jobs.filter((j) => {
     if (S.jobFilter !== "all" && j.status !== S.jobFilter) return false;
     if (!q) return true;
-    return [j.company, j.role, j.email, j.notes, j.applied_at, j.status].some(
-      (v) => (v || "").toLowerCase().includes(q),
+    return [j.company, j.role, j.email, j.notes, j.applied_at, j.status].some((v) =>
+      (v || "").toLowerCase().includes(q),
     );
   });
   if (S.jobSort.col) {
@@ -2628,12 +2424,9 @@ function buildJobRow(
 
 function renderJobsTable(): void {
   const tbody = document.getElementById("jobs-body") as HTMLTableSectionElement;
-  tbody
-    .querySelectorAll("tr:not(#jobs-empty-row)")
-    .forEach((e) => (e as HTMLElement).remove());
+  tbody.querySelectorAll("tr:not(#jobs-empty-row)").forEach((e) => (e as HTMLElement).remove());
   const list = getFilteredJobs();
-  (document.getElementById("jobs-empty-row") as HTMLElement).hidden =
-    !!list.length;
+  (document.getElementById("jobs-empty-row") as HTMLElement).hidden = !!list.length;
   if (!S.jobs.length) return;
 
   const acc = S.jobs.filter((j) => j.status === "accepted").length;
@@ -2670,11 +2463,7 @@ function renderJobsTable(): void {
   });
 }
 
-async function saveInlineJobEdit(
-  job: Job,
-  field: keyof Job,
-  inp: HTMLInputElement,
-): Promise<void> {
+async function saveInlineJobEdit(job: Job, field: keyof Job, inp: HTMLInputElement): Promise<void> {
   const val = inp.value.trim();
   (job as unknown as Record<string, unknown>)[field] = val;
   await api.jobsSave({
@@ -2683,12 +2472,7 @@ async function saveInlineJobEdit(
   renderJobsTable();
 }
 
-function cancelInlineEdit(
-  td: HTMLElement,
-  field: keyof Job,
-  job: Job,
-  current: unknown,
-): void {
+function cancelInlineEdit(td: HTMLElement, field: keyof Job, job: Job, current: unknown): void {
   td.innerHTML = "";
   if (field === "company") {
     const s = document.createElement("strong");
@@ -2725,15 +2509,8 @@ function bindInlineEdit(td: HTMLElement, job: Job): void {
   });
 }
 
-function bindJobRow(
-  tr: HTMLElement,
-  job: Job,
-  popup: HTMLElement,
-  tbody: HTMLElement,
-): void {
-  (tr.querySelector(".copy-email-btn") as HTMLButtonElement).onclick = (
-    e: MouseEvent,
-  ) => {
+function bindJobRow(tr: HTMLElement, job: Job, popup: HTMLElement, tbody: HTMLElement): void {
+  (tr.querySelector(".copy-email-btn") as HTMLButtonElement).onclick = (e: MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(job.email || "");
     toast("Email copied!");
@@ -2792,9 +2569,7 @@ function bindJobRow(
     const newOrder = [...tbody.querySelectorAll("tr.draggable")].map(
       (r) => (r as HTMLElement).dataset.id,
     );
-    S.jobs = newOrder
-      .map((id) => S.jobs.find((j) => String(j.id) === id))
-      .filter(Boolean) as Job[];
+    S.jobs = newOrder.map((id) => S.jobs.find((j) => String(j.id) === id)).filter(Boolean) as Job[];
     api.jobsReorder(S.jobs);
   });
 }
@@ -2821,30 +2596,21 @@ function openJobModal(existing: Job | null = null): void {
   logInfo("jobs", existing ? "Edit job modal opened" : "Add job modal opened", {
     company: existing?.company,
   });
-  (document.getElementById("job-modal-title") as HTMLElement).textContent =
-    existing ? "Edit application" : "Add application";
-  (document.getElementById("j-company") as HTMLInputElement).value =
-    existing?.company || "";
-  (document.getElementById("j-role") as HTMLInputElement).value =
-    existing?.role || "";
-  (document.getElementById("j-email") as HTMLInputElement).value =
-    existing?.email || "";
+  (document.getElementById("job-modal-title") as HTMLElement).textContent = existing
+    ? "Edit application"
+    : "Add application";
+  (document.getElementById("j-company") as HTMLInputElement).value = existing?.company || "";
+  (document.getElementById("j-role") as HTMLInputElement).value = existing?.role || "";
+  (document.getElementById("j-email") as HTMLInputElement).value = existing?.email || "";
   (document.getElementById("j-date") as HTMLInputElement).value =
     existing?.applied_at || new Date().toISOString().slice(0, 10);
-  (document.getElementById("j-notes") as HTMLTextAreaElement).value =
-    existing?.notes || "";
+  (document.getElementById("j-notes") as HTMLTextAreaElement).value = existing?.notes || "";
   const status = existing?.status || "wait";
   document.querySelectorAll(".status-pick").forEach((b) => {
-    (b as HTMLElement).classList.toggle(
-      "active",
-      (b as HTMLElement).dataset.val === status,
-    );
+    (b as HTMLElement).classList.toggle("active", (b as HTMLElement).dataset.val === status);
   });
   showOverlay("job-overlay");
-  setTimeout(
-    () => (document.getElementById("j-company") as HTMLInputElement).focus(),
-    60,
-  );
+  setTimeout(() => (document.getElementById("j-company") as HTMLInputElement).focus(), 60);
 }
 document.querySelectorAll(".status-pick").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -2854,63 +2620,49 @@ document.querySelectorAll(".status-pick").forEach((btn) => {
     (btn as HTMLElement).classList.add("active");
   });
 });
-(document.getElementById("btn-add-job") as HTMLButtonElement).addEventListener(
-  "click",
-  () => openJobModal(),
+(document.getElementById("btn-add-job") as HTMLButtonElement).addEventListener("click", () =>
+  openJobModal(),
 );
-(document.getElementById("job-ok") as HTMLButtonElement).addEventListener(
-  "click",
-  async () => {
-    const company = (
-      document.getElementById("j-company") as HTMLInputElement
-    ).value.trim();
-    const role = (
-      document.getElementById("j-role") as HTMLInputElement
-    ).value.trim();
-    if (!company) {
-      toast("Company name required");
-      return;
+(document.getElementById("job-ok") as HTMLButtonElement).addEventListener("click", async () => {
+  const company = (document.getElementById("j-company") as HTMLInputElement).value.trim();
+  const role = (document.getElementById("j-role") as HTMLInputElement).value.trim();
+  if (!company) {
+    toast("Company name required");
+    return;
+  }
+  const status = ((document.querySelector(".status-pick.active") as HTMLElement)?.dataset.val ||
+    "wait") as Job["status"];
+  const job: Job = {
+    id: _jobEdit?.id,
+    company,
+    role,
+    email: (document.getElementById("j-email") as HTMLInputElement).value.trim(),
+    applied_at: (document.getElementById("j-date") as HTMLInputElement).value,
+    notes: (document.getElementById("j-notes") as HTMLTextAreaElement).value.trim(),
+    status,
+  };
+  hideOverlay("job-overlay");
+  const r = await api.jobsSave(job as unknown as Record<string, unknown>);
+  if (r.ok) {
+    if (_jobEdit) Object.assign(_jobEdit, job);
+    else {
+      job.id = r.id;
+      S.jobs.unshift(job);
     }
-    const status = ((
-      document.querySelector(".status-pick.active") as HTMLElement
-    )?.dataset.val || "wait") as Job["status"];
-    const job: Job = {
-      id: _jobEdit?.id,
+    renderJobsTable();
+    updateCounts();
+    toast(_jobEdit ? "Updated" : "Saved");
+    logOk("jobs", _jobEdit ? "Job updated" : "Job created", {
       company,
-      role,
-      email: (
-        document.getElementById("j-email") as HTMLInputElement
-      ).value.trim(),
-      applied_at: (document.getElementById("j-date") as HTMLInputElement).value,
-      notes: (
-        document.getElementById("j-notes") as HTMLTextAreaElement
-      ).value.trim(),
       status,
-    };
-    hideOverlay("job-overlay");
-    const r = await api.jobsSave(job as unknown as Record<string, unknown>);
-    if (r.ok) {
-      if (_jobEdit) Object.assign(_jobEdit, job);
-      else {
-        job.id = r.id;
-        S.jobs.unshift(job);
-      }
-      renderJobsTable();
-      updateCounts();
-      toast(_jobEdit ? "Updated" : "Saved");
-      logOk("jobs", _jobEdit ? "Job updated" : "Job created", {
-        company,
-        status,
-      });
-    } else {
-      toast("Save failed: " + r.error);
-      logErr("jobs", "Job save failed", { company, error: r.error });
-    }
-  },
-);
-(document.getElementById("job-cancel") as HTMLButtonElement).addEventListener(
-  "click",
-  () => hideOverlay("job-overlay"),
+    });
+  } else {
+    toast("Save failed: " + r.error);
+    logErr("jobs", "Job save failed", { company, error: r.error });
+  }
+});
+(document.getElementById("job-cancel") as HTMLButtonElement).addEventListener("click", () =>
+  hideOverlay("job-overlay"),
 );
 (document.getElementById("job-overlay") as HTMLElement).addEventListener(
   "click",
@@ -2997,9 +2749,7 @@ function buildTotpCard(item: TotpItem): HTMLDivElement {
     });
   };
   (card.querySelector(".totp-copy") as HTMLButtonElement).onclick = () => {
-    const code = (
-      document.getElementById(codeId) as HTMLElement
-    ).textContent!.replace(/\s/g, "");
+    const code = (document.getElementById(codeId) as HTMLElement).textContent!.replace(/\s/g, "");
     if (code && code !== "——") {
       navigator.clipboard.writeText(code);
       toast("Code copied! (clipboard clears in 30s)");
@@ -3015,11 +2765,8 @@ function buildTotpCard(item: TotpItem): HTMLDivElement {
 
 function renderTotpGrid(): void {
   const grid = document.getElementById("totp-grid") as HTMLElement;
-  grid
-    .querySelectorAll(".totp-card")
-    .forEach((e) => (e as HTMLElement).remove());
-  (document.getElementById("totp-empty") as HTMLElement).hidden =
-    !!S.totp.length;
+  grid.querySelectorAll(".totp-card").forEach((e) => (e as HTMLElement).remove());
+  (document.getElementById("totp-empty") as HTMLElement).hidden = !!S.totp.length;
   if (!S.totp.length) return;
   S.totp.forEach((item) => {
     const card = buildTotpCard(item);
@@ -3049,19 +2796,16 @@ function base32Decode(b32: string): Uint8Array {
   const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   let bits = "",
     res: number[] = [];
-  for (const c of b32.toUpperCase().replace(/=+$/, "")) {
+  for (const c of b32.toUpperCase()) {
     const v = alpha.indexOf(c);
+    // Skip padding ("=") and any non-base32 chars — no regex needed.
     if (v === -1) continue;
     bits += v.toString(2).padStart(5, "0");
   }
-  for (let i = 0; i + 8 <= bits.length; i += 8)
-    res.push(Number.parseInt(bits.slice(i, i + 8), 2));
+  for (let i = 0; i + 8 <= bits.length; i += 8) res.push(Number.parseInt(bits.slice(i, i + 8), 2));
   return new Uint8Array(res);
 }
-async function computeTotpAsync(
-  secret: string,
-  id: string | undefined,
-): Promise<void> {
+async function computeTotpAsync(secret: string, id: string | undefined): Promise<void> {
   try {
     const key = base32Decode(secret);
     const T = Math.floor(Date.now() / 30000);
@@ -3074,9 +2818,7 @@ async function computeTotpAsync(
       false,
       ["sign"],
     );
-    const hmac = new Uint8Array(
-      (await crypto.subtle.sign("HMAC", ck, msg.buffer)) as ArrayBuffer,
-    );
+    const hmac = new Uint8Array((await crypto.subtle.sign("HMAC", ck, msg.buffer)) as ArrayBuffer);
     const off = hmac[19] & 0xf;
     const code =
       (((hmac[off] & 0x7f) << 24) |
@@ -3093,73 +2835,52 @@ async function computeTotpAsync(
 }
 
 let _totpEdit: TotpItem | null = null;
-(document.getElementById("btn-add-totp") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    _totpEdit = null;
-    (document.getElementById("t-name") as HTMLInputElement).value = "";
-    (document.getElementById("t-issuer") as HTMLInputElement).value = "";
-    (document.getElementById("t-secret") as HTMLInputElement).value = "";
-    (document.getElementById("t-icon") as HTMLInputElement).value = "";
-    logInfo("totp", "Add TOTP account modal opened");
-    showOverlay("totp-overlay");
-    setTimeout(
-      () => (document.getElementById("t-name") as HTMLInputElement).focus(),
-      60,
-    );
-  },
-);
-(document.getElementById("totp-ok") as HTMLButtonElement).addEventListener(
-  "click",
-  async () => {
-    const name = (
-      document.getElementById("t-name") as HTMLInputElement
-    ).value.trim();
-    const secret = (
-      document.getElementById("t-secret") as HTMLInputElement
-    ).value
-      .trim()
-      .replace(/\s/g, "")
-      .toUpperCase();
-    if (!name || !secret) {
-      toast("Name and secret key required");
-      return;
+(document.getElementById("btn-add-totp") as HTMLButtonElement).addEventListener("click", () => {
+  _totpEdit = null;
+  (document.getElementById("t-name") as HTMLInputElement).value = "";
+  (document.getElementById("t-issuer") as HTMLInputElement).value = "";
+  (document.getElementById("t-secret") as HTMLInputElement).value = "";
+  (document.getElementById("t-icon") as HTMLInputElement).value = "";
+  logInfo("totp", "Add TOTP account modal opened");
+  showOverlay("totp-overlay");
+  setTimeout(() => (document.getElementById("t-name") as HTMLInputElement).focus(), 60);
+});
+(document.getElementById("totp-ok") as HTMLButtonElement).addEventListener("click", async () => {
+  const name = (document.getElementById("t-name") as HTMLInputElement).value.trim();
+  const secret = (document.getElementById("t-secret") as HTMLInputElement).value
+    .trim()
+    .replace(/\s/g, "")
+    .toUpperCase();
+  if (!name || !secret) {
+    toast("Name and secret key required");
+    return;
+  }
+  const item: TotpItem = {
+    id: _totpEdit?.id,
+    name,
+    issuer: (document.getElementById("t-issuer") as HTMLInputElement).value.trim(),
+    secret,
+    icon: (document.getElementById("t-icon") as HTMLInputElement).value || "🔐",
+  };
+  hideOverlay("totp-overlay");
+  const r = await api.totpSave(item as unknown as Record<string, unknown>);
+  if (r.ok) {
+    if (_totpEdit) Object.assign(_totpEdit, item);
+    else {
+      item.id = r.id;
+      S.totp.unshift(item);
     }
-    const item: TotpItem = {
-      id: _totpEdit?.id,
-      name,
-      issuer: (
-        document.getElementById("t-issuer") as HTMLInputElement
-      ).value.trim(),
-      secret,
-      icon:
-        (document.getElementById("t-icon") as HTMLInputElement).value || "🔐",
-    };
-    hideOverlay("totp-overlay");
-    const r = await api.totpSave(item as unknown as Record<string, unknown>);
-    if (r.ok) {
-      if (_totpEdit) Object.assign(_totpEdit, item);
-      else {
-        item.id = r.id;
-        S.totp.unshift(item);
-      }
-      renderTotpGrid();
-      updateCounts();
-      toast("Saved");
-      logOk(
-        "totp",
-        _totpEdit ? "TOTP account updated" : "TOTP account created",
-        { name },
-      );
-    } else {
-      toast("Save failed: " + r.error);
-      logErr("totp", "TOTP save failed", { name, error: r.error });
-    }
-  },
-);
-(document.getElementById("totp-cancel") as HTMLButtonElement).addEventListener(
-  "click",
-  () => hideOverlay("totp-overlay"),
+    renderTotpGrid();
+    updateCounts();
+    toast("Saved");
+    logOk("totp", _totpEdit ? "TOTP account updated" : "TOTP account created", { name });
+  } else {
+    toast("Save failed: " + r.error);
+    logErr("totp", "TOTP save failed", { name, error: r.error });
+  }
+});
+(document.getElementById("totp-cancel") as HTMLButtonElement).addEventListener("click", () =>
+  hideOverlay("totp-overlay"),
 );
 (document.getElementById("totp-overlay") as HTMLElement).addEventListener(
   "click",
@@ -3223,39 +2944,28 @@ function applyAccent(name: string): void {
   );
   document.documentElement.style.setProperty(
     "--accent-strong",
-    c.replace(/0\.\d+/, (m) =>
-      String(Math.min(1, Number.parseFloat(m) + 0.08)),
-    ),
+    c.replace(/0\.\d+/, (m) => String(Math.min(1, Number.parseFloat(m) + 0.08))),
   );
   document.documentElement.style.setProperty(
     "--accent-glass",
     c.replace(")", " / 0.18)").replace("oklch(", "oklch("),
   );
   document.querySelectorAll(".accent-swatch").forEach((s) => {
-    (s as HTMLElement).classList.toggle(
-      "active",
-      (s as HTMLElement).dataset.accent === name,
-    );
+    (s as HTMLElement).classList.toggle("active", (s as HTMLElement).dataset.accent === name);
   });
 }
 
 function applySetting(key: string, value: unknown): void {
   (S.settings as unknown as Record<string, unknown>)[key] = value;
-  if (
-    key === "lock_timeout" ||
-    key === "lock_action" ||
-    key === "lock_countdown"
-  ) {
+  if (key === "lock_timeout" || key === "lock_action" || key === "lock_countdown") {
     applyLockSettings();
     armLock();
   }
   if (key === "compact") document.body.classList.toggle("compact", !!value);
-  if (key === "animations")
-    document.body.style.setProperty("--transition", value ? "" : "0s");
+  if (key === "animations") document.body.style.setProperty("--transition", value ? "" : "0s");
   if (key === "accent") applyAccent(value as string);
   if (key === "sounds")
-    (globalThis as unknown as Record<string, unknown>).__soundsEnabled =
-      !!value;
+    (globalThis as unknown as Record<string, unknown>).__soundsEnabled = !!value;
   __saveSettings();
 }
 let __saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -3280,21 +2990,15 @@ async function loadSettingsTab(): Promise<void> {
   }
 
   const bind = (id: string, key: string, type: string): void => {
-    const el = document.getElementById(id) as
-      | HTMLInputElement
-      | HTMLSelectElement
-      | null;
+    const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
     if (!el) return;
     if (type === "toggle")
-      (el as HTMLInputElement).checked = !!(
-        S.settings as unknown as Record<string, unknown>
-      )[key];
+      (el as HTMLInputElement).checked = !!(S.settings as unknown as Record<string, unknown>)[key];
     else {
       const raw = (S.settings as unknown as Record<string, unknown>)[key];
       // Only strings/numbers/primitives are meaningful here; objects would
       // stringify to "[object Object]".
-      el.value =
-        typeof raw === "string" || typeof raw === "number" ? String(raw) : "";
+      el.value = typeof raw === "string" || typeof raw === "number" ? String(raw) : "";
     }
     el.addEventListener("change", () => {
       let val: unknown;
@@ -3332,9 +3036,7 @@ async function loadSettingsTab(): Promise<void> {
   const pinSetupRow = document.getElementById("pin-setup-row") as HTMLElement;
   const pinChangeRow = document.getElementById("pin-change-row") as HTMLElement;
   const pinDeleteRow = document.getElementById("pin-delete-row") as HTMLElement;
-  const pinDeleteDivider = document.getElementById(
-    "pin-delete-divider",
-  ) as HTMLElement;
+  const pinDeleteDivider = document.getElementById("pin-delete-divider") as HTMLElement;
 
   // Check if a PIN file already exists to decide which row to show
   let _pinFileExists = false;
@@ -3359,9 +3061,7 @@ async function loadSettingsTab(): Promise<void> {
   }
 
   // PIN enable toggle handler
-  const pinEnabledEl = document.getElementById(
-    "s-pin-enabled",
-  ) as HTMLInputElement;
+  const pinEnabledEl = document.getElementById("s-pin-enabled") as HTMLInputElement;
   if (pinEnabledEl) {
     pinEnabledEl.addEventListener("change", () => {
       const enabled = pinEnabledEl.checked;
@@ -3372,12 +3072,7 @@ async function loadSettingsTab(): Promise<void> {
         setPinRowsView("none");
       }
       __saveSettings();
-      toast(
-        enabled
-          ? "PIN login enabled — set your PIN below"
-          : "PIN login disabled",
-        1500,
-      );
+      toast(enabled ? "PIN login enabled — set your PIN below" : "PIN login disabled", 1500);
       logInfo("settings", "PIN login toggled", { enabled });
     });
   }
@@ -3388,10 +3083,7 @@ async function loadSettingsTab(): Promise<void> {
     pinAlphaEl.addEventListener("change", () => {
       S.settings.pin_allow_alpha = pinAlphaEl.checked;
       __saveSettings();
-      toast(
-        pinAlphaEl.checked ? "Alphanumeric PINs enabled" : "Numbers-only PINs",
-        1500,
-      );
+      toast(pinAlphaEl.checked ? "Alphanumeric PINs enabled" : "Numbers-only PINs", 1500);
       logInfo("settings", "PIN alpha setting changed", {
         allowAlpha: pinAlphaEl.checked,
       });
@@ -3408,8 +3100,7 @@ async function loadSettingsTab(): Promise<void> {
 
   // Set PIN button
   document.getElementById("s-pin-save")?.addEventListener("click", async () => {
-    const pinVal = (document.getElementById("s-pin-value") as HTMLInputElement)
-      .value;
+    const pinVal = (document.getElementById("s-pin-value") as HTMLInputElement).value;
     logInfo("pin", "Set PIN clicked");
     const r = await api.pin.setup(pinVal, S.settings.pin_allow_alpha);
     if (!r.ok) {
@@ -3429,89 +3120,74 @@ async function loadSettingsTab(): Promise<void> {
   });
 
   // Change PIN button
-  document
-    .getElementById("s-pin-change-btn")
-    ?.addEventListener("click", async () => {
-      const oldPin = (document.getElementById("s-pin-old") as HTMLInputElement)
-        .value;
-      const newPin = (document.getElementById("s-pin-new") as HTMLInputElement)
-        .value;
-      logInfo("pin", "Change PIN clicked");
-      const r = await api.pin.change(
-        oldPin,
-        newPin,
-        S.settings.pin_allow_alpha,
-      );
-      if (!r.ok) {
-        toast(r.error || "Failed to change PIN");
-        logWarn("pin", "Change PIN failed", r.error);
-        return;
-      }
-      toast("PIN changed successfully");
-      logOk("pin", "PIN changed");
-      (document.getElementById("s-pin-old") as HTMLInputElement).value = "";
-      (document.getElementById("s-pin-new") as HTMLInputElement).value = "";
-    });
+  document.getElementById("s-pin-change-btn")?.addEventListener("click", async () => {
+    const oldPin = (document.getElementById("s-pin-old") as HTMLInputElement).value;
+    const newPin = (document.getElementById("s-pin-new") as HTMLInputElement).value;
+    logInfo("pin", "Change PIN clicked");
+    const r = await api.pin.change(oldPin, newPin, S.settings.pin_allow_alpha);
+    if (!r.ok) {
+      toast(r.error || "Failed to change PIN");
+      logWarn("pin", "Change PIN failed", r.error);
+      return;
+    }
+    toast("PIN changed successfully");
+    logOk("pin", "PIN changed");
+    (document.getElementById("s-pin-old") as HTMLInputElement).value = "";
+    (document.getElementById("s-pin-new") as HTMLInputElement).value = "";
+  });
 
   // Delete PIN button — requires confirmation
-  document
-    .getElementById("s-pin-delete")
-    ?.addEventListener("click", async () => {
-      const confirmed = await confirmDialog({
-        title: "Delete PIN?",
-        msg: "This will permanently delete your PIN. You can set a new one anytime from settings.",
-        okLabel: "Delete",
-        okClass: "btn-danger",
-      });
-      if (!confirmed) return;
-      logInfo("pin", "Delete PIN confirmed");
-      const r = await api.pin.disable();
-      if (!r.ok) {
-        toast(r.error || "Failed to delete PIN");
-        logWarn("pin", "Delete PIN failed", r.error);
-        return;
-      }
-      toast("PIN deleted");
-      logOk("pin", "PIN deleted");
-      _pinFileExists = false;
-      // Disable PIN login setting and clear saved account
-      S.settings.pin_login_enabled = false;
-      if (pinEnabledEl) pinEnabledEl.checked = false;
-      // Remove the saved account for this PIN user
-      api.accounts.remove().catch(() => {});
-      // Update UI: show setup row, hide change/delete rows
-      if (pinSetupRow) pinSetupRow.hidden = true;
-      if (pinChangeRow) pinChangeRow.hidden = true;
-      if (pinDeleteRow) pinDeleteRow.hidden = true;
-      if (pinDeleteDivider) pinDeleteDivider.hidden = true;
-      // Update PIN indicator in sidebar
-      const pinIndicator = document.getElementById("pin-indicator");
-      if (pinIndicator) pinIndicator.hidden = true;
-      __saveSettings();
+  document.getElementById("s-pin-delete")?.addEventListener("click", async () => {
+    const confirmed = await confirmDialog({
+      title: "Delete PIN?",
+      msg: "This will permanently delete your PIN. You can set a new one anytime from settings.",
+      okLabel: "Delete",
+      okClass: "btn-danger",
     });
+    if (!confirmed) return;
+    logInfo("pin", "Delete PIN confirmed");
+    const r = await api.pin.disable();
+    if (!r.ok) {
+      toast(r.error || "Failed to delete PIN");
+      logWarn("pin", "Delete PIN failed", r.error);
+      return;
+    }
+    toast("PIN deleted");
+    logOk("pin", "PIN deleted");
+    _pinFileExists = false;
+    // Disable PIN login setting and clear saved account
+    S.settings.pin_login_enabled = false;
+    if (pinEnabledEl) pinEnabledEl.checked = false;
+    // Remove the saved account for this PIN user
+    api.accounts.remove().catch(() => {});
+    // Update UI: show setup row, hide change/delete rows
+    if (pinSetupRow) pinSetupRow.hidden = true;
+    if (pinChangeRow) pinChangeRow.hidden = true;
+    if (pinDeleteRow) pinDeleteRow.hidden = true;
+    if (pinDeleteDivider) pinDeleteDivider.hidden = true;
+    // Update PIN indicator in sidebar
+    const pinIndicator = document.getElementById("pin-indicator");
+    if (pinIndicator) pinIndicator.hidden = true;
+    __saveSettings();
+  });
 
   document.querySelectorAll(".accent-swatch").forEach((s) => {
     (s as HTMLElement).classList.toggle(
       "active",
       (s as HTMLElement).dataset.accent === S.settings.accent,
     );
-    s.addEventListener("click", () =>
-      applySetting("accent", (s as HTMLElement).dataset.accent),
-    );
+    s.addEventListener("click", () => applySetting("accent", (s as HTMLElement).dataset.accent));
   });
 
   document.body.classList.toggle("compact", !!S.settings.compact);
-  document.body.style.setProperty(
-    "--transition",
-    S.settings.animations ? "" : "0s",
-  );
+  document.body.style.setProperty("--transition", S.settings.animations ? "" : "0s");
   applyAccent(S.settings.accent);
-  (globalThis as unknown as Record<string, unknown>).__soundsEnabled =
-    !!S.settings.sounds;
+  (globalThis as unknown as Record<string, unknown>).__soundsEnabled = !!S.settings.sounds;
 
   const r2 = await api.twofa.status();
-  (document.getElementById("s-2fa-status") as HTMLElement).textContent =
-    r2.enabled ? "✅ Enabled" : "❌ Disabled";
+  (document.getElementById("s-2fa-status") as HTMLElement).textContent = r2.enabled
+    ? "✅ Enabled"
+    : "❌ Disabled";
   logOk("settings", "Settings tab loaded", {
     ...S.settings,
     twofa: r2.enabled,
@@ -3522,13 +3198,10 @@ api.onMinimize(() => {
   if (S.settings.lock_on_minimize && S.user) doLock();
 });
 
-(document.getElementById("s-btn-2fa") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    hide("tab-settings");
-    (document.getElementById("btn-2fa") as HTMLButtonElement).click();
-  },
-);
+(document.getElementById("s-btn-2fa") as HTMLButtonElement).addEventListener("click", () => {
+  hide("tab-settings");
+  (document.getElementById("btn-2fa") as HTMLButtonElement).click();
+});
 
 // ═══ STRENGTH ══════════════════════════════════════════════════════════════════
 function scoreP(pw: string): { n: number; lbl: string; cls: string } {
@@ -3566,17 +3239,11 @@ const LOWER = "abcdefghijklmnopqrstuvwxyz",
   NUMS = "0123456789",
   SYMS = "!@#$%^&*()_+-=[]{}|;:,.<>?";
 async function doGenerate(): Promise<string> {
-  const len = Number.parseInt(
-    (document.getElementById("gen-len") as HTMLInputElement).value,
-    10,
-  );
+  const len = Number.parseInt((document.getElementById("gen-len") as HTMLInputElement).value, 10);
   const classes = [LOWER];
-  if ((document.getElementById("go-upper") as HTMLInputElement).checked)
-    classes.push(UPPER);
-  if ((document.getElementById("go-nums") as HTMLInputElement).checked)
-    classes.push(NUMS);
-  if ((document.getElementById("go-syms") as HTMLInputElement).checked)
-    classes.push(SYMS);
+  if ((document.getElementById("go-upper") as HTMLInputElement).checked) classes.push(UPPER);
+  if ((document.getElementById("go-nums") as HTMLInputElement).checked) classes.push(NUMS);
+  if ((document.getElementById("go-syms") as HTMLInputElement).checked) classes.push(SYMS);
   const allCs = classes.join("");
   // Use rejection sampling to avoid modulo bias
   function pickRandom(chars: string): string {
@@ -3590,9 +3257,7 @@ async function doGenerate(): Promise<string> {
     return chars[v % chars.length];
   }
   const guaranteed = classes.map((cs) => pickRandom(cs));
-  const rest = Array.from({ length: len - classes.length }, () =>
-    pickRandom(allCs),
-  );
+  const rest = Array.from({ length: len - classes.length }, () => pickRandom(allCs));
   let pw = [...guaranteed, ...rest];
   const shuffleArr = new Uint32Array(pw.length);
   crypto.getRandomValues(shuffleArr);
@@ -3621,15 +3286,10 @@ async function doGenerate(): Promise<string> {
   logInfo("generator", "Password generated", { length: len, strength: lbl });
   return pwStr;
 }
-(document.getElementById("gen-len") as HTMLInputElement).addEventListener(
-  "input",
-  function () {
-    (document.getElementById("gen-len-val") as HTMLElement).textContent =
-      this.value;
-    if ((document.getElementById("gen-out") as HTMLElement).textContent !== "—")
-      doGenerate();
-  },
-);
+(document.getElementById("gen-len") as HTMLInputElement).addEventListener("input", function () {
+  (document.getElementById("gen-len-val") as HTMLElement).textContent = this.value;
+  if ((document.getElementById("gen-out") as HTMLElement).textContent !== "—") doGenerate();
+});
 function openGen(fillMode = false): void {
   logInfo("generator", "Generator opened", { fillMode });
   (document.getElementById("gen-len") as HTMLInputElement).value = String(
@@ -3638,10 +3298,8 @@ function openGen(fillMode = false): void {
   (document.getElementById("gen-len-val") as HTMLElement).textContent = String(
     S.settings.gen_length || 20,
   );
-  (document.getElementById("go-syms") as HTMLInputElement).checked =
-    !!S.settings.gen_symbols;
-  (document.getElementById("go-nums") as HTMLInputElement).checked =
-    !!S.settings.gen_numbers;
+  (document.getElementById("go-syms") as HTMLInputElement).checked = !!S.settings.gen_symbols;
+  (document.getElementById("go-nums") as HTMLInputElement).checked = !!S.settings.gen_numbers;
   showOverlay("gen-overlay");
   const useBtn = document.getElementById("gen-use") as HTMLButtonElement;
   const newUse = useBtn.cloneNode(true) as HTMLButtonElement;
@@ -3667,196 +3325,160 @@ function closeGen(): void {
   hideOverlay("gen-overlay");
 }
 ["go-upper", "go-nums", "go-syms"].forEach((id) => {
-  (document.getElementById(id) as HTMLInputElement).addEventListener(
-    "change",
-    () => {
-      if ((document.getElementById("gen-overlay") as HTMLElement).hidden)
-        return;
-      doGenerate();
-      if (id === "go-syms")
-        S.settings.gen_symbols = (
-          document.getElementById(id) as HTMLInputElement
-        ).checked;
-      if (id === "go-nums")
-        S.settings.gen_numbers = (
-          document.getElementById(id) as HTMLInputElement
-        ).checked;
-      __saveSettings();
-    },
-  );
+  (document.getElementById(id) as HTMLInputElement).addEventListener("change", () => {
+    if ((document.getElementById("gen-overlay") as HTMLElement).hidden) return;
+    doGenerate();
+    if (id === "go-syms")
+      S.settings.gen_symbols = (document.getElementById(id) as HTMLInputElement).checked;
+    if (id === "go-nums")
+      S.settings.gen_numbers = (document.getElementById(id) as HTMLInputElement).checked;
+    __saveSettings();
+  });
 });
-(document.getElementById("btn-gen") as HTMLButtonElement).addEventListener(
-  "click",
-  () => openGen(false),
+(document.getElementById("btn-gen") as HTMLButtonElement).addEventListener("click", () =>
+  openGen(false),
 );
-(document.getElementById("gen-close") as HTMLButtonElement).addEventListener(
-  "click",
-  closeGen,
-);
+(document.getElementById("gen-close") as HTMLButtonElement).addEventListener("click", closeGen);
 (document.getElementById("gen-generate") as HTMLButtonElement).addEventListener(
   "click",
   doGenerate,
 );
-(document.getElementById("gen-copy") as HTMLButtonElement).addEventListener(
-  "click",
-  () => {
-    const pw = (document.getElementById("gen-out") as HTMLElement).textContent;
-    if (pw && pw !== "—") {
-      navigator.clipboard.writeText(pw);
-      toast("Copied!");
-      logInfo("generator", "Password copied to clipboard");
-    }
-  },
-);
+(document.getElementById("gen-copy") as HTMLButtonElement).addEventListener("click", () => {
+  const pw = (document.getElementById("gen-out") as HTMLElement).textContent;
+  if (pw && pw !== "—") {
+    navigator.clipboard.writeText(pw);
+    toast("Copied!");
+    logInfo("generator", "Password copied to clipboard");
+  }
+});
 (document.querySelector("#gen-overlay .modal") as HTMLElement).addEventListener(
   "click",
   (e: Event) => e.stopPropagation(),
 );
-(document.getElementById("gen-overlay") as HTMLElement).addEventListener(
-  "click",
-  closeGen,
-);
+(document.getElementById("gen-overlay") as HTMLElement).addEventListener("click", closeGen);
 
 // ═══ 2FA SETTINGS MODAL ════════════════════════════════════════════════════════
-(document.getElementById("btn-2fa") as HTMLButtonElement).addEventListener(
-  "click",
-  async () => {
-    logInfo("2fa", "2FA settings opened");
-    const r = await api.twofa.status();
-    const body = document.getElementById("twofa-modal-body") as HTMLElement;
-    const okBtn = document.getElementById("twofa-ok") as HTMLButtonElement;
-    const disBtn = document.getElementById(
-      "twofa-disable",
-    ) as HTMLButtonElement;
-    if (r.enabled) {
-      (
-        document.getElementById("twofa-modal-title") as HTMLElement
-      ).textContent = "2FA is enabled";
-      body.innerHTML = "";
-      const disMsg = document.createElement("p");
-      disMsg.className = "sub";
-      disMsg.style.cssText = "margin:12px 0";
-      disMsg.textContent = "Two-factor authentication is active.";
-      body.appendChild(disMsg);
-      body.appendChild(document.createElement("br"));
-      const disMsg2 = document.createElement("span");
-      disMsg2.textContent = "Disable it below.";
-      body.appendChild(disMsg2);
-      okBtn.hidden = true;
-      disBtn.hidden = false;
-      logInfo("2fa", "2FA is currently enabled");
+(document.getElementById("btn-2fa") as HTMLButtonElement).addEventListener("click", async () => {
+  logInfo("2fa", "2FA settings opened");
+  const r = await api.twofa.status();
+  const body = document.getElementById("twofa-modal-body") as HTMLElement;
+  const okBtn = document.getElementById("twofa-ok") as HTMLButtonElement;
+  const disBtn = document.getElementById("twofa-disable") as HTMLButtonElement;
+  if (r.enabled) {
+    (document.getElementById("twofa-modal-title") as HTMLElement).textContent = "2FA is enabled";
+    body.innerHTML = "";
+    const disMsg = document.createElement("p");
+    disMsg.className = "sub";
+    disMsg.style.cssText = "margin:12px 0";
+    disMsg.textContent = "Two-factor authentication is active.";
+    body.appendChild(disMsg);
+    body.appendChild(document.createElement("br"));
+    const disMsg2 = document.createElement("span");
+    disMsg2.textContent = "Disable it below.";
+    body.appendChild(disMsg2);
+    okBtn.hidden = true;
+    disBtn.hidden = false;
+    logInfo("2fa", "2FA is currently enabled");
+  } else {
+    (document.getElementById("twofa-modal-title") as HTMLElement).textContent = "Enable 2FA";
+    body.innerHTML = "";
+    const scanMsg = document.createElement("p");
+    scanMsg.className = "sub";
+    scanMsg.style.cssText = "margin-bottom:14px";
+    scanMsg.textContent =
+      "Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.";
+    body.appendChild(scanMsg);
+    body.appendChild(document.createElement("br"));
+    body.appendChild(document.createElement("br"));
+    const qrWrap = document.createElement("div");
+    qrWrap.id = "qr-wrap";
+    qrWrap.style.cssText = "display:flex;justify-content:center;margin:12px 0";
+    const qrLoading = document.createElement("p");
+    qrLoading.style.color = "var(--muted)";
+    qrLoading.textContent = "Loading…";
+    qrWrap.appendChild(qrLoading);
+    body.appendChild(qrWrap);
+    const secretText = document.createElement("p");
+    secretText.className = "sub";
+    secretText.style.cssText = "margin-bottom:10px;font-size:11px;font-family:var(--mono)";
+    secretText.id = "2fa-secret-text";
+    secretText.textContent = "Loading…";
+    body.appendChild(secretText);
+    const setupCode = document.createElement("input");
+    setupCode.className = "fi twofa-input";
+    setupCode.id = "twofa-setup-code";
+    setupCode.placeholder = "000000";
+    setupCode.maxLength = 6;
+    setupCode.inputMode = "numeric";
+    setupCode.style.cssText =
+      "text-align:center;font-size:20px;letter-spacing:.3em;font-family:var(--mono);margin-top:6px";
+    body.appendChild(setupCode);
+    const setupErr = document.createElement("p");
+    setupErr.className = "err";
+    setupErr.id = "twofa-setup-err";
+    setupErr.hidden = true;
+    body.appendChild(setupErr);
+    okBtn.hidden = false;
+    disBtn.hidden = true;
+    const sr = await api.twofa.setup();
+    if (sr.ok) {
+      (document.getElementById("2fa-secret-text") as HTMLElement).textContent = sr.secret ?? "";
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(sr.otpauth!)}`;
+      const qrEl = document.getElementById("qr-wrap") as HTMLElement;
+      qrEl.innerHTML = "";
+      const qrImg = document.createElement("img");
+      qrImg.width = 160;
+      qrImg.height = 160;
+      qrImg.style.borderRadius = "8px";
+      qrImg.style.background = "#fff";
+      qrImg.style.padding = "6px";
+      qrImg.src = qrUrl;
+      qrEl.appendChild(qrImg);
+      logOk("2fa", "2FA setup initiated");
     } else {
-      (
-        document.getElementById("twofa-modal-title") as HTMLElement
-      ).textContent = "Enable 2FA";
-      body.innerHTML = "";
-      const scanMsg = document.createElement("p");
-      scanMsg.className = "sub";
-      scanMsg.style.cssText = "margin-bottom:14px";
-      scanMsg.textContent =
-        "Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.";
-      body.appendChild(scanMsg);
-      body.appendChild(document.createElement("br"));
-      body.appendChild(document.createElement("br"));
-      const qrWrap = document.createElement("div");
-      qrWrap.id = "qr-wrap";
-      qrWrap.style.cssText =
-        "display:flex;justify-content:center;margin:12px 0";
-      const qrLoading = document.createElement("p");
-      qrLoading.style.color = "var(--muted)";
-      qrLoading.textContent = "Loading…";
-      qrWrap.appendChild(qrLoading);
-      body.appendChild(qrWrap);
-      const secretText = document.createElement("p");
-      secretText.className = "sub";
-      secretText.style.cssText =
-        "margin-bottom:10px;font-size:11px;font-family:var(--mono)";
-      secretText.id = "2fa-secret-text";
-      secretText.textContent = "Loading…";
-      body.appendChild(secretText);
-      const setupCode = document.createElement("input");
-      setupCode.className = "fi twofa-input";
-      setupCode.id = "twofa-setup-code";
-      setupCode.placeholder = "000000";
-      setupCode.maxLength = 6;
-      setupCode.inputMode = "numeric";
-      setupCode.style.cssText =
-        "text-align:center;font-size:20px;letter-spacing:.3em;font-family:var(--mono);margin-top:6px";
-      body.appendChild(setupCode);
-      const setupErr = document.createElement("p");
-      setupErr.className = "err";
-      setupErr.id = "twofa-setup-err";
-      setupErr.hidden = true;
-      body.appendChild(setupErr);
-      okBtn.hidden = false;
-      disBtn.hidden = true;
-      const sr = await api.twofa.setup();
-      if (sr.ok) {
-        (
-          document.getElementById("2fa-secret-text") as HTMLElement
-        ).textContent = sr.secret ?? "";
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(sr.otpauth!)}`;
-        const qrEl = document.getElementById("qr-wrap") as HTMLElement;
-        qrEl.innerHTML = "";
-        const qrImg = document.createElement("img");
-        qrImg.width = 160;
-        qrImg.height = 160;
-        qrImg.style.borderRadius = "8px";
-        qrImg.style.background = "#fff";
-        qrImg.style.padding = "6px";
-        qrImg.src = qrUrl;
-        qrEl.appendChild(qrImg);
-        logOk("2fa", "2FA setup initiated");
-      } else {
-        logErr("2fa", "2FA setup failed", sr.error);
-      }
-      const newOk = okBtn.cloneNode(true) as HTMLButtonElement;
-      okBtn.parentNode!.replaceChild(newOk, okBtn);
-      newOk.hidden = false;
-      newOk.addEventListener("click", async () => {
-        const token = (
-          document.getElementById("twofa-setup-code") as HTMLInputElement
-        )?.value.trim();
-        const er = await api.twofa.enable(token);
-        if (!er.ok) {
-          const el = document.getElementById("twofa-setup-err") as HTMLElement;
-          el.hidden = false;
-          el.textContent = er.error ?? "";
-          logWarn("2fa", "2FA enable failed", er.error);
-          return;
-        }
-        hideOverlay("twofa-overlay");
-        toast("2FA enabled ✓");
-        logOk("2fa", "2FA enabled");
-      });
+      logErr("2fa", "2FA setup failed", sr.error);
     }
-    const newDis = disBtn.cloneNode(true) as HTMLButtonElement;
-    disBtn.parentNode!.replaceChild(newDis, disBtn);
-    newDis.hidden = !r.enabled;
-    newDis.addEventListener("click", async () => {
-      const code = prompt(
-        "Enter your current 6-digit 2FA code to confirm disabling:",
-      );
-      if (!code || !/^\d{6}$/.test(code)) {
-        toast("Invalid code format");
-        return;
-      }
-      logInfo("2fa", "2FA disable clicked");
-      const res = await api.twofa.disable(code);
-      if (!res.ok) {
-        toast(res.error || "Failed to disable 2FA");
+    const newOk = okBtn.cloneNode(true) as HTMLButtonElement;
+    okBtn.parentNode!.replaceChild(newOk, okBtn);
+    newOk.hidden = false;
+    newOk.addEventListener("click", async () => {
+      const token = (document.getElementById("twofa-setup-code") as HTMLInputElement)?.value.trim();
+      const er = await api.twofa.enable(token);
+      if (!er.ok) {
+        const el = document.getElementById("twofa-setup-err") as HTMLElement;
+        el.hidden = false;
+        el.textContent = er.error ?? "";
+        logWarn("2fa", "2FA enable failed", er.error);
         return;
       }
       hideOverlay("twofa-overlay");
-      toast("2FA disabled");
-      logOk("2fa", "2FA disabled");
+      toast("2FA enabled ✓");
+      logOk("2fa", "2FA enabled");
     });
-    showOverlay("twofa-overlay");
-  },
-);
-(document.getElementById("twofa-cancel") as HTMLButtonElement).addEventListener(
-  "click",
-  () => hideOverlay("twofa-overlay"),
+  }
+  const newDis = disBtn.cloneNode(true) as HTMLButtonElement;
+  disBtn.parentNode!.replaceChild(newDis, disBtn);
+  newDis.hidden = !r.enabled;
+  newDis.addEventListener("click", async () => {
+    const code = prompt("Enter your current 6-digit 2FA code to confirm disabling:");
+    if (!code || !/^\d{6}$/.test(code)) {
+      toast("Invalid code format");
+      return;
+    }
+    logInfo("2fa", "2FA disable clicked");
+    const res = await api.twofa.disable(code);
+    if (!res.ok) {
+      toast(res.error || "Failed to disable 2FA");
+      return;
+    }
+    hideOverlay("twofa-overlay");
+    toast("2FA disabled");
+    logOk("2fa", "2FA disabled");
+  });
+  showOverlay("twofa-overlay");
+});
+(document.getElementById("twofa-cancel") as HTMLButtonElement).addEventListener("click", () =>
+  hideOverlay("twofa-overlay"),
 );
 (document.getElementById("twofa-overlay") as HTMLElement).addEventListener(
   "click",

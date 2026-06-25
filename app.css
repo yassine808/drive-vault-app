@@ -2313,6 +2313,80 @@ body {
   display: flex;
   align-items: center;
 }
+/* Inline-style-free alignment for section-title icons (CSP: no unsafe-inline) */
+.settings-section-title svg {
+  vertical-align: -1px;
+  margin-right: 6px;
+}
+
+/* ── Utility classes replacing inline styles (CSP hardening) ────────────── */
+.ic-svg-va-mr4 {
+  vertical-align: -1px;
+  margin-right: 4px;
+}
+.btn-pin-google-mt8 {
+  margin-top: 8px;
+}
+.th-col-w28 {
+  width: 28px;
+}
+.s-2fa-status {
+  font-size: 12px;
+  color: var(--txt-muted);
+}
+.btn-ml-10 {
+  margin-left: 10px;
+}
+.btn-ml-8 {
+  margin-left: 8px;
+}
+.in-w140 {
+  width: 140px;
+}
+.in-w100 {
+  width: 100px;
+}
+.in-w100-ml6 {
+  width: 100px;
+  margin-left: 6px;
+}
+.pin-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--accent);
+  margin-right: 8px;
+}
+.modal-w460 {
+  width: 460px;
+}
+.modal-w480 {
+  width: 480px;
+}
+.modal-w440 {
+  width: 440px;
+}
+.modal-w420 {
+  width: 420px;
+  text-align: center;
+}
+.modal-foot-center {
+  justify-content: center;
+}
+.in-mono-ls {
+  font-family: var(--mono);
+  letter-spacing: 0.05em;
+}
+.hint-11 {
+  font-size: 11px;
+  color: var(--txt-muted);
+  margin-top: 6px;
+}
+.in-icon-emoji {
+  font-size: 18px;
+  width: 60px;
+}
 .settings-row {
   display: flex;
   align-items: center;

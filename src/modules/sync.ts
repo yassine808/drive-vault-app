@@ -3,12 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
 import type { DriveClient } from "./drive";
-import type {
-  Session,
-  SyncFolder,
-  SyncFolderState,
-  SyncConfig,
-} from "../types";
+import type { Session, SyncFolder, SyncFolderState, SyncConfig } from "../types";
 import type Electron from "electron";
 
 type Logger = {
@@ -259,9 +254,7 @@ function loadConfig(): SyncConfig {
     return {
       folders: (parsed.folders || []).map((folder: SyncFolder) => ({
         ...folder,
-        includePaths: Array.isArray(folder.includePaths)
-          ? folder.includePaths
-          : undefined,
+        includePaths: Array.isArray(folder.includePaths) ? folder.includePaths : undefined,
       })),
       globalState: "idle",
       lastFullSyncAt: parsed.lastFullSyncAt || null,
@@ -307,8 +300,7 @@ function saveState(state: Record<string, SyncFolderState>): void {
 
 class FileWatcher {
   private readonly watchers: Map<string, fs.FSWatcher> = new Map();
-  private readonly timers: Map<string, ReturnType<typeof setTimeout>> =
-    new Map();
+  private readonly timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly onChange: (folderId: string) => void;
 
   constructor(onChange: (folderId: string) => void) {
@@ -411,9 +403,7 @@ class SyncEngine {
   }
 
   // Get or create a subfolder inside Vault/sync/ for a sync folder
-  private async getDriveSubfolderId(
-    driveFolderName: string,
-  ): Promise<string | null> {
+  private async getDriveSubfolderId(driveFolderName: string): Promise<string | null> {
     const syncFolderId = await this.getSyncFolderId();
     if (!syncFolderId || !this.drive) return null;
     if (!driveFolderName) return syncFolderId;
@@ -444,9 +434,7 @@ class SyncEngine {
 
   private async scanDriveFiles(
     driveSubfolderId: string,
-  ): Promise<
-    Map<string, { fileId: string; modifiedTime: string; hash: string | null }>
-  > {
+  ): Promise<Map<string, { fileId: string; modifiedTime: string; hash: string | null }>> {
     const driveFiles = new Map<
       string,
       { fileId: string; modifiedTime: string; hash: string | null }
@@ -494,10 +482,7 @@ class SyncEngine {
       resolved = false;
     try {
       const conflictName = this.addConflictSuffix(relPath);
-      await this.downloadFile(
-        drive.fileId,
-        path.join(folder.localPath, conflictName),
-      );
+      await this.downloadFile(drive.fileId, path.join(folder.localPath, conflictName));
       newState.files[conflictName] = {
         relativePath: conflictName,
         localHash: drive.hash,
@@ -533,10 +518,7 @@ class SyncEngine {
     prev: SyncFolderState["files"][string] | null;
     folder: SyncFolder;
     driveSubfolderId: string;
-    driveFiles: Map<
-      string,
-      { fileId: string; modifiedTime: string; hash: string | null }
-    >;
+    driveFiles: Map<string, { fileId: string; modifiedTime: string; hash: string | null }>;
     newState: SyncFolderState;
     counters: {
       uploaded: number;
@@ -545,8 +527,17 @@ class SyncEngine {
       errors: number;
     };
   }): Promise<void> {
-    const { relPath, local, drive, prev, folder, driveSubfolderId, driveFiles, newState, counters } =
-      opts;
+    const {
+      relPath,
+      local,
+      drive,
+      prev,
+      folder,
+      driveSubfolderId,
+      driveFiles,
+      newState,
+      counters,
+    } = opts;
     newState.files[relPath] = {
       relativePath: relPath,
       localHash: local?.hash || null,
@@ -578,29 +569,14 @@ class SyncEngine {
       return;
     }
     if (localChanged && local) {
-      await this.syncLocalChanged(
-        relPath,
-        local,
-        folder,
-        driveSubfolderId,
-        driveFiles,
-        counters,
-      );
+      await this.syncLocalChanged(relPath, local, folder, driveSubfolderId, driveFiles, counters);
       return;
     }
     if (driveChanged && drive) {
       await this.syncDriveChanged(relPath, drive, folder, counters);
       return;
     }
-    await this.handleDeletedFileSync(
-      relPath,
-      local,
-      drive,
-      prev,
-      folder,
-      counters,
-      newState,
-    );
+    await this.handleDeletedFileSync(relPath, local, drive, prev, folder, counters, newState);
   }
 
   private async handleDeletedFileSync(
@@ -639,10 +615,7 @@ class SyncEngine {
     local: { hash: string; mtime?: number },
     folder: SyncFolder,
     driveSubfolderId: string,
-    driveFiles: Map<
-      string,
-      { fileId: string; modifiedTime: string; hash: string | null }
-    >,
+    driveFiles: Map<string, { fileId: string; modifiedTime: string; hash: string | null }>,
     counters: { uploaded: number; errors: number },
   ): Promise<void> {
     try {
@@ -674,10 +647,7 @@ class SyncEngine {
     counters: { downloaded: number; errors: number },
   ): Promise<void> {
     try {
-      await this.downloadFile(
-        drive.fileId,
-        path.join(folder.localPath, relPath),
-      );
+      await this.downloadFile(drive.fileId, path.join(folder.localPath, relPath));
       counters.downloaded++;
     } catch {
       counters.errors++;
@@ -693,8 +663,7 @@ class SyncEngine {
   }> {
     const config = loadConfig();
     const folder = config.folders.find((f) => f.id === folderId);
-    if (!folder?.enabled)
-      return { uploaded: 0, downloaded: 0, conflicts: 0, errors: 0 };
+    if (!folder?.enabled) return { uploaded: 0, downloaded: 0, conflicts: 0, errors: 0 };
     if (this.syncingFolders.has(folderId))
       return { uploaded: 0, downloaded: 0, conflicts: 0, errors: 0 };
 
@@ -712,16 +681,10 @@ class SyncEngine {
         throw new Error("Drive not initialized");
       }
 
-      const driveSubfolderId = await this.getDriveSubfolderId(
-        folder.driveFolderName,
-      );
-      if (!driveSubfolderId)
-        throw new Error("Could not access Drive sync folder");
+      const driveSubfolderId = await this.getDriveSubfolderId(folder.driveFolderName);
+      if (!driveSubfolderId) throw new Error("Could not access Drive sync folder");
 
-      const localFiles = await walkLocalFiles(
-        folder.localPath,
-        folder.includePaths,
-      );
+      const localFiles = await walkLocalFiles(folder.localPath, folder.includePaths);
 
       const driveFiles = await this.scanDriveFiles(driveSubfolderId);
 
@@ -766,9 +729,7 @@ class SyncEngine {
       state[folderId] = newState;
       saveState(state);
 
-      const hasConflicts = Object.values(newState.files).some(
-        (f) => f.conflict !== "none",
-      );
+      const hasConflicts = Object.values(newState.files).some((f) => f.conflict !== "none");
       if (errors > 0) {
         folder.status = "error";
         folder.errorMessage = `${errors} error(s)`;
@@ -819,11 +780,7 @@ class SyncEngine {
     });
   }
 
-  private async updateFile(
-    fileId: string,
-    localPath: string,
-    contentHash: string,
-  ): Promise<void> {
+  private async updateFile(fileId: string, localPath: string, contentHash: string): Promise<void> {
     const drive = this.drive?.driveApi;
     if (!drive) return;
     const content = fs.createReadStream(localPath);
@@ -845,16 +802,11 @@ class SyncEngine {
 
     const drive = this.drive?.driveApi;
     if (!drive) return;
-    const res = await drive.files.get(
-      { fileId, alt: "media" },
-      { responseType: "arraybuffer" },
-    );
+    const res = await drive.files.get({ fileId, alt: "media" }, { responseType: "arraybuffer" });
     const data = Buffer.from(res.data as ArrayBuffer);
 
     if (data.length > MAX_FILE_SIZE) {
-      throw new Error(
-        `File size ${data.length} exceeds maximum ${MAX_FILE_SIZE}`,
-      );
+      throw new Error(`File size ${data.length} exceeds maximum ${MAX_FILE_SIZE}`);
     }
 
     const dir = path.dirname(localPath);
@@ -885,18 +837,12 @@ class SyncEngine {
 
   // ── Folder management ──
 
-  addFolder(
-    localPath: string,
-    driveFolderName: string,
-    includePaths?: string[],
-  ): SyncFolder {
+  addFolder(localPath: string, driveFolderName: string, includePaths?: string[]): SyncFolder {
     const config = loadConfig();
     const folder: SyncFolder = {
       id: crypto.randomUUID(),
       localPath: path.resolve(localPath),
-      driveFolderName: driveFolderName
-        ? sanitizeDriveFolderName(driveFolderName)
-        : "",
+      driveFolderName: driveFolderName ? sanitizeDriveFolderName(driveFolderName) : "",
       includePaths,
       enabled: true,
       lastSyncAt: null,
@@ -1001,10 +947,7 @@ export function register(
     requireAuth(
       async (
         _e,
-        {
-          localPath,
-          driveFolderName,
-        }: { localPath: string; driveFolderName: string },
+        { localPath, driveFolderName }: { localPath: string; driveFolderName: string },
       ) => {
         logger.ipcLog("sync:folders:add", "Adding sync folder", {
           localPath,
@@ -1058,25 +1001,20 @@ export function register(
 
   ipcMain.handle(
     "sync:folders:toggle",
-    requireAuth(
-      async (
-        _e,
-        { folderId, enabled }: { folderId: string; enabled: boolean },
-      ) => {
-        logger.ipcLog("sync:folders:toggle", "Toggling sync folder", {
-          folderId,
-          enabled,
-        });
-        try {
-          engine.toggleFolder(folderId, enabled);
-          logger.success("sync:folders:toggle", "Sync folder toggled");
-          return { ok: true };
-        } catch (e) {
-          logError("sync:folders:toggle", e);
-          return { ok: false, error: "Failed to toggle sync folder" };
-        }
-      },
-    ),
+    requireAuth(async (_e, { folderId, enabled }: { folderId: string; enabled: boolean }) => {
+      logger.ipcLog("sync:folders:toggle", "Toggling sync folder", {
+        folderId,
+        enabled,
+      });
+      try {
+        engine.toggleFolder(folderId, enabled);
+        logger.success("sync:folders:toggle", "Sync folder toggled");
+        return { ok: true };
+      } catch (e) {
+        logError("sync:folders:toggle", e);
+        return { ok: false, error: "Failed to toggle sync folder" };
+      }
+    }),
   );
 
   ipcMain.handle(
@@ -1197,9 +1135,7 @@ export function register(
               const relFile = path
                 .relative(parentValidation.realPath!, fs.realpathSync(p))
                 .replaceAll("\\", "/");
-              const folder = engine.addFolder(parentValidation.realPath!, "", [
-                relFile,
-              ]);
+              const folder = engine.addFolder(parentValidation.realPath!, "", [relFile]);
               results.push({ path: p, ok: true, folderId: folder.id });
               continue;
             }
@@ -1211,13 +1147,8 @@ export function register(
               continue;
             }
 
-            const sanitizedName = sanitizeDriveFolderName(
-              path.basename(validation.realPath!),
-            );
-            const folder = engine.addFolder(
-              validation.realPath!,
-              sanitizedName,
-            );
+            const sanitizedName = sanitizeDriveFolderName(path.basename(validation.realPath!));
+            const folder = engine.addFolder(validation.realPath!, sanitizedName);
             results.push({ path: p, ok: true, folderId: folder.id });
           } catch (e) {
             results.push({
@@ -1228,10 +1159,7 @@ export function register(
           }
         }
         const added = results.filter((r) => r.ok).length;
-        logger.success(
-          "sync:handle-drop",
-          `Processed ${results.length} paths, ${added} added`,
-        );
+        logger.success("sync:handle-drop", `Processed ${results.length} paths, ${added} added`);
         return { ok: true, results };
       } catch (e) {
         logError("sync:handle-drop", e);

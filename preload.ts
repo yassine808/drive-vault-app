@@ -271,8 +271,7 @@ contextBridge.exposeInMainWorld("api", {
     return webUtils.getPathForFile(file);
   },
 
-  onPlaySound: (cb: (type: string) => void) =>
-    ipcRenderer.on("play-sound", (_e, type) => cb(type)),
+  onPlaySound: (cb: (type: string) => void) => ipcRenderer.on("play-sound", (_e, type) => cb(type)),
   onMinimize: (cb: () => void) => ipcRenderer.on("win:minimized", () => cb()),
   onMaximizedState: (cb: (maximized: boolean) => void) =>
     ipcRenderer.on("win:maximized-state", (_e, maximized) => cb(maximized)),
