@@ -223,31 +223,31 @@ graph LR
 
 ```mermaid
 flowchart TD
-    A[Plaintext object] -->|JSON.stringify| B[Plaintext string]
-    B --> C[Generate random 16-byte IV]
-    C --> D[encKey = SHA-256(hexKey)]
-    C --> E[macKey = SHA-256(hexKey + "mac")]
-    D --> F[AES-256-CBC encrypt]
-    E --> G[HMAC-SHA256 over IV + ciphertext]
-    F --> H[Pack: HMAC || IV || ciphertext]
+    A ["Plaintext object"] -->|"JSON.stringify"| B ["Plaintext string"]
+    B --> C ["Generate random 16-byte IV"]
+    C --> D ["encKey = SHA-256(hexKey)"]
+    C --> E ["macKey = SHA-256(hexKey + 'mac')"]
+    D --> F ["AES-256-CBC encrypt"]
+    E --> G ["HMAC-SHA256 over IV + ciphertext"]
+    F --> H ["Pack: HMAC || IV || ciphertext"]
     G --> H
-    H -->|Base64 encode| I[Base64 string]
+    H -->|"Base64 encode"| I ["Base64 string"]
 ```
 
 #### Decryption Flow
 
 ```mermaid
 flowchart TD
-    A[Base64 string] --> B{Starts with U2FsdGVk?}
-    B -->|Yes — legacy| C[CryptoJS.AES.decrypt]
-    B -->|No — new format| D[Base64 decode]
-    D --> E[Extract HMAC, IV, ciphertext]
-    E --> F[Recompute HMAC-SHA256]
-    F --> G{timingSafeEqual?}
-    G -->|Yes| H[AES-256-CBC decrypt]
-    G -->|No| I[Return null — tampered]
-    H --> J[JSON.parse plaintext]
-    C --> K[Return decrypted object]
+    A ["Base64 string"] --> B {"Starts with U2FsdGVk?"}
+    B -->|"Yes — legacy"| C ["CryptoJS.AES.decrypt"]
+    B -->|"No — new format"| D ["Base64 decode"]
+    D --> E ["Extract HMAC, IV, ciphertext"]
+    E --> F ["Recompute HMAC-SHA256"]
+    F --> G {"timingSafeEqual?"}
+    G -->|"Yes"| H ["AES-256-CBC decrypt"]
+    G -->|"No"| I ["Return null — tampered"]
+    H --> J ["JSON.parse plaintext"]
+    C --> K ["Return decrypted object"]
     J --> K
 ```
 
