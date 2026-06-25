@@ -112,57 +112,57 @@ Vault is an **Electron desktop application** for secure local storage of sensiti
 
 ```mermaid
 graph TB
-    subgraph Renderer["Renderer Process"]
-        R["app.ts\n(index.html + app.css)"]
+    subgraph RENDERER ["Renderer Process"]
+        R["app.ts (index.html + app.css)"]
     end
 
-    subgraph Preload["Preload Bridge"]
-        P["preload.ts\n(contextBridge)"]
+    subgraph PRELOAD ["Preload Bridge"]
+        P["preload.ts (contextBridge)"]
     end
 
-    subgraph Main ["Main Process"]
-        M ["main.ts (~1550 lines)"]
-        MOD ["modules/"]
-        CRYPTO ["Crypto AES-256-CBC+HMAC"]
-        AUTH ["Session + 2FA"]
-        OAUTH ["OAuth Server 127.0.0.1:42813"]
-        LOGGER ["Logger Per-level files"]
+    subgraph MAIN ["Main Process"]
+        M["main.ts (~1550 lines)"]
+        MOD["modules/"]
+        CRYPTO["Crypto AES-256-CBC+HMAC"]
+        AUTH["Session + 2FA"]
+        OAUTH["OAuth Server 127.0.0.1:42813"]
+        LOGGER["Logger Per-level files"]
     end
 
-    subgraph Drive ["Google Drive"]
-        VF ["Vault/"]
-        PW ["passwords/"]
-        NOTES ["notes/"]
-        JOBS ["jobs/"]
-        TOTP ["totp/"]
-        SETTINGS ["settings/"]
-        SYNC ["sync/"]
+    subgraph DRIVE ["Google Drive"]
+        VF["Vault/"]
+        PW["passwords/"]
+        NOTES["notes/"]
+        JOBS["jobs/"]
+        TOTP["totp/"]
+        SETTINGS["settings/"]
+        SYNC["sync/"]
     end
 
-    subgraph Cache ["Local Cache"]
-        CF ["vault_cache.json"]
+    subgraph CACHE ["Local Cache"]
+        CF["vault_cache.json"]
     end
 
-    subgraph Local ["Local Files"]
-        PIN ["vault_user_key (PIN)"]
-        ACC ["vault_accounts (Saved)"]
-        UIS ["vault_settings (UI)"]
-        LOGS ["Logs/"]
+    subgraph LOCAL ["Local Files"]
+        PIN["vault_user_key (PIN)"]
+        ACC["vault_accounts (Saved)"]
+        UIS["vault_settings (UI)"]
+        LOGS["Logs/"]
     end
 
     R -->|"window.api.*()"| P
     P -->|"IPC"| M
-    M -->|enc/dec| CRYPTO
-    M -->|requireAuth| AUTH
-    M -->|googleOAuth| OAUTH
-    OAUTH -->|googleapis| Drive
-    M -->|load/save| Cache
-    M -->|info/error/authLog| LOGGER
-    M -->|fs| Local
-    M -->|registerJobs/Totp| MOD
-    MOD -->|DriveClient| Drive
-    MOD -->|cache| Cache
-    MOD -->|enc/dec| CRYPTO
+    M -->|"enc/dec"| CRYPTO
+    M -->|"requireAuth"| AUTH
+    M -->|"googleOAuth"| OAUTH
+    OAUTH -->|"googleapis"| DRIVE
+    M -->|"load/save"| CACHE
+    M -->|"info/error/authLog"| LOGGER
+    M -->|"fs"| LOCAL
+    M -->|"registerJobs/Totp"| MOD
+    MOD -->|"DriveClient"| DRIVE
+    MOD -->|"cache"| CACHE
+    MOD -->|"enc/dec"| CRYPTO
 ```
 
 ### Module Registration Pattern
@@ -171,7 +171,7 @@ All domain modules export a `register()` function called inside `app.whenReady()
 
 ```mermaid
 graph LR
-    E["main.ts\napp.whenReady()"]
+    E["main.ts - app.whenReady()"]
     J["registerJobs()"]
     T["registerTotp()"]
     S["registerSettings()"]
