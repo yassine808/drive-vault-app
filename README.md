@@ -9,7 +9,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178c6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://github.com/Yassine/Vault-app/releases)
 
-*Secure storage for passwords, notes, job applications, and TOTP authenticator secrets.*
+_Secure storage for passwords, notes, job applications, and TOTP authenticator secrets._
 
 [Features](#features) •
 [Architecture](#architecture) •
@@ -46,17 +46,17 @@ Vault is an **Electron desktop application** for secure local storage of sensiti
 
 ### Key Properties
 
-| Property | Detail |
-|----------|--------|
-| **Encryption** | AES-256-CBC + HMAC-SHA256 (encrypt-then-MAC) |
-| **Key Derivation** | PBKDF2-SHA256, 600k iterations, per-account 32-byte salt |
-| **Legacy Support** | SHA-256 single-hash key (auto-migrated on first login) |
-| **Storage** | Google Drive (per-item encrypted files) + local cache |
-| **Auth** | Google OAuth 2.0 + TOTP 2FA + PIN quick-login |
-| **Offline** | Full offline support via local cache; dirty queue flushes on reconnect |
-| **Platform** | Windows (NSIS/Portable), macOS (DMG), Linux (AppImage) |
-| **Renderer** | Vanilla TypeScript, Vite/esbuild bundling, no framework |
-| **Main Process** | TypeScript strict mode, compiled via `tsc` |
+| Property           | Detail                                                                 |
+| ------------------ | ---------------------------------------------------------------------- |
+| **Encryption**     | AES-256-CBC + HMAC-SHA256 (encrypt-then-MAC)                           |
+| **Key Derivation** | PBKDF2-SHA256, 600k iterations, per-account 32-byte salt               |
+| **Legacy Support** | SHA-256 single-hash key (auto-migrated on first login)                 |
+| **Storage**        | Google Drive (per-item encrypted files) + local cache                  |
+| **Auth**           | Google OAuth 2.0 + TOTP 2FA + PIN quick-login                          |
+| **Offline**        | Full offline support via local cache; dirty queue flushes on reconnect |
+| **Platform**       | Windows (NSIS/Portable), macOS (DMG), Linux (AppImage)                 |
+| **Renderer**       | Vanilla TypeScript, Vite/esbuild bundling, no framework                |
+| **Main Process**   | TypeScript strict mode, compiled via `tsc`                             |
 
 ---
 
@@ -64,45 +64,45 @@ Vault is an **Electron desktop application** for secure local storage of sensiti
 
 ### Data Types
 
-| Type | Description | Storage |
-|------|-------------|---------|
-| 🔑 **Passwords** | Site, username, password, notes | `vault_password_{uuid}` |
-| 📝 **Notes** | Free-form text entries | `vault_note_{uuid}` |
-| 💼 **Job Tracker** | Company, role, email, status, applied date, notes | `vault_job_{uuid}` |
-| 🔐 **Authenticator** | TOTP secrets (name, issuer, secret, icon) | `vault_totp_{uuid}` |
-| 🗑️ **Trash** | Soft-deleted items with restore/purge | Same as original type |
-| 🎨 **Logos** | Favicon cache as data URLs | `vault_logos` (single JSON) |
+| Type                 | Description                                       | Storage                     |
+| -------------------- | ------------------------------------------------- | --------------------------- |
+| 🔑 **Passwords**     | Site, username, password, notes                   | `vault_password_{uuid}`     |
+| 📝 **Notes**         | Free-form text entries                            | `vault_note_{uuid}`         |
+| 💼 **Job Tracker**   | Company, role, email, status, applied date, notes | `vault_job_{uuid}`          |
+| 🔐 **Authenticator** | TOTP secrets (name, issuer, secret, icon)         | `vault_totp_{uuid}`         |
+| 🗑️ **Trash**         | Soft-deleted items with restore/purge             | Same as original type       |
+| 🎨 **Logos**         | Favicon cache as data URLs                        | `vault_logos` (single JSON) |
 
 ### Feature Matrix
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| AES-256-CBC + HMAC-SHA256 | ✅ | Encrypt-then-MAC, random 16-byte IV per encryption |
-| PBKDF2-SHA256 key derivation | ✅ | 600k iterations, per-account salt |
-| Legacy CryptoJS decryption | ✅ | Auto-detected via `U2FsdGVk` prefix |
-| Google Drive per-item files | ✅ | One file per item, AES-encrypted JSON |
-| Local cache with offline mode | ✅ | Full offline reads; dirty queue for writes |
-| ETag-based conflict resolution | ✅ | On startup, diffs local cache vs Drive |
-| Debounced sync | ✅ | 2-second debounce after last change |
-| Google OAuth 2.0 | ✅ | Local HTTP callback server on `127.0.0.1:42813` |
-| TOTP 2FA | ✅ | Via `speakeasy`, 6-digit codes, window=1 |
-| PIN quick-login | ✅ | 4-12 chars, numbers-only or alphanumeric |
-| 2FA rate limiting | ✅ | 5 attempts / 15-min window, 15-min lockout |
-| PIN rate limiting | ✅ | Same limits, persisted to disk |
-| System tray | ✅ | Lock, logout, quit from tray menu |
-| Window controls | ✅ | Minimize, maximize, close-to-tray |
-| Sound feedback | ✅ | Web Audio API, configurable tones |
-| Password generator | ✅ | CSPRNG, Fisher-Yates, guaranteed class coverage |
-| 13 accent colors | ✅ | Applied via CSS custom properties |
-| Sync engine | ✅ | Two-way folder sync with conflict detection |
-| File watcher | ✅ | `fs.watch` with 2-second debounce |
-| Drag-and-drop sync | ✅ | Drop files/folders into sync panel |
-| CSP hardening | ✅ | `script-src 'self'`, `frame-src 'none'` |
-| XSS prevention | ✅ | `createElement` / `textContent` only, no `innerHTML` |
-| Navigation blocking | ✅ | `will-navigate` blocks non-file: URLs |
-| Clipboard auto-clear | ✅ | 30-second timeout |
-| Session token rotation | ✅ | Regenerated on every auth event |
-| Log rotation | ✅ | 5 MB max per file, 7-day bak cleanup |
+| Feature                        | Status | Notes                                                |
+| ------------------------------ | ------ | ---------------------------------------------------- |
+| AES-256-CBC + HMAC-SHA256      | ✅     | Encrypt-then-MAC, random 16-byte IV per encryption   |
+| PBKDF2-SHA256 key derivation   | ✅     | 600k iterations, per-account salt                    |
+| Legacy CryptoJS decryption     | ✅     | Auto-detected via `U2FsdGVk` prefix                  |
+| Google Drive per-item files    | ✅     | One file per item, AES-encrypted JSON                |
+| Local cache with offline mode  | ✅     | Full offline reads; dirty queue for writes           |
+| ETag-based conflict resolution | ✅     | On startup, diffs local cache vs Drive               |
+| Debounced sync                 | ✅     | 2-second debounce after last change                  |
+| Google OAuth 2.0               | ✅     | Local HTTP callback server on `127.0.0.1:42813`      |
+| TOTP 2FA                       | ✅     | Via `speakeasy`, 6-digit codes, window=1             |
+| PIN quick-login                | ✅     | 4-12 chars, numbers-only or alphanumeric             |
+| 2FA rate limiting              | ✅     | 5 attempts / 15-min window, 15-min lockout           |
+| PIN rate limiting              | ✅     | Same limits, persisted to disk                       |
+| System tray                    | ✅     | Lock, logout, quit from tray menu                    |
+| Window controls                | ✅     | Minimize, maximize, close-to-tray                    |
+| Sound feedback                 | ✅     | Web Audio API, configurable tones                    |
+| Password generator             | ✅     | CSPRNG, Fisher-Yates, guaranteed class coverage      |
+| 13 accent colors               | ✅     | Applied via CSS custom properties                    |
+| Sync engine                    | ✅     | Two-way folder sync with conflict detection          |
+| File watcher                   | ✅     | `fs.watch` with 2-second debounce                    |
+| Drag-and-drop sync             | ✅     | Drop files/folders into sync panel                   |
+| CSP hardening                  | ✅     | `script-src 'self'`, `frame-src 'none'`              |
+| XSS prevention                 | ✅     | `createElement` / `textContent` only, no `innerHTML` |
+| Navigation blocking            | ✅     | `will-navigate` blocks non-file: URLs                |
+| Clipboard auto-clear           | ✅     | 30-second timeout                                    |
+| Session token rotation         | ✅     | Regenerated on every auth event                      |
+| Log rotation                   | ✅     | 5 MB max per file, 7-day bak cleanup                 |
 
 ---
 
@@ -191,27 +191,27 @@ graph LR
 
 ### File Structure
 
-| File | Role | Lines (approx) |
-|------|------|----------------|
-| `src/main.ts` | Entry point, window creation, OAuth, IPC registration | ~1550 |
-| `src/modules/auth.ts` | Session token gen/validation, rate limiting | ~128 |
-| `src/modules/crypto.ts` | Key derivation, AES-256-CBC + HMAC, legacy fallback | ~191 |
-| `src/modules/validation.ts` | Input sanitization, type/email/TOTP validators | ~60 |
-| `src/modules/drive.ts` | Google Drive CRUD, dirty queue, sync engine | ~855 |
-| `src/modules/cache.ts` | Local file-based cache, dirty tracking | ~115 |
-| `src/modules/pin.ts` | PIN setup/verify/change/disable, rate limiting | ~528 |
-| `src/modules/accounts.ts` | Saved accounts for quick PIN login | ~250 |
-| `src/modules/jobs.ts` | Job tracker CRUD with validation | ~334 |
-| `src/modules/totp.ts` | TOTP secret management | ~162 |
-| `src/modules/settings.ts` | Settings load/save with validation | ~237 |
-| `src/modules/logo.ts` | Favicon fetching + caching | ~186 |
-| `src/modules/sync.ts` | Two-way folder sync with file watcher | ~1249 |
-| `src/types/index.ts` | Shared TypeScript interfaces | ~216 |
-| `src/logger.ts` | Structured logging to per-level files | ~271 |
-| `preload.ts` | Context bridge, session token closure | ~304 |
-| `index.html` | All renderer UI (single file) | — |
-| `app.ts` | Renderer JS — events, DOM, state, sounds | — |
-| `app.css` | Single stylesheet, oklch(), glassmorphism | — |
+| File                        | Role                                                  | Lines (approx) |
+| --------------------------- | ----------------------------------------------------- | -------------- |
+| `src/main.ts`               | Entry point, window creation, OAuth, IPC registration | ~1550          |
+| `src/modules/auth.ts`       | Session token gen/validation, rate limiting           | ~128           |
+| `src/modules/crypto.ts`     | Key derivation, AES-256-CBC + HMAC, legacy fallback   | ~191           |
+| `src/modules/validation.ts` | Input sanitization, type/email/TOTP validators        | ~60            |
+| `src/modules/drive.ts`      | Google Drive CRUD, dirty queue, sync engine           | ~855           |
+| `src/modules/cache.ts`      | Local file-based cache, dirty tracking                | ~115           |
+| `src/modules/pin.ts`        | PIN setup/verify/change/disable, rate limiting        | ~528           |
+| `src/modules/accounts.ts`   | Saved accounts for quick PIN login                    | ~250           |
+| `src/modules/jobs.ts`       | Job tracker CRUD with validation                      | ~334           |
+| `src/modules/totp.ts`       | TOTP secret management                                | ~162           |
+| `src/modules/settings.ts`   | Settings load/save with validation                    | ~237           |
+| `src/modules/logo.ts`       | Favicon fetching + caching                            | ~186           |
+| `src/modules/sync.ts`       | Two-way folder sync with file watcher                 | ~1249          |
+| `src/types/index.ts`        | Shared TypeScript interfaces                          | ~216           |
+| `src/logger.ts`             | Structured logging to per-level files                 | ~271           |
+| `preload.ts`                | Context bridge, session token closure                 | ~304           |
+| `index.html`                | All renderer UI (single file)                         | —              |
+| `app.ts`                    | Renderer JS — events, DOM, state, sounds              | —              |
+| `app.css`                   | Single stylesheet, oklch(), glassmorphism             | —              |
 
 ---
 
@@ -253,10 +253,10 @@ flowchart TD
 
 #### Key Derivation
 
-| Path | Algorithm | Iterations | Output |
-|------|-----------|------------|--------|
-| **New (with salt)** | PBKDF2-SHA256(googleId, salt) | 600,000 | 32-byte hex string |
-| **Legacy (no salt)** | SHA-256("vault:" + googleId) | 1 | 32 hex chars |
+| Path                 | Algorithm                     | Iterations | Output             |
+| -------------------- | ----------------------------- | ---------- | ------------------ |
+| **New (with salt)**  | PBKDF2-SHA256(googleId, salt) | 600,000    | 32-byte hex string |
+| **Legacy (no salt)** | SHA-256("vault:" + googleId)  | 1          | 32 hex chars       |
 
 The per-account salt is generated on first login, stored inside the encrypted settings payload, and persisted in the local cache. Legacy accounts are transparently migrated on first PIN/OAuth login.
 
@@ -270,59 +270,59 @@ hexKey (64 chars = 32 bytes)
 
 ### Session Management
 
-| Property | Value |
-|----------|-------|
-| Token generation | `crypto.randomBytes(32).toString("hex")` (64 hex chars) |
-| Validation | `crypto.timingSafeEqual()` with safe fallback buffers |
-| Max age | 12 hours |
-| Rotation | Regenerated on every auth event (login, 2FA verify, reauth) |
-| Clearing | Cleared on logout/lock, cleared from preload closure |
-| Storage | Preload closure only — never in renderer DOM |
+| Property         | Value                                                       |
+| ---------------- | ----------------------------------------------------------- |
+| Token generation | `crypto.randomBytes(32).toString("hex")` (64 hex chars)     |
+| Validation       | `crypto.timingSafeEqual()` with safe fallback buffers       |
+| Max age          | 12 hours                                                    |
+| Rotation         | Regenerated on every auth event (login, 2FA verify, reauth) |
+| Clearing         | Cleared on logout/lock, cleared from preload closure        |
+| Storage          | Preload closure only — never in renderer DOM                |
 
 ### PIN Authentication
 
-| Property | Value |
-|----------|-------|
-| Length | 4-12 characters |
-| Character set | Numbers-only (default) or alphanumeric (`pin_allow_alpha`) |
-| Key derivation | `derivePinKey(pin, salt)` — PBKDF2-SHA256, 600k iterations |
-| PIN hash | Separate PBKDF2-SHA256 (600k iterations) inside encrypted payload |
-| Storage | `%APPDATA%/Vault/vault_user_key` (local only, never sent to server) |
-| File format | `JSON.stringify({ version: 1, salt: base64, data: enc(payload, pinKey) })` |
-| Rate limiting | 5 attempts / 15-min sliding window, 15-min lockout |
-| Timing safety | Constant-time comparison via `timingSafeEqual` + dummy buffer on failure |
+| Property       | Value                                                                      |
+| -------------- | -------------------------------------------------------------------------- |
+| Length         | 4-12 characters                                                            |
+| Character set  | Numbers-only (default) or alphanumeric (`pin_allow_alpha`)                 |
+| Key derivation | `derivePinKey(pin, salt)` — PBKDF2-SHA256, 600k iterations                 |
+| PIN hash       | Separate PBKDF2-SHA256 (600k iterations) inside encrypted payload          |
+| Storage        | `%APPDATA%/Vault/vault_user_key` (local only, never sent to server)        |
+| File format    | `JSON.stringify({ version: 1, salt: base64, data: enc(payload, pinKey) })` |
+| Rate limiting  | 5 attempts / 15-min sliding window, 15-min lockout                         |
+| Timing safety  | Constant-time comparison via `timingSafeEqual` + dummy buffer on failure   |
 
 ### OAuth Hardening
 
-| Control | Implementation |
-|---------|----------------|
-| State parameter | 16-byte random hex, single-use, consumed immediately on callback |
-| State expiry | 5 minutes |
-| Origin validation | Logged but not blocking (browsers strip Origin on cross-origin redirects) |
-| Callback server | `127.0.0.1:42813`, single-use, closed after callback |
-| CSP on callback pages | `default-src 'none'; style-src 'nonce-...'; script-src 'nonce-...'` |
-| Redirect URI | Configurable via `REDIRECT_URI` env var, defaults to `http://localhost:42813/oauth2callback` |
-| Scopes | `openid`, `email`, `profile`, `drive.file` |
+| Control               | Implementation                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| State parameter       | 16-byte random hex, single-use, consumed immediately on callback                             |
+| State expiry          | 5 minutes                                                                                    |
+| Origin validation     | Logged but not blocking (browsers strip Origin on cross-origin redirects)                    |
+| Callback server       | `127.0.0.1:42813`, single-use, closed after callback                                         |
+| CSP on callback pages | `default-src 'none'; style-src 'nonce-...'; script-src 'nonce-...'`                          |
+| Redirect URI          | Configurable via `REDIRECT_URI` env var, defaults to `http://localhost:42813/oauth2callback` |
+| Scopes                | `openid`, `email`, `profile`, `drive.file`                                                   |
 
 ### 2FA Rate Limiting
 
-| Parameter | Value |
-|-----------|-------|
-| Max attempts | 5 per 15-minute sliding window |
-| Lockout duration | 15 minutes |
-| Token format | 6-digit numeric (`/^\d{6}$/`) |
-| Verification | `speakeasy.totp.verify({ window: 1 })` |
+| Parameter        | Value                                  |
+| ---------------- | -------------------------------------- |
+| Max attempts     | 5 per 15-minute sliding window         |
+| Lockout duration | 15 minutes                             |
+| Token format     | 6-digit numeric (`/^\d{6}$/`)          |
+| Verification     | `speakeasy.totp.verify({ window: 1 })` |
 
 ### Renderer Security
 
-| Control | Implementation |
-|---------|----------------|
-| CSP | `script-src 'self'`, `frame-src 'none'`, `worker-src 'none'` |
-| XSS | All user data via `createElement` / `textContent` — no `innerHTML` for dynamic content |
-| Navigation | `will-navigate` blocks non-file: URLs |
-| New windows | `setWindowOpenHandler` denies all; external URLs open in system browser |
-| Context isolation | `contextIsolation: true`, `nodeIntegration: false` |
-| Preload | Session token in closure, inaccessible to renderer DOM |
+| Control           | Implementation                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| CSP               | `script-src 'self'`, `frame-src 'none'`, `worker-src 'none'`                           |
+| XSS               | All user data via `createElement` / `textContent` — no `innerHTML` for dynamic content |
+| Navigation        | `will-navigate` blocks non-file: URLs                                                  |
+| New windows       | `setWindowOpenHandler` denies all; external URLs open in system browser                |
+| Context isolation | `contextIsolation: true`, `nodeIntegration: false`                                     |
+| Preload           | Session token in closure, inaccessible to renderer DOM                                 |
 
 ### Clipboard Security
 
@@ -334,20 +334,20 @@ Sensitive data copied to clipboard is auto-cleared after **30 seconds**.
 
 ### Module Responsibilities
 
-| Module | File | Responsibility |
-|--------|------|----------------|
-| `auth` | `src/modules/auth.ts` | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` IPC guards, 2FA rate limiting |
-| `crypto` | `src/modules/crypto.ts` | Key derivation (PBKDF2-SHA256 / legacy SHA-256), AES-256-CBC + HMAC-SHA256 encrypt/decrypt, CryptoJS legacy fallback, PIN key derivation |
-| `validation` | `src/modules/validation.ts` | `sanitizeStr`, `validType`, `validEmail`, `validTotpSecret`, `validDomain` — all IPC boundary validators |
-| `drive` | `src/modules/drive.ts` | Google Drive CRUD, dirty queue with retry, debounced sync, ETag conflict resolution, settings/2FA/logo persistence |
-| `cache` | `src/modules/cache.ts` | Local file-based cache (`vault_cache.json`), dirty tracking, forward-compat field merging |
-| `pin` | `src/modules/pin.ts` | PIN setup/verify/change/disable, in-memory verify store (30s TTL), persisted rate limiting |
-| `accounts` | `src/modules/accounts.ts` | Saved accounts list (max 10, sorted by lastUsed), upsert/touch/remove operations |
-| `jobs` | `src/modules/jobs.ts` | Job tracker CRUD with field validation (email, date format, status enum) |
-| `totp` | `src/modules/totp.ts` | TOTP secret management with base32 validation |
-| `settings` | `src/modules/settings.ts` | Settings load/save with full validation (accent, tones, durations, generator options) |
-| `logo` | `src/modules/logo.ts` | Favicon fetching from Google's favicon API, MIME detection, data-URL caching, private IP blocking |
-| `sync` | `src/modules/sync.ts` | Two-way folder sync engine with `fs.watch`, conflict detection, path validation, ignore patterns |
+| Module       | File                        | Responsibility                                                                                                                           |
+| ------------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`       | `src/modules/auth.ts`       | Session token generation/validation, `requireAuth()` / `requireAuthNoArgs()` IPC guards, 2FA rate limiting                               |
+| `crypto`     | `src/modules/crypto.ts`     | Key derivation (PBKDF2-SHA256 / legacy SHA-256), AES-256-CBC + HMAC-SHA256 encrypt/decrypt, CryptoJS legacy fallback, PIN key derivation |
+| `validation` | `src/modules/validation.ts` | `sanitizeStr`, `validType`, `validEmail`, `validTotpSecret`, `validDomain` — all IPC boundary validators                                 |
+| `drive`      | `src/modules/drive.ts`      | Google Drive CRUD, dirty queue with retry, debounced sync, ETag conflict resolution, settings/2FA/logo persistence                       |
+| `cache`      | `src/modules/cache.ts`      | Local file-based cache (`vault_cache.json`), dirty tracking, forward-compat field merging                                                |
+| `pin`        | `src/modules/pin.ts`        | PIN setup/verify/change/disable, in-memory verify store (30s TTL), persisted rate limiting                                               |
+| `accounts`   | `src/modules/accounts.ts`   | Saved accounts list (max 10, sorted by lastUsed), upsert/touch/remove operations                                                         |
+| `jobs`       | `src/modules/jobs.ts`       | Job tracker CRUD with field validation (email, date format, status enum)                                                                 |
+| `totp`       | `src/modules/totp.ts`       | TOTP secret management with base32 validation                                                                                            |
+| `settings`   | `src/modules/settings.ts`   | Settings load/save with full validation (accent, tones, durations, generator options)                                                    |
+| `logo`       | `src/modules/logo.ts`       | Favicon fetching from Google's favicon API, MIME detection, data-URL caching, private IP blocking                                        |
+| `sync`       | `src/modules/sync.ts`       | Two-way folder sync engine with `fs.watch`, conflict detection, path validation, ignore patterns                                         |
 
 ### Module Dependency Graph
 
@@ -406,121 +406,121 @@ All handlers use `ipcMain.handle`. Every handler returns `{ ok: boolean, ... }`.
 
 ### Auth Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `auth:login` | No | Initiates Google OAuth flow; returns user profile + vault data + session token |
-| `auth:verify2fa` | Yes | Verifies 6-digit TOTP code; returns new token + vault data |
-| `auth:reauth` | No | Re-authenticates via OAuth (token refresh / different browser session) |
-| `auth:loginWithPin` | No | Completes PIN login using `verifyId` from `pin:verify` |
-| `auth:logout` | Yes | Flushes Drive sync, clears session, closes Drive client |
-| `auth:lock` | Yes | Clears session from memory (shows PIN or login screen) |
+| Channel             | Auth | Description                                                                    |
+| ------------------- | ---- | ------------------------------------------------------------------------------ |
+| `auth:login`        | No   | Initiates Google OAuth flow; returns user profile + vault data + session token |
+| `auth:verify2fa`    | Yes  | Verifies 6-digit TOTP code; returns new token + vault data                     |
+| `auth:reauth`       | No   | Re-authenticates via OAuth (token refresh / different browser session)         |
+| `auth:loginWithPin` | No   | Completes PIN login using `verifyId` from `pin:verify`                         |
+| `auth:logout`       | Yes  | Flushes Drive sync, clears session, closes Drive client                        |
+| `auth:lock`         | Yes  | Clears session from memory (shows PIN or login screen)                         |
 
 ### Vault Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `vault:save` | Yes | Creates or updates a password/note; sanitizes fields |
-| `vault:delete` | Yes | Soft-deletes an item (moves to trash) |
-| `vault:sync` | Yes | Forces Drive sync, returns fresh vault data |
-| `vault:reorder` | Yes | Updates sort order for a list of items |
+| Channel         | Auth | Description                                          |
+| --------------- | ---- | ---------------------------------------------------- |
+| `vault:save`    | Yes  | Creates or updates a password/note; sanitizes fields |
+| `vault:delete`  | Yes  | Soft-deletes an item (moves to trash)                |
+| `vault:sync`    | Yes  | Forces Drive sync, returns fresh vault data          |
+| `vault:reorder` | Yes  | Updates sort order for a list of items               |
 
 ### Trash Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `trash:load` | Yes | Loads all soft-deleted items |
-| `trash:restore` | Yes | Restores a soft-deleted item |
-| `trash:purge` | Yes | Permanently deletes an item |
+| Channel         | Auth | Description                  |
+| --------------- | ---- | ---------------------------- |
+| `trash:load`    | Yes  | Loads all soft-deleted items |
+| `trash:restore` | Yes  | Restores a soft-deleted item |
+| `trash:purge`   | Yes  | Permanently deletes an item  |
 
 ### Jobs Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `jobs:load` | Yes | Loads all job entries |
-| `jobs:save` | Yes | Creates or updates a job; validates email, date, status |
-| `jobs:delete` | Yes | Soft-deletes a job |
-| `jobs:reorder` | Yes | Updates job sort order |
-| `jobs:trash:load` | Yes | Loads soft-deleted jobs |
-| `jobs:trash:restore` | Yes | Restores a soft-deleted job |
-| `jobs:trash:purge` | Yes | Permanently deletes a job |
+| Channel              | Auth | Description                                             |
+| -------------------- | ---- | ------------------------------------------------------- |
+| `jobs:load`          | Yes  | Loads all job entries                                   |
+| `jobs:save`          | Yes  | Creates or updates a job; validates email, date, status |
+| `jobs:delete`        | Yes  | Soft-deletes a job                                      |
+| `jobs:reorder`       | Yes  | Updates job sort order                                  |
+| `jobs:trash:load`    | Yes  | Loads soft-deleted jobs                                 |
+| `jobs:trash:restore` | Yes  | Restores a soft-deleted job                             |
+| `jobs:trash:purge`   | Yes  | Permanently deletes a job                               |
 
 ### TOTP Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `totp:load` | Yes | Loads all TOTP secrets |
-| `totp:save` | Yes | Creates or updates a TOTP secret; validates base32 |
-| `totp:delete` | Yes | Permanently deletes a TOTP secret |
+| Channel       | Auth | Description                                        |
+| ------------- | ---- | -------------------------------------------------- |
+| `totp:load`   | Yes  | Loads all TOTP secrets                             |
+| `totp:save`   | Yes  | Creates or updates a TOTP secret; validates base32 |
+| `totp:delete` | Yes  | Permanently deletes a TOTP secret                  |
 
 ### 2FA Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `2fa:status` | Yes | Returns `{ enabled: boolean }` |
-| `2fa:setup` | Yes | Generates new TOTP secret; returns base32 + otpauth URL |
-| `2fa:enable` | Yes | Verifies code + enables 2FA |
-| `2fa:disable` | Yes | Verifies code + disables 2FA |
+| Channel       | Auth | Description                                             |
+| ------------- | ---- | ------------------------------------------------------- |
+| `2fa:status`  | Yes  | Returns `{ enabled: boolean }`                          |
+| `2fa:setup`   | Yes  | Generates new TOTP secret; returns base32 + otpauth URL |
+| `2fa:enable`  | Yes  | Verifies code + enables 2FA                             |
+| `2fa:disable` | Yes  | Verifies code + disables 2FA                            |
 
 ### Settings Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `settings:load` | Yes | Returns validated settings (defaults on first load) |
-| `settings:save` | Yes | Validates + persists settings to Drive |
+| Channel         | Auth | Description                                         |
+| --------------- | ---- | --------------------------------------------------- |
+| `settings:load` | Yes  | Returns validated settings (defaults on first load) |
+| `settings:save` | Yes  | Validates + persists settings to Drive              |
 
 ### Logo Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `logo:fetch` | Yes | Fetches favicon, caches as data URL, returns URL |
+| Channel      | Auth | Description                                      |
+| ------------ | ---- | ------------------------------------------------ |
+| `logo:fetch` | Yes  | Fetches favicon, caches as data URL, returns URL |
 
 ### PIN Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `pin:status` | No | Returns `{ ok, enabled }` — used for startup screen decision |
-| `pin:setup` | Yes | Validates PIN, creates encrypted user key file |
-| `pin:verify` | No | Rate-limited; returns `verifyId` + `email` on success |
-| `pin:change` | Yes | Verifies old PIN, writes new file with new salt |
-| `pin:disable` | Yes | Deletes user key file |
+| Channel       | Auth | Description                                                  |
+| ------------- | ---- | ------------------------------------------------------------ |
+| `pin:status`  | No   | Returns `{ ok, enabled }` — used for startup screen decision |
+| `pin:setup`   | Yes  | Validates PIN, creates encrypted user key file               |
+| `pin:verify`  | No   | Rate-limited; returns `verifyId` + `email` on success        |
+| `pin:change`  | Yes  | Verifies old PIN, writes new file with new salt              |
+| `pin:disable` | Yes  | Deletes user key file                                        |
 
 ### Accounts Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `accounts:list` | No | Returns saved accounts (filtered by PIN googleId) |
-| `accounts:save` | Yes | Upserts current session's account |
-| `accounts:remove` | Yes | Removes current session's account |
-| `accounts:removeById` | No | Removes account by googleId (from PIN screen) |
-| `accounts:touch` | No | Updates `lastUsed` timestamp |
+| Channel               | Auth | Description                                       |
+| --------------------- | ---- | ------------------------------------------------- |
+| `accounts:list`       | No   | Returns saved accounts (filtered by PIN googleId) |
+| `accounts:save`       | Yes  | Upserts current session's account                 |
+| `accounts:remove`     | Yes  | Removes current session's account                 |
+| `accounts:removeById` | No   | Removes account by googleId (from PIN screen)     |
+| `accounts:touch`      | No   | Updates `lastUsed` timestamp                      |
 
 ### Sync Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `sync:folders:list` | Yes | Lists all sync folders |
-| `sync:folders:add` | Yes | Validates path, adds sync folder, starts watcher |
-| `sync:folders:remove` | Yes | Removes folder, stops watcher |
-| `sync:folders:toggle` | Yes | Enables/disables a folder |
-| `sync:status` | Yes | Returns full sync config |
-| `sync:now` | Yes | Triggers manual sync across all enabled folders |
-| `sync:browse-folder` | Yes | Opens OS folder picker dialog |
-| `sync:file-states` | Yes | Returns per-file sync state for all folders |
-| `sync:handle-drop` | Yes | Processes OS drag-and-drop paths into sync folders |
+| Channel               | Auth | Description                                        |
+| --------------------- | ---- | -------------------------------------------------- |
+| `sync:folders:list`   | Yes  | Lists all sync folders                             |
+| `sync:folders:add`    | Yes  | Validates path, adds sync folder, starts watcher   |
+| `sync:folders:remove` | Yes  | Removes folder, stops watcher                      |
+| `sync:folders:toggle` | Yes  | Enables/disables a folder                          |
+| `sync:status`         | Yes  | Returns full sync config                           |
+| `sync:now`            | Yes  | Triggers manual sync across all enabled folders    |
+| `sync:browse-folder`  | Yes  | Opens OS folder picker dialog                      |
+| `sync:file-states`    | Yes  | Returns per-file sync state for all folders        |
+| `sync:handle-drop`    | Yes  | Processes OS drag-and-drop paths into sync folders |
 
 ### Window Namespace
 
-| Channel | Auth | Description |
-|---------|------|-------------|
-| `win:minimize` | Yes | Minimizes the main window |
-| `win:maximize` | Yes | Toggles maximize state |
-| `win:close` | Yes | Minimizes to tray (macOS: hide) |
+| Channel        | Auth | Description                     |
+| -------------- | ---- | ------------------------------- |
+| `win:minimize` | Yes  | Minimizes the main window       |
+| `win:maximize` | Yes  | Toggles maximize state          |
+| `win:close`    | Yes  | Minimizes to tray (macOS: hide) |
 
 ### Internal (preload → main only)
 
-| Channel | Direction | Description |
-|---------|-----------|-------------|
-| `preload:log` | Renderer → Main | Bridge call logging (action, channel, ok, detail) |
+| Channel         | Direction       | Description                                         |
+| --------------- | --------------- | --------------------------------------------------- |
+| `preload:log`   | Renderer → Main | Bridge call logging (action, channel, ok, detail)   |
 | `preload:token` | Renderer → Main | Token state change notification ("set" / "cleared") |
 
 ---
@@ -692,30 +692,30 @@ flowchart TD
 
 All settings are validated server-side before persistence. Invalid values fall back to defaults.
 
-| Setting | Type | Default | Validation |
-|---------|------|---------|------------|
-| `lock_timeout` | number | `5` | 0-120 (minutes) |
-| `lock_action` | string | `"lock"` | `"lock"` or `"exit"` |
-| `lock_countdown` | boolean | `true` | — |
-| `lock_on_minimize` | boolean | `false` | — |
-| `pin_login_enabled` | boolean | `false` | — |
-| `pin_allow_alpha` | boolean | `false` | — |
-| `compact` | boolean | `false` | — |
-| `animations` | boolean | `true` | — |
-| `accent` | string | `"violet"` | One of 13 accent colors |
-| `gen_length` | number | `20` | 8-128 |
-| `gen_symbols` | boolean | `true` | — |
-| `gen_numbers` | boolean | `true` | — |
-| `gen_ambiguous` | boolean | `false` | — |
-| `gen_copy` | boolean | `true` | — |
-| `sounds` | boolean | `true` | — |
-| `sound_login` | boolean | `true` | — |
-| `sound_exit` | boolean | `true` | — |
-| `sound_hover` | boolean | `false` | — |
-| `sound_login_tone` | string | `"chime"` | `chime`, `ding`, `soft`, `bright` |
-| `sound_exit_tone` | string | `"chime"` | `chime`, `ding`, `soft`, `bright` |
-| `sound_hover_tone` | string | `"click"` | `chime`, `ding`, `soft`, `bright`, `click`, `tap`, `pop`, `none` |
-| `toast_duration` | number | `2400` | `1500`, `2400`, `3500`, `5000` (ms) |
+| Setting             | Type    | Default    | Validation                                                       |
+| ------------------- | ------- | ---------- | ---------------------------------------------------------------- |
+| `lock_timeout`      | number  | `5`        | 0-120 (minutes)                                                  |
+| `lock_action`       | string  | `"lock"`   | `"lock"` or `"exit"`                                             |
+| `lock_countdown`    | boolean | `true`     | —                                                                |
+| `lock_on_minimize`  | boolean | `false`    | —                                                                |
+| `pin_login_enabled` | boolean | `false`    | —                                                                |
+| `pin_allow_alpha`   | boolean | `false`    | —                                                                |
+| `compact`           | boolean | `false`    | —                                                                |
+| `animations`        | boolean | `true`     | —                                                                |
+| `accent`            | string  | `"violet"` | One of 13 accent colors                                          |
+| `gen_length`        | number  | `20`       | 8-128                                                            |
+| `gen_symbols`       | boolean | `true`     | —                                                                |
+| `gen_numbers`       | boolean | `true`     | —                                                                |
+| `gen_ambiguous`     | boolean | `false`    | —                                                                |
+| `gen_copy`          | boolean | `true`     | —                                                                |
+| `sounds`            | boolean | `true`     | —                                                                |
+| `sound_login`       | boolean | `true`     | —                                                                |
+| `sound_exit`        | boolean | `true`     | —                                                                |
+| `sound_hover`       | boolean | `false`    | —                                                                |
+| `sound_login_tone`  | string  | `"chime"`  | `chime`, `ding`, `soft`, `bright`                                |
+| `sound_exit_tone`   | string  | `"chime"`  | `chime`, `ding`, `soft`, `bright`                                |
+| `sound_hover_tone`  | string  | `"click"`  | `chime`, `ding`, `soft`, `bright`, `click`, `tap`, `pop`, `none` |
+| `toast_duration`    | number  | `2400`     | `1500`, `2400`, `3500`, `5000` (ms)                              |
 
 ### Accent Colors
 
@@ -729,17 +729,17 @@ Vault uses structured logging to per-level files in the `Logs/` directory.
 
 ### Log Files
 
-| File | Level | Purpose |
-|------|-------|---------|
-| `Logs/debug.log` | DEBUG | Verbose diagnostic output |
-| `Logs/info.log` | INFO | General operational events |
-| `Logs/success.log` | SUCCESS | Successful operations |
-| `Logs/warn.log` | WARN | Warnings and recoverable issues |
-| `Logs/error.log` | ERROR | Errors with stack traces |
-| `Logs/auth.log` | AUTH | Authentication events (login, logout, 2FA) |
-| `Logs/ipc.log` | IPC | IPC bridge calls and preload events |
-| `Logs/db.log` | DB | Database/cache operations |
-| `Logs/all.log` | ALL | Combined output of all levels |
+| File               | Level   | Purpose                                    |
+| ------------------ | ------- | ------------------------------------------ |
+| `Logs/debug.log`   | DEBUG   | Verbose diagnostic output                  |
+| `Logs/info.log`    | INFO    | General operational events                 |
+| `Logs/success.log` | SUCCESS | Successful operations                      |
+| `Logs/warn.log`    | WARN    | Warnings and recoverable issues            |
+| `Logs/error.log`   | ERROR   | Errors with stack traces                   |
+| `Logs/auth.log`    | AUTH    | Authentication events (login, logout, 2FA) |
+| `Logs/ipc.log`     | IPC     | IPC bridge calls and preload events        |
+| `Logs/db.log`      | DB      | Database/cache operations                  |
+| `Logs/all.log`     | ALL     | Combined output of all levels              |
 
 ### Log Format
 
@@ -749,20 +749,20 @@ Vault uses structured logging to per-level files in the `Logs/` directory.
 
 ### Rotation
 
-| Parameter | Value |
-|-----------|-------|
-| Max file size | 5 MB |
+| Parameter        | Value              |
+| ---------------- | ------------------ |
+| Max file size    | 5 MB               |
 | Backup extension | `.{timestamp}.bak` |
-| Backup cleanup | 7 days |
+| Backup cleanup   | 7 days             |
 
 ### Log Output Locations
 
-| Platform | Path |
-|----------|------|
-| Windows | `%APPDATA%/Vault/Logs/` |
-| macOS | `~/Library/Application Support/Vault/Logs/` |
-| Linux | `~/.config/Vault/Logs/` |
-| Portable | `{executable-dir}/vault-errors.log` |
+| Platform | Path                                        |
+| -------- | ------------------------------------------- |
+| Windows  | `%APPDATA%/Vault/Logs/`                     |
+| macOS    | `~/Library/Application Support/Vault/Logs/` |
+| Linux    | `~/.config/Vault/Logs/`                     |
+| Portable | `{executable-dir}/vault-errors.log`         |
 
 ---
 
@@ -770,11 +770,11 @@ Vault uses structured logging to per-level files in the `Logs/` directory.
 
 ### Prerequisites
 
-| Requirement | Version | Purpose |
-|-------------|---------|---------|
-| Node.js | ≥ 18 | Runtime |
-| npm | ≥ 9 | Package manager |
-| Google Cloud Project | — | OAuth credentials + Drive API enabled |
+| Requirement          | Version | Purpose                               |
+| -------------------- | ------- | ------------------------------------- |
+| Node.js              | ≥ 18    | Runtime                               |
+| npm                  | ≥ 9     | Package manager                       |
+| Google Cloud Project | —       | OAuth credentials + Drive API enabled |
 
 ### Environment Variables
 
@@ -833,10 +833,10 @@ npm start
 npm run build:win
 ```
 
-| Target | Output |
-|--------|--------|
+| Target         | Output                           |
+| -------------- | -------------------------------- |
 | NSIS installer | `dist/Vault Setup {version}.exe` |
-| Portable | `dist/Vault-{version}.exe` |
+| Portable       | `dist/Vault-{version}.exe`       |
 
 ### macOS
 
@@ -844,9 +844,9 @@ npm run build:win
 npm run build:mac
 ```
 
-| Target | Output |
-|--------|--------|
-| DMG | `dist/Vault-{version}.dmg` |
+| Target | Output                     |
+| ------ | -------------------------- |
+| DMG    | `dist/Vault-{version}.dmg` |
 
 ### Linux
 
@@ -854,19 +854,19 @@ npm run build:mac
 npm run build:linux
 ```
 
-| Target | Output |
-|--------|--------|
+| Target   | Output                          |
+| -------- | ------------------------------- |
 | AppImage | `dist/Vault-{version}.AppImage` |
 
 ### Build Configuration
 
-| Property | Value |
-|----------|-------|
-| App ID | `com.vault.app` |
-| Product Name | `Vault` |
-| Icon | `assets/icon` (`.png` / `.ico`) |
-| Files included | `dist/**/*` |
-| Excluded | `dist/win-unpacked{,/**/*}`, `dist/win-unpacked.tmp{,/**/*}` |
+| Property       | Value                                                        |
+| -------------- | ------------------------------------------------------------ |
+| App ID         | `com.vault.app`                                              |
+| Product Name   | `Vault`                                                      |
+| Icon           | `assets/icon` (`.png` / `.ico`)                              |
+| Files included | `dist/**/*`                                                  |
+| Excluded       | `dist/win-unpacked{,/**/*}`, `dist/win-unpacked.tmp{,/**/*}` |
 
 ---
 
@@ -941,7 +941,7 @@ interface TotpItem {
 
 ```typescript
 interface Settings {
-  lock_timeout: number;         // 0-120 minutes
+  lock_timeout: number; // 0-120 minutes
   lock_action: "lock" | "exit";
   lock_countdown: boolean;
   lock_on_minimize: boolean;
@@ -949,8 +949,8 @@ interface Settings {
   pin_allow_alpha: boolean;
   compact: boolean;
   animations: boolean;
-  accent: AppAccent;            // 13 colors
-  gen_length: number;           // 8-128
+  accent: AppAccent; // 13 colors
+  gen_length: number; // 8-128
   gen_symbols: boolean;
   gen_numbers: boolean;
   gen_ambiguous: boolean;
@@ -962,7 +962,7 @@ interface Settings {
   sound_login_tone: AppSoundTone;
   sound_exit_tone: AppSoundTone;
   sound_hover_tone: AppHoverTone;
-  toast_duration: number;      // 1500 | 2400 | 3500 | 5000
+  toast_duration: number; // 1500 | 2400 | 3500 | 5000
 }
 ```
 
@@ -1019,6 +1019,6 @@ interface SyncFileState {
 
 **Vault** — Encrypted password & notes vault built with Electron + TypeScript.
 
-*Built with AES-256-CBC + HMAC-SHA256, Google Drive sync, and zero frameworks.*
+_Built with AES-256-CBC + HMAC-SHA256, Google Drive sync, and zero frameworks._
 
 </div>

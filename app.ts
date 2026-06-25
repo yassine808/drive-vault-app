@@ -1318,8 +1318,7 @@ function buildFolderRowHTML(opts: {
     : "Vault/sync/";
   // Extract the singular/plural suffix to avoid a nested ternary.
   const fileSuffix = fileCount === 1 ? "file" : "files";
-  const fileLabel =
-    fileCount > 0 ? " · " + fileCount + " " + fileSuffix : "";
+  const fileLabel = fileCount > 0 ? " · " + fileCount + " " + fileSuffix : "";
   return (
     '<div class="sync-folder-drag"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.3"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg></div>' +
     '<div class="sync-folder-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>' +
@@ -3295,9 +3294,7 @@ async function loadSettingsTab(): Promise<void> {
       // Only strings/numbers/primitives are meaningful here; objects would
       // stringify to "[object Object]".
       el.value =
-        typeof raw === "string" || typeof raw === "number"
-          ? String(raw)
-          : "";
+        typeof raw === "string" || typeof raw === "number" ? String(raw) : "";
     }
     el.addEventListener("change", () => {
       let val: unknown;
