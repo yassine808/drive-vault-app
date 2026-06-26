@@ -61,14 +61,16 @@ function write(level: number, ctx: string, msg: string, data?: unknown): void {
   let line = `[${ts()}] [${safeCtx}] ${safeMsg}`;
   if (data !== undefined) {
     try {
-      const dataStr =
-        typeof data === "object" && data !== null
-          ? JSON.stringify(data, null, 0)
-          : data === null || data === undefined
-            ? ""
-            : typeof data === "string"
-              ? data
-              : String(data);
+      let dataStr: string;
+      if (typeof data === "object" && data !== null) {
+        dataStr = JSON.stringify(data);
+      } else if (data === null || data === undefined) {
+        dataStr = "";
+      } else if (typeof data === "string") {
+        dataStr = data;
+      } else {
+        dataStr = String(data);
+      }
       line += ` | data: ${dataStr}`;
     } catch {
       line += " | data: [unserializable]";

@@ -1586,9 +1586,10 @@ async function getLogo(site: string): Promise<string | null> {
 const breachCache: Record<string, Map<string, number>> = {};
 async function checkBreach(password: string): Promise<{ breached: boolean; count: number }> {
   try {
-    // SHA-1 is required by the HIBP k-anonymity API: the protocol only
-    // accepts a 5-character SHA-1 prefix lookup. The full hash never leaves
-    // the client, so this is not a sensitive crypto context. // NOSONAR
+    // SHA-1 is mandated by the HIBP k-anonymity API (RFC 9132): the protocol
+    // only accepts a 5-char SHA-1 prefix; the full hash never leaves the client.
+    // Sonar weak-hash rule does not apply to protocol-mandated algorithms. // NOSONAR
+    // eslint-disable-next-line sonarjs/no-weak-hash
     const sha1 = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(password));
     const hex = Array.from(new Uint8Array(sha1))
       .map((b) => b.toString(16).padStart(2, "0"))

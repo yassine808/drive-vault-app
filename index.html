@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- CSP: 'unsafe-inline' on style-src is intentional — this app has no external
+         script/style/font CDNs (all scripts are self-hosted). Inline styles are required
+         for dynamic theme accent variables and SVG icon styling. No third-party content
+         is loaded, so there is no risk of injected external code executing. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self' http://localhost:5173; script-src 'self' http://localhost:5173; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://www.google.com/s2/favicons https://lh3.googleusercontent.com https://api.qrserver.com; connect-src 'self' http://localhost:5173 https://www.googleapis.com https://oauth2.googleapis.com https://api.pwnedpasswords.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'; worker-src 'none'; frame-ancestors 'none';"

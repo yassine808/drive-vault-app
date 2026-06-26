@@ -242,7 +242,7 @@ async function driveUpdateSortOrder(
   });
   if (!driveClient) throw new TypeError("Drive not initialized");
   driveClient.updateSortOrder(
-    type as "password" | "note" | "job",
+    type as Exclude<ItemType, "totp">,
     items.map((i) => ({ id: i._localId || "" })),
   );
   logger.db("driveUpdateSortOrder", "Success");
@@ -932,7 +932,7 @@ ipcMain.handle(
     async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
       logger.ipcLog("vault:delete", "Delete vault item", { id, type });
       try {
-        await driveSoftDelete(id, type as "password" | "note" | "job");
+        await driveSoftDelete(id, type as Exclude<ItemType, "totp">);
         logger.success("vault:delete", "Item deleted", { id, type });
         return { ok: true };
       } catch (e: unknown) {
@@ -1013,7 +1013,7 @@ ipcMain.handle(
     async (_e: electron.IpcMainInvokeEvent, { id, type }: { id: string; type: string }) => {
       logger.ipcLog("trash:restore", "Restoring from trash", { id, type });
       try {
-        await driveRestore(id, type as "password" | "note" | "job");
+        await driveRestore(id, type as Exclude<ItemType, "totp">);
         logger.success("trash:restore", "Item restored", { id, type });
         return { ok: true };
       } catch (e: unknown) {
