@@ -187,6 +187,11 @@ async function driveLoadTrash(encKey: string): Promise<Record<string, unknown>[]
 
 type ItemType = "password" | "note" | "job" | "totp";
 
+interface Drive2fa {
+  secret: string;
+  enabled: boolean;
+}
+
 async function driveSaveItem(
   type: string,
   item: Record<string, unknown>,
@@ -243,10 +248,7 @@ async function driveUpdateSortOrder(
   logger.db("driveUpdateSortOrder", "Success");
 }
 
-async function drive2faGet(): Promise<{
-  secret: string;
-  enabled: boolean;
-} | null> {
+async function drive2faGet(): Promise<Drive2fa | null> {
   logger.db("drive2faGet", "Getting 2FA record");
   if (!driveClient) throw new TypeError("Drive not initialized");
   return driveClient.load2fa();
