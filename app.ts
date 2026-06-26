@@ -970,8 +970,11 @@ function switchTab(tab: string): void {
     },
     sync: () => {
       if (!_tabCache.sync) {
-        loadSyncTab();
-        _tabCache.sync = true;
+        try {
+          loadSyncTab();
+        } finally {
+          _tabCache.sync = true;
+        }
       }
     },
     settings: () => {
@@ -1559,10 +1562,6 @@ if (_syncAddBtn)
     }
   });
 
-(document.getElementById("btn-add-pw") as HTMLButtonElement).addEventListener("click", () => {
-  logInfo("password", "Add password clicked");
-  openPwModal();
-});
 (document.getElementById("pw-search") as HTMLInputElement).addEventListener(
   "input",
   renderPasswords,

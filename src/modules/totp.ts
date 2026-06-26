@@ -20,7 +20,7 @@ interface RegisterTotpOptions {
   ipcMain: Electron.IpcMain;
   requireAuth: AuthWrapper;
   requireAuthNoArgs: AuthWrapper;
-  driveClient: DriveClient | null;
+  getDriveClient: () => DriveClient | null;
   getSession: () => Session | null;
   logger: Logger;
   enc: EncFn;
@@ -33,7 +33,7 @@ function register(opts: RegisterTotpOptions) {
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
-    driveClient,
+    getDriveClient,
     getSession,
     logger,
     enc,
@@ -42,6 +42,7 @@ function register(opts: RegisterTotpOptions) {
   } = opts;
   function dbLoadTotp(encKey: string): TotpItem[] {
     logger.dbLog("dbLoadTotp", "Loading TOTP items");
+    const driveClient = getDriveClient();
     if (!driveClient) return [];
     const items = driveClient.loadItems("totp");
     return items.map((item) => {
@@ -62,6 +63,7 @@ function register(opts: RegisterTotpOptions) {
       itemId: item?.id,
       name: item?.name,
     });
+    const driveClient = getDriveClient();
     if (!driveClient) throw new Error("Drive not initialized");
     const encData = enc(
       {
@@ -79,6 +81,7 @@ function register(opts: RegisterTotpOptions) {
 
   function dbDeleteTotp(id: string): void {
     logger.dbLog("dbDeleteTotp", "Deleting TOTP item", { itemId: id });
+    const driveClient = getDriveClient();
     if (!driveClient) throw new Error("Drive not initialized");
     driveClient.permDelete("totp", id);
     logger.dbLog("dbDeleteTotp", "Success", { itemId: id });

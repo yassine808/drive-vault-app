@@ -138,7 +138,7 @@ async function fetchLogo(
 function register(
   ipcMain: Electron.IpcMain,
   requireAuth: AuthWrapper,
-  driveClient: DriveClient | null,
+  getDriveClient: () => DriveClient | null,
   logger: Logger,
   getSession: () => Session | null,
   logError: LogError,
@@ -149,6 +149,7 @@ function register(
       logger.ipcLog("logo:fetch", "Fetching logo", { site });
       if (typeof site !== "string" || !site.trim()) return { ok: false, error: "Invalid site" };
       try {
+        const driveClient = getDriveClient();
         const logoUrl = await fetchLogo(site, driveClient, logger);
         return { ok: true, url: logoUrl };
       } catch (e: unknown) {

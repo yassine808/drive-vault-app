@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
 import type { DriveClient } from "./drive";
+import * as cache from "./cache";
 import type { Session, SyncFolder, SyncFolderState, SyncConfig } from "../types";
 import type Electron from "electron";
 
@@ -39,7 +40,8 @@ const IGNORE_PATTERNS = [
 // ── Helpers ──
 
 function getCacheDir(): string {
-  return path.join(os.homedir(), "AppData", "Roaming", "Vault", "Cache");
+  // Reuse cache.ts platform-aware path (setUserDataPath is called from main.ts)
+  return cache.getCacheDir_();
 }
 
 function getConfigPath(): string {
@@ -915,12 +917,12 @@ export function register(
   ipcMain: Electron.IpcMain,
   requireAuth: AuthWrapper,
   requireAuthNoArgs: AuthWrapper,
-  driveClient: DriveClient | null,
+  getDriveClient: () => DriveClient | null,
   getSession: () => Session | null,
   logger: Logger,
   logError: LogError,
 ) {
-  const engine = new SyncEngine(driveClient);
+  const engine = new SyncEngine(getDriveClient());
 
   // Re-init drive client when it changes (e.g., after reauth)
   const updateDriveClient = (dc: DriveClient | null) => {
@@ -1169,7 +1171,7 @@ export function register(
   );
 
   // Start watching on init
-  if (driveClient) {
+  if (getDriveClient()) {
     engine.startWatching();
   }
 

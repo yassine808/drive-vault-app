@@ -57,6 +57,19 @@ export class DriveClient {
   // Max retries for failed Drive operations
   private readonly MAX_RETRIES = 3;
 
+  /**
+   * Push a dirty item onto the queue, replacing any existing entry for the same id+type.
+   * Prevents duplicate sync work from rapid saves to the same item.
+   */
+  private pushDirty(item: DirtyItem): void {
+    const idx = this.cache.dirtyQueue.findIndex((d) => d.id === item.id && d.type === item.type);
+    if (idx >= 0) {
+      this.cache.dirtyQueue[idx] = item;
+    } else {
+      this.cache.dirtyQueue.push(item);
+    }
+  }
+
   constructor(googleId: string, encKey: string, logger: Logger) {
     this.googleId = googleId;
     this.encKey = encKey;
@@ -540,7 +553,7 @@ export class DriveClient {
         arr[idx].updatedAt = now;
         if (sortOrder !== undefined) arr[idx].sortOrder = sortOrder;
       }
-      this.cache.dirtyQueue.push({
+      this.pushDirty({
         id: existingId,
         type,
         action: "update",
@@ -561,7 +574,7 @@ export class DriveClient {
       };
       const arr = this.getCacheArray(type);
       arr.push(item);
-      this.cache.dirtyQueue.push({
+      this.pushDirty({
         id: returnId,
         type,
         action: "create",
@@ -584,7 +597,7 @@ export class DriveClient {
     if (item) {
       item.deletedAt = new Date().toISOString();
       item.updatedAt = item.deletedAt;
-      this.cache.dirtyQueue.push({
+      this.pushDirty({
         id,
         type,
         action: "update", // Soft delete = update with deletedAt set
@@ -606,7 +619,7 @@ export class DriveClient {
     if (item) {
       item.deletedAt = null;
       item.updatedAt = new Date().toISOString();
-      this.cache.dirtyQueue.push({
+      this.pushDirty({
         id,
         type,
         action: "update",
@@ -627,7 +640,7 @@ export class DriveClient {
     const idx = arr.findIndex((i) => i.id === id);
     if (idx >= 0) {
       arr.splice(idx, 1);
-      this.cache.dirtyQueue.push({
+      this.pushDirty({
         id,
         type,
         action: "delete",
@@ -651,7 +664,7 @@ export class DriveClient {
       if (item) {
         item.sortOrder = i;
         item.updatedAt = new Date().toISOString();
-        this.cache.dirtyQueue.push({
+        this.pushDirty({
           id: item.id,
           type,
           action: "update",

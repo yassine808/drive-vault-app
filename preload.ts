@@ -219,6 +219,13 @@ contextBridge.exposeInMainWorld("api", {
         folderId,
       });
     },
+    foldersToggle: (folderId: string, enabled: boolean) => {
+      bridgeLog("call", "sync:folders:toggle", true);
+      return ipcRenderer.invoke("sync:folders:toggle", sessionToken, {
+        folderId,
+        enabled,
+      });
+    },
     status: () => {
       bridgeLog("call", "sync:status", true);
       return ipcRenderer.invoke("sync:status", sessionToken);

@@ -89,8 +89,9 @@ function register(
         const filtered = accounts.filter((a) => a.googleId === pinGoogleId);
         return { ok: true, accounts: filtered };
       }
-      // No PIN configured — return empty list
-      return { ok: true, accounts: [] };
+      // No PIN configured — return all accounts (covers case where PIN was
+      // deleted but saved accounts still exist)
+      return { ok: true, accounts };
     } catch (e: unknown) {
       const err = e as Error;
       logger.error("accounts:list", "Failed", err.message);

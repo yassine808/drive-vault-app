@@ -41,7 +41,7 @@ interface JobsRegisterOpts {
   ipcMain: Electron.IpcMain;
   requireAuth: AuthWrapper;
   requireAuthNoArgs: AuthWrapper;
-  driveClient: DriveClient | null;
+  getDriveClient: () => DriveClient | null;
   _validation: {
     sanitizeStr: typeof sanitizeStr;
     validEmail: typeof validEmail;
@@ -59,7 +59,7 @@ function register(opts: JobsRegisterOpts) {
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
-    driveClient,
+    getDriveClient,
     _validation,
     getSession,
     logger,
@@ -69,6 +69,7 @@ function register(opts: JobsRegisterOpts) {
   } = opts;
   function dbLoadJobs(): Job[] {
     logger.dbLog("dbLoadJobs", "Loading jobs from cache");
+    const driveClient = getDriveClient();
     if (!driveClient) return [];
     const session = getSession();
     if (!session) return [];
@@ -98,6 +99,7 @@ function register(opts: JobsRegisterOpts) {
       jobId: job?.id,
       company: job?.company,
     });
+    const driveClient = getDriveClient();
     if (!driveClient) throw new TypeError("Drive not initialized");
     const payload = {
       company: job.company,
@@ -117,6 +119,7 @@ function register(opts: JobsRegisterOpts) {
 
   function dbDeleteJob(id: string): void {
     logger.dbLog("dbDeleteJob", "Soft-deleting job", { jobId: id });
+    const driveClient = getDriveClient();
     if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.softDelete("job", id);
     logger.dbLog("dbDeleteJob", "Success", { jobId: id });
@@ -124,6 +127,7 @@ function register(opts: JobsRegisterOpts) {
 
   function dbRestoreJob(id: string): void {
     logger.dbLog("dbRestoreJob", "Restoring job", { jobId: id });
+    const driveClient = getDriveClient();
     if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.restore("job", id);
     logger.dbLog("dbRestoreJob", "Success", { jobId: id });
@@ -131,6 +135,7 @@ function register(opts: JobsRegisterOpts) {
 
   function dbPermDeleteJob(id: string): void {
     logger.dbLog("dbPermDeleteJob", "Permanently deleting job", { jobId: id });
+    const driveClient = getDriveClient();
     if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.permDelete("job", id);
     logger.dbLog("dbPermDeleteJob", "Success", { jobId: id });
@@ -138,6 +143,7 @@ function register(opts: JobsRegisterOpts) {
 
   function dbLoadJobTrash(): Job[] {
     logger.dbLog("dbLoadJobTrash", "Loading job trash");
+    const driveClient = getDriveClient();
     if (!driveClient) return [];
     const session = getSession();
     if (!session) return [];
@@ -167,6 +173,7 @@ function register(opts: JobsRegisterOpts) {
     logger.dbLog("dbUpdateJobOrder", "Updating job order", {
       count: jobs?.length,
     });
+    const driveClient = getDriveClient();
     if (!driveClient) throw new TypeError("Drive not initialized");
     driveClient.updateSortOrder("job", jobs);
     logger.dbLog("dbUpdateJobOrder", "Success");

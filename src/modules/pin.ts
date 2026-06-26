@@ -193,7 +193,7 @@ function register(
   getSession: GetSession,
   logger: Logger,
   logError: LogError,
-  _driveClient?: DriveClient | null,
+  _getDriveClient?: () => DriveClient | null,
 ) {
   // ── pin:setup ──
   // Requires active session. Creates the encrypted user key file.

@@ -134,13 +134,14 @@ function register(
   ipcMain: Electron.IpcMain,
   requireAuth: AuthWrapper,
   requireAuthNoArgs: AuthWrapper,
-  driveClient: DriveClient | null,
+  getDriveClient: () => DriveClient | null,
   getSession: () => Session | null,
   logger: Logger,
   logError: LogError,
 ) {
   async function dbLoadSettings(): Promise<Partial<Settings>> {
     logger.dbLog("dbLoadSettings", "Loading settings");
+    const driveClient = getDriveClient();
     if (!driveClient) return {};
     const data = await driveClient.loadSettings();
     if (!data) return {};
@@ -150,6 +151,7 @@ function register(
 
   async function dbSaveSettings(settings: Settings): Promise<void> {
     logger.dbLog("dbSaveSettings", "Saving settings");
+    const driveClient = getDriveClient();
     if (!driveClient) throw new Error("Drive not initialized");
     await driveClient.saveSettings(settings as unknown as Record<string, unknown>);
     logger.dbLog("dbSaveSettings", "Success");

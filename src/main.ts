@@ -1381,12 +1381,13 @@ app.whenReady().then(() => {
   speakeasy = require("speakeasy");
   logger.success("app", "Dependencies loaded (CryptoJS, speakeasy)");
 
-  // Register modules — pass driveClient (will be null until login, modules handle this)
+  // Register modules — pass getDriveClient getter (driveClient is null until login,
+  // modules call the getter at invocation time so they get the live value)
   registerJobs({
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
-    driveClient,
+    getDriveClient: () => driveClient,
     _validation: validation,
     getSession: getSessionFn,
     logger: logger as any,
@@ -1398,7 +1399,7 @@ app.whenReady().then(() => {
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
-    driveClient,
+    getDriveClient: () => driveClient,
     getSession: getSessionFn,
     logger: logger as any,
     enc,
@@ -1409,12 +1410,12 @@ app.whenReady().then(() => {
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
-    driveClient,
+    () => driveClient,
     getSessionFn,
     logger as any,
     logError,
   );
-  registerLogo(ipcMain, requireAuth, driveClient, logger as any, getSessionFn, logError);
+  registerLogo(ipcMain, requireAuth, () => driveClient, logger as any, getSessionFn, logError);
   setUserDataPath(app.getPath("userData"));
   setUserDataPathAccounts(app.getPath("userData"));
   registerPin(
@@ -1424,14 +1425,14 @@ app.whenReady().then(() => {
     getSessionFn,
     logger as any,
     logError,
-    driveClient,
+    () => driveClient,
   );
   registerAccounts(ipcMain, requireAuthNoArgs, getSessionFn, logger as any, logError);
   updateDriveClient = registerSync(
     ipcMain,
     requireAuth,
     requireAuthNoArgs,
-    driveClient,
+    () => driveClient,
     getSessionFn,
     logger as any,
     logError,
