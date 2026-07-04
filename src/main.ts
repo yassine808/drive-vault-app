@@ -1319,7 +1319,7 @@ function createWindow(): void {
     },
   });
   const builtIndex = path.join(__dirname, "..", "dist", "index.html");
-  if (app.isPackaged) {
+  if (app.isPackaged || !process.argv.includes("--dev")) {
     win.loadFile(builtIndex);
   } else {
     win.loadURL("http://localhost:5173/index.html");
