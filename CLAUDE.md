@@ -198,3 +198,11 @@ App exits with a dialog if any required var is missing.
 ### Logging
 
 Per-level log files in `Logs/` directory: `debug.log`, `info.log`, `success.log`, `warn.log`, `error.log`, `auth.log`, `ipc.log`, `db.log`, plus a combined `all.log`. Legacy `vault-errors.log` kept for backward compat. Log rotation at 5 MB. Bak files cleaned up after 7 days.
+
+## Git commit identity
+
+Always commit as:
+- Author/committer: `yassine808 <166349232+yassine808@users.noreply.github.com>`
+- Add trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
+
+Never use any other name/email.
