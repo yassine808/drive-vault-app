@@ -27,6 +27,8 @@ export interface PreloadApi {
   logout(): Promise<void>;
   lock(): Promise<void>;
   reauth(): Promise<AuthResult>;
+  openAuthUrl(): Promise<{ ok: boolean; error?: string }>;
+  onAuthUrlReady(cb: () => void): void;
   verify2fa(code: string): Promise<AuthResult>;
 
   save(

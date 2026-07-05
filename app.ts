@@ -81,7 +81,6 @@ const S: AppState = {
     lock_action: "lock",
     lock_countdown: true,
     lock_on_minimize: false,
-    compact: false,
     bg_speed: 0.2,
     animations: true,
     accent: "mono",
@@ -549,13 +548,30 @@ function doLock(): void {
 });
 
 // ═══ AUTH ═════════════════════════════════════════════════════════════════════
+const manualOpenLink = document.getElementById("login-manual-open") as HTMLAnchorElement | null;
+let manualOpenTimer: ReturnType<typeof setTimeout> | null = null;
+manualOpenLink?.addEventListener("click", async (e) => {
+  e.preventDefault();
+  await api.openAuthUrl();
+});
+api.onAuthUrlReady?.(() => {
+  // If the OS browser didn't grab focus within a few seconds, offer a manual link.
+  if (manualOpenTimer) clearTimeout(manualOpenTimer);
+  manualOpenTimer = setTimeout(() => {
+    if (manualOpenLink) manualOpenLink.hidden = false;
+  }, 3000);
+});
+
 (document.getElementById("btn-login") as HTMLButtonElement).addEventListener("click", async () => {
   const btn = document.getElementById("btn-login") as HTMLButtonElement;
   if (btn.disabled) return;
   logInfo("auth", "Login button clicked");
   btn.textContent = "Opening browser…";
   btn.disabled = true;
+  if (manualOpenLink) manualOpenLink.hidden = true;
   const r = await api.login();
+  if (manualOpenTimer) clearTimeout(manualOpenTimer);
+  if (manualOpenLink) manualOpenLink.hidden = true;
   if (!r.ok) {
     const err = document.getElementById("login-err") as HTMLElement;
     err.hidden = false;
@@ -899,7 +915,12 @@ async function loadSettings(): Promise<void> {
   if (r.ok) S.settings = { ...S.settings, ...r.settings } as AppSettings;
   applyLockSettings();
   applyAccent(S.settings.accent || "mono");
-  document.body.classList.toggle("compact", !!S.settings.compact);
+  {
+    const setSpeed = (globalThis as unknown as Record<string, unknown>).__setLiquidBgSpeed as
+      | ((speed: number) => void)
+      | undefined;
+    setSpeed?.(Number(S.settings.bg_speed ?? 0.2));
+  }
   document.body.style.setProperty("--transition", S.settings.animations ? "" : "0s");
   (globalThis as unknown as Record<string, unknown>).__soundsEnabled = S.settings.sounds !== false;
   // Show PIN indicator in sidebar when PIN login is enabled
@@ -1111,7 +1132,7 @@ function initSyncDropZone(): void {
       return;
     }
     logInfo("sync", "OS drop: " + paths.length + " item(s)", paths);
-    const r = await api.sync.handleDrop(paths);
+    const r = await withSyncSpin(api.sync.handleDrop(paths));
     if (r.ok) {
       const added = (r.results as { ok: boolean }[]).filter((x: { ok: boolean }) => x.ok).length;
       toast(added + " sync folder(s) added — syncing...");
@@ -1363,7 +1384,7 @@ async function loadSyncFolders() {
         okClass: "btn-danger",
       });
       if (!confirmed) return;
-      const res = await api.sync.foldersRemove(id);
+      const res = await withSyncSpin(api.sync.foldersRemove(id));
       if (res.ok) {
         toast("Folder removed");
         loadSyncFolders();
@@ -1377,7 +1398,7 @@ async function loadSyncFolders() {
     input.addEventListener("change", async function () {
       const el = input as HTMLInputElement;
       const folderId = (input as HTMLElement).dataset.folderId!;
-      const toggleRes = await api.sync.foldersToggle(folderId, el.checked);
+      const toggleRes = await withSyncSpin(api.sync.foldersToggle(folderId, el.checked));
       if (toggleRes.ok) {
         toast(el.checked ? "Folder enabled" : "Folder disabled");
       } else {
@@ -1466,7 +1487,7 @@ function escHtml(s: string) {
 }
 
 async function syncNowWithDriveRetry(): Promise<any> {
-  let r = await api.sync.syncNow();
+  let r = await withSyncSpin(api.sync.syncNow());
   if (!r.ok && typeof r.error === "string" && r.error.includes("Drive not initialized")) {
     toast("Google Drive connection needed — signing in...");
     const auth = await api.reauth();
@@ -1571,7 +1592,7 @@ if (_syncAddBtn)
       document.addEventListener("keydown", onKey);
     });
     if (driveName === null) return;
-    const addRes = await api.sync.foldersAdd(res.path, driveName);
+    const addRes = await withSyncSpin(api.sync.foldersAdd(res.path, driveName));
     if (addRes.ok) {
       toast("Folder added — syncing...");
       api.sync.syncNow().then(function () {
@@ -2924,7 +2945,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   lock_action: "lock",
   lock_countdown: true,
   lock_on_minimize: false,
-  compact: false,
   bg_speed: 0.2,
   animations: true,
   accent: "mono",
@@ -3011,7 +3031,6 @@ function applySetting(key: string, value: unknown): void {
     applyLockSettings();
     armLock();
   }
-  if (key === "compact") document.body.classList.toggle("compact", !!value);
   if (key === "animations") document.body.style.setProperty("--transition", value ? "" : "0s");
   if (key === "accent") applyAccent(value as string);
   if (key === "bg_speed") {
@@ -3250,7 +3269,6 @@ async function loadSettingsTab(): Promise<void> {
     s.addEventListener("click", () => applySetting("accent", (s as HTMLElement).dataset.accent));
   });
 
-  document.body.classList.toggle("compact", !!S.settings.compact);
   document.body.style.setProperty("--transition", S.settings.animations ? "" : "0s");
   applyAccent(S.settings.accent);
   (globalThis as unknown as Record<string, unknown>).__soundsEnabled = !!S.settings.sounds;

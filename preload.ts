@@ -51,6 +51,11 @@ contextBridge.exposeInMainWorld("api", {
     bridgeLog("call", "auth:reauth", true);
     return ipcRenderer.invoke("auth:reauth");
   },
+  openAuthUrl: () => {
+    bridgeLog("call", "auth:openUrl", true);
+    return ipcRenderer.invoke("auth:openUrl");
+  },
+  onAuthUrlReady: (cb: () => void) => ipcRenderer.on("auth:url-ready", () => cb()),
   verify2fa: (code: string) => {
     bridgeLog("call", "auth:verify2fa", true);
     return ipcRenderer.invoke("auth:verify2fa", sessionToken, { token: code });

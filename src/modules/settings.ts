@@ -13,6 +13,7 @@ type IpcHandler = (...args: any[]) => any;
 type AuthWrapper = (fn: IpcHandler) => IpcHandler;
 
 const VALID_ACCENTS = [
+  "mono",
   "violet",
   "blue",
   "teal",
@@ -74,7 +75,10 @@ function validateSettings(
 
   const accent: ValidAccent = (VALID_ACCENTS as readonly string[]).includes(input.accent as string)
     ? (input.accent as ValidAccent)
-    : "violet";
+    : "mono";
+
+  const bs = Number(input.bg_speed);
+  const bg_speed = Number.isFinite(bs) ? Math.max(0, Math.min(1, bs)) : 0.2;
 
   const gl = Number.parseInt(input.gen_length as string);
   const gen_length = Number.isNaN(gl) || gl < 8 || gl > 128 ? 20 : gl;
@@ -109,9 +113,9 @@ function validateSettings(
     lock_on_minimize: !!input.lock_on_minimize,
     pin_login_enabled: !!input.pin_login_enabled,
     pin_allow_alpha: !!input.pin_allow_alpha,
-    compact: !!input.compact,
     animations: !!input.animations,
     accent,
+    bg_speed,
     gen_length,
     gen_symbols: !!input.gen_symbols,
     gen_numbers: !!input.gen_numbers,
@@ -180,9 +184,9 @@ function register(
             lock_on_minimize: false,
             pin_login_enabled: false,
             pin_allow_alpha: false,
-            compact: false,
             animations: true,
-            accent: "violet",
+            accent: "mono",
+            bg_speed: 0.2,
             gen_length: 20,
             gen_symbols: true,
             gen_numbers: true,

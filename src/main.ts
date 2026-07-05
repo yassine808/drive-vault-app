@@ -79,6 +79,7 @@ let tray: electron.Tray | null = null;
 let oauthInProgress = false;
 let oauthServer: http.Server | null = null;
 let oauth2Client: any = null;
+let lastAuthUrl: string | null = null;
 
 import * as authModule from "./modules/auth";
 import {
@@ -523,9 +524,12 @@ a{color:#ffffff}
     });
     oauthServer.listen(42813, "127.0.0.1", () => {
       logger.authLog("oauth", "OAuth server listening on 127.0.0.1:42813");
+      lastAuthUrl = authUrl;
       // Open Google auth directly — skip the intermediate redirect page.
       // openExternal occasionally fails silently (e.g. default-browser
-      // resolution race on some OSes) — retry once if it does.
+      // resolution race on some OSes, or resolves without actually
+      // launching a window) — retry once, then let the renderer offer a
+      // manual "open link" fallback via auth:openUrl if it still didn't work.
       shell.openExternal(authUrl).catch((err) => {
         logger.warn("oauth", "openExternal failed, retrying once", {
           message: err instanceof Error ? err.message : String(err),
@@ -538,6 +542,7 @@ a{color:#ffffff}
           });
         }, 400);
       });
+      win?.webContents.send("auth:url-ready", authUrl);
     });
     setTimeout(() => {
       try {
@@ -572,6 +577,21 @@ import { register as registerSync } from "./modules/sync";
 import { DriveClient } from "./modules/drive";
 
 const getSessionFn = getSession;
+
+ipcMain.handle("auth:openUrl", async () => {
+  if (!oauthInProgress || !lastAuthUrl) {
+    return { ok: false, error: "No active sign-in to open." };
+  }
+  try {
+    await shell.openExternal(lastAuthUrl);
+    return { ok: true };
+  } catch (e) {
+    logger.warn("oauth", "Manual openExternal retry failed", {
+      message: (e as Error).message,
+    });
+    return { ok: false, error: "Could not open browser." };
+  }
+});
 
 ipcMain.handle("auth:login", async () => {
   logger.ipcLog("auth:login", "Login attempt started");
