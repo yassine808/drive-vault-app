@@ -262,3 +262,4 @@ export default {
   clearAllLogs,
   getLogDir,
 };
+// test comment
