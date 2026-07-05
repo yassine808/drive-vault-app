@@ -1,6 +1,6 @@
 ﻿/* ═══════════════════════════════════════════════════════════════════
-   VAULT — Black + Purple
-   Deep black base with purple accent. Flat tonal depth.
+   VAULT — Matte Black + Copper
+   Neutral matte black base with warm copper accent. Flat tonal depth.
    ═══════════════════════════════════════════════════════════════════ */
 
 *,
@@ -12,22 +12,22 @@
 }
 
 :root {
-  /* ── Palette — Deep black base, purple accent ────────────────── */
-  --bg: oklch(0.14 0.012 280);
-  --bg-surface: oklch(0.17 0.014 280 / 0.45);
-  --bg-raised: oklch(0.21 0.016 280 / 0.4);
-  --bg-input: oklch(0.19 0.013 280 / 0.45);
-  --bg-overlay: oklch(0.1 0.01 280 / 0.92);
+  /* ── Palette — Matte black base, copper accent ───────────────── */
+  --bg: oklch(0.13 0 0);
+  --bg-surface: oklch(0.17 0 0 / 0.45);
+  --bg-raised: oklch(0.21 0 0 / 0.4);
+  --bg-input: oklch(0.19 0 0 / 0.45);
+  --bg-overlay: oklch(0.09 0 0 / 0.92);
 
-  --border: oklch(0.55 0.08 290 / 0.12);
-  --border-h: oklch(0.55 0.08 290 / 0.22);
-  --border-focus: oklch(0.6 0.18 290 / 0.5);
+  --border: oklch(0.55 0 0 / 0.12);
+  --border-h: oklch(0.55 0 0 / 0.22);
+  --border-focus: oklch(0.66 0.14 55 / 0.5);
 
-  --accent: oklch(0.65 0.22 290);
-  --accent-dim: oklch(0.65 0.22 290 / 0.1);
-  --accent-glow: oklch(0.65 0.22 290 / 0.15);
-  --accent-strong: oklch(0.72 0.24 290);
-  --accent-glass: oklch(0.65 0.22 290 / 0.18);
+  --accent: oklch(0.66 0.14 55);
+  --accent-dim: oklch(0.66 0.14 55 / 0.1);
+  --accent-glow: oklch(0.66 0.14 55 / 0.15);
+  --accent-strong: oklch(0.74 0.16 55);
+  --accent-glass: oklch(0.66 0.14 55 / 0.18);
 
   --green: oklch(0.78 0.12 145);
   --green-dim: oklch(0.78 0.12 145 / 0.1);
@@ -36,10 +36,10 @@
   --red: oklch(0.72 0.14 25);
   --red-dim: oklch(0.72 0.14 25 / 0.1);
 
-  --txt: oklch(0.92 0.006 280);
-  --txt-sec: oklch(0.68 0.008 280);
-  --txt-muted: oklch(0.52 0.006 280);
-  --txt-dim: oklch(0.4 0.005 280);
+  --txt: oklch(0.92 0 0);
+  --txt-sec: oklch(0.68 0 0);
+  --txt-muted: oklch(0.52 0 0);
+  --txt-dim: oklch(0.4 0 0);
 
   /* ── Radii ──────────────────────────────────────────────────── */
   --r-xs: 4px;
@@ -57,7 +57,7 @@
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.35), 0 1px 1px oklch(0 0 0 / 0.2);
   --shadow: 0 4px 16px oklch(0 0 0 / 0.4), 0 1px 4px oklch(0 0 0 / 0.25);
   --shadow-lg: 0 8px 40px oklch(0 0 0 / 0.5), 0 2px 10px oklch(0 0 0 / 0.3);
-  --shadow-in: inset 0 1px 0 oklch(0.65 0.22 290 / 0.06);
+  --shadow-in: inset 0 1px 0 oklch(0.66 0.14 55 / 0.06);
 
   /* ── Motion ─────────────────────────────────────────────────── */
   --t-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -108,7 +108,7 @@ body {
   height: 26px;
   border-radius: var(--r-sm);
   background: var(--accent-dim);
-  border: 1px solid oklch(0.65 0.22 290 / 0.2);
+  border: 1px solid oklch(0.66 0.14 55 / 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -205,7 +205,7 @@ body {
   height: 68px;
   border-radius: 18px;
   background: var(--accent-dim);
-  border: 1px solid oklch(0.65 0.22 290 / 0.12);
+  border: 1px solid oklch(0.66 0.14 55 / 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -365,7 +365,7 @@ body {
   background: var(--accent-dim);
   color: var(--accent);
   font-weight: 500;
-  border-color: oklch(0.65 0.22 290 / 0.08);
+  border-color: oklch(0.66 0.14 55 / 0.08);
 }
 .badge {
   margin-left: auto;
@@ -396,7 +396,7 @@ body {
   padding: 7px 10px;
   border-radius: var(--r-sm);
   background: var(--accent-dim);
-  border: 1px solid oklch(0.65 0.22 290 / 0.1);
+  border: 1px solid oklch(0.66 0.14 55 / 0.1);
   color: var(--accent);
   font-size: 10px;
   font-family: var(--mono);
@@ -706,7 +706,7 @@ body {
 }
 .note-chip.active {
   background: var(--accent-glass);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 .note-chip-body {
   flex: 1;
@@ -831,7 +831,7 @@ body {
   padding: 9px 18px;
   border-radius: var(--r);
   background: var(--accent);
-  border: 1px solid oklch(0.72 0.24 290 / 0.2);
+  border: 1px solid oklch(0.74 0.16 55 / 0.2);
   color: var(--bg);
   font-family: var(--font);
   font-size: 12px;
@@ -1199,7 +1199,7 @@ body {
 }
 .tog input:checked + span {
   background: var(--accent-dim);
-  border-color: oklch(0.65 0.22 290 / 0.2);
+  border-color: oklch(0.66 0.14 55 / 0.2);
 }
 .tog input:checked + span::before {
   transform: translateX(16px);
@@ -1343,7 +1343,7 @@ body {
 }
 .job-stat:hover {
   background: oklch(0.2 0.015 280 / 0.6);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 .job-stat span {
   font-size: 24px;
@@ -1405,7 +1405,7 @@ body {
 .filter-pill.active {
   background: var(--accent-glass);
   color: var(--accent);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 
 .jobs-table-wrap {
@@ -1635,7 +1635,7 @@ body {
 }
 .mon-card:hover {
   background: oklch(0.2 0.015 280 / 0.6);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 .mon-card.mon-wide {
   grid-column: span 4;
@@ -1670,7 +1670,7 @@ body {
 }
 .dash-stat-card:hover {
   background: oklch(0.2 0.015 280 / 0.6);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 .dash-stat-icon {
   font-size: 20px;
@@ -1775,7 +1775,7 @@ body {
 .log-filter.active {
   background: var(--accent-glass);
   color: var(--accent);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 
 .log-section {
@@ -1879,7 +1879,7 @@ body {
 .tb-btn:hover {
   background: oklch(0.18 0.012 280 / 0.5);
   color: var(--txt);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1903,7 +1903,7 @@ body {
   animation: fadeUp var(--t-base) ease;
 }
 .totp-card:hover {
-  border-color: oklch(0.65 0.22 290 / 0.18);
+  border-color: oklch(0.66 0.14 55 / 0.18);
   background: oklch(0.2 0.015 280 / 0.6);
   box-shadow: var(--shadow-sm);
 }
@@ -2039,7 +2039,7 @@ body {
   height: 44px;
   border-radius: 50%;
   background: var(--accent-dim);
-  border: 2px solid oklch(0.65 0.22 290 / 0.15);
+  border: 2px solid oklch(0.66 0.14 55 / 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2107,7 +2107,7 @@ body {
   height: 36px;
   border-radius: 50%;
   background: var(--accent-dim);
-  border: 1px solid oklch(0.65 0.22 290 / 0.15);
+  border: 1px solid oklch(0.66 0.14 55 / 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2301,7 +2301,7 @@ body {
 }
 .settings-card:hover {
   background: oklch(0.2 0.015 280 / 0.6);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 .settings-section-title {
   font-size: 11px;
@@ -2541,8 +2541,8 @@ body {
     0 2px 8px oklch(0 0 0 / 0.4);
   transform: scale(1.12);
 }
-.accent-swatch[data-accent="violet"] {
-  background: oklch(0.65 0.22 290);
+.accent-swatch[data-accent="copper"] {
+  background: oklch(0.66 0.14 55);
 }
 .accent-swatch[data-accent="blue"] {
   background: oklch(0.62 0.2 250);
@@ -2600,7 +2600,7 @@ body {
 .sound-test-btn:hover {
   background: var(--accent-glass);
   color: var(--accent);
-  border-color: oklch(0.65 0.22 290 / 0.15);
+  border-color: oklch(0.66 0.14 55 / 0.15);
 }
 
 /* ─── Admin dashboard ─────────────────────────────────────────── */
@@ -2673,7 +2673,7 @@ body {
   height: 34px;
   border-radius: 50%;
   background: var(--accent-dim);
-  border: 1px solid oklch(0.65 0.22 290 / 0.12);
+  border: 1px solid oklch(0.66 0.14 55 / 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2739,7 +2739,7 @@ body {
 .admin-user-badge.admin {
   background: var(--accent-glass);
   color: var(--accent);
-  border: 1px solid oklch(0.65 0.22 290 / 0.15);
+  border: 1px solid oklch(0.66 0.14 55 / 0.15);
 }
 .admin-user-badge.user {
   background: var(--bg-raised);
