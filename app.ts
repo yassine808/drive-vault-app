@@ -497,6 +497,7 @@ function doLock(): void {
     /* noop */
   });
   if (S.settings.pin_login_enabled) {
+    applyPinInputMode(!!S.settings.pin_allow_alpha);
     screen("s-pin");
     loadPinAccounts().catch(() => {
       /* noop */
@@ -634,6 +635,15 @@ let _selectedAccount: {
   name: string;
   avatar: string | null;
 } | null = null;
+
+// Pre-login the renderer has no session/settings yet, so pin:status is the
+// only source for whether alphanumeric PINs are allowed. Without this the
+// unlock screen's numeric-only virtual keyboard hint never reflects a PIN
+// that actually contains letters.
+function applyPinInputMode(allowAlpha: boolean): void {
+  const pinInput = document.getElementById("pin-code") as HTMLInputElement | null;
+  if (pinInput) pinInput.setAttribute("inputmode", allowAlpha ? "text" : "numeric");
+}
 
 function showPinAccounts() {
   _selectedAccount = null;
@@ -885,6 +895,7 @@ async function doLogout(): Promise<void> {
   disarmLock();
   clearAllInputs();
   if (S.settings.pin_login_enabled) {
+    applyPinInputMode(!!S.settings.pin_allow_alpha);
     screen("s-pin");
     loadPinAccounts().catch(() => {
       /* noop */
@@ -1039,10 +1050,8 @@ function updateCounts(): void {
 (document.getElementById("btn-sync") as HTMLButtonElement).addEventListener("click", async () => {
   logInfo("vault", "Sync triggered");
   const btn = document.getElementById("btn-sync") as HTMLButtonElement;
-  btn.style.opacity = ".5";
   btn.style.pointerEvents = "none";
-  const r = await api.vaultSync();
-  btn.style.opacity = "";
+  const r = await withSyncSpin(api.vaultSync());
   btn.style.pointerEvents = "";
   if (r.ok) {
     loadVault(r.vault);
@@ -3614,6 +3623,7 @@ document.addEventListener("mouseover", (e: MouseEvent) => {
   try {
     const pr = await api.pin.status();
     if (pr.ok && pr.enabled) {
+      applyPinInputMode(!!pr.allowAlpha);
       screen("s-pin");
       await loadPinAccounts();
       logInfo("app", "PIN login available, showing PIN entry screen");

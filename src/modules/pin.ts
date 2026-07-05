@@ -146,21 +146,40 @@ function fileExists(): boolean {
 }
 
 // ── PIN meta file (stores which googleId has a PIN, unencrypted) ──
-// This is not sensitive — it only records that a PIN exists for a given googleId.
+// This is not sensitive — it only records that a PIN exists for a given googleId,
+// plus the (non-secret) allowAlpha flag needed to render the pre-login unlock screen.
 // The actual PIN hash and user key remain encrypted in vault_user_key.
+interface PinMeta {
+  googleId: string;
+  allowAlpha: boolean;
+}
+
 function getMetafilePath(): string {
   const dir = ensureVaultDir();
   return path.join(dir, "vault_pin_meta");
 }
 
-function getPinGoogleId(): string | null {
-  const raw = fs.readFileSync(getMetafilePath(), "utf8");
-  const data = JSON.parse(raw);
-  return typeof data.googleId === "string" ? data.googleId : null;
+// Reads the meta file defensively: a missing or corrupt file (e.g. a PIN set up
+// by an older app version, before this file existed) must never throw — callers
+// (like accounts:list) previously had this bubble up and silently wipe out the
+// saved-accounts list on the PIN screen.
+function getPinMeta(): PinMeta | null {
+  try {
+    const raw = fs.readFileSync(getMetafilePath(), "utf8");
+    const data = JSON.parse(raw);
+    if (typeof data.googleId !== "string" || !data.googleId) return null;
+    return { googleId: data.googleId, allowAlpha: !!data.allowAlpha };
+  } catch {
+    return null;
+  }
 }
 
-function setPinGoogleId(googleId: string): void {
-  fs.writeFileSync(getMetafilePath(), JSON.stringify({ googleId }));
+function getPinGoogleId(): string | null {
+  return getPinMeta()?.googleId ?? null;
+}
+
+function setPinGoogleId(googleId: string, allowAlpha: boolean): void {
+  fs.writeFileSync(getMetafilePath(), JSON.stringify({ googleId, allowAlpha }));
 }
 
 function clearPinGoogleId(): void {
@@ -176,13 +195,6 @@ function validatePin(pin: string, allowAlpha: boolean): string | null {
   if (allowAlpha && !/^[a-zA-Z0-9]{4,12}$/.test(pin))
     return "PIN must be 4-12 alphanumeric characters";
   return null;
-}
-
-// ── Get PIN allowAlpha setting ──
-// allowAlpha is now stored inside the encrypted PIN payload, so it can't be
-// read without the PIN. The renderer reads it from vault_settings instead.
-function getPinAllowAlpha(): boolean {
-  return false;
 }
 
 // ── Register IPC handlers ──
@@ -243,7 +255,7 @@ function register(
             data: encrypted,
           });
           fs.writeFileSync(getKeyfilePath(), fileData);
-          setPinGoogleId(session.googleId);
+          setPinGoogleId(session.googleId, !!allowAlpha);
 
           logger.authLog("pin:setup", "PIN configured successfully", {
             email: session.email,
@@ -437,6 +449,7 @@ function register(
             data: newEncrypted,
           });
           fs.writeFileSync(getKeyfilePath(), newFileData);
+          setPinGoogleId(payload.userKey.googleId, !!allowAlpha);
           resetPinRateLimit();
 
           logger.authLog("pin:change", "PIN changed successfully", {
@@ -465,6 +478,7 @@ function register(
         if (fileExists()) {
           fs.unlinkSync(getKeyfilePath());
           clearPinGoogleId();
+          resetPinRateLimit();
           logger.authLog("pin:disable", "PIN disabled", {
             email: session?.email,
           });
@@ -485,14 +499,15 @@ function register(
 
   // ── pin:status ──
   // No auth required — checks if the key file exists.
-  // Used by the renderer on startup to decide which screen to show.
-  // Note: allowAlpha is no longer returned here since it's stored inside the
-  // encrypted PIN payload. The renderer reads it from vault_settings instead.
+  // Used by the renderer on startup (before any login) to decide which screen
+  // to show, and to configure the PIN input (numeric vs alphanumeric) correctly
+  // even though no session/settings are available yet at that point.
   ipcMain.handle("pin:status", async () => {
     logger.ipcLog("pin:status", "PIN status check");
     const enabled = fileExists();
-    logger.debug("pin:status", "Status", { enabled });
-    return { ok: true, enabled };
+    const allowAlpha = getPinMeta()?.allowAlpha ?? false;
+    logger.debug("pin:status", "Status", { enabled, allowAlpha });
+    return { ok: true, enabled, allowAlpha };
   });
 }
 

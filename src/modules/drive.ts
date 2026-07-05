@@ -95,11 +95,18 @@ export class DriveClient {
     // Migrate any flat files from old structure to subfolders
     await this.migrateFlatFiles();
 
+    // Snapshot the last-known-synced modifiedTimes BEFORE buildFileIdCache()
+    // overwrites this.cache.etags with the current Drive state. Without this,
+    // resolveConflicts() has nothing to compare against and can only ever
+    // notice files that are completely missing locally — edits made on
+    // another device never get pulled down.
+    const previousEtags = { ...this.cache.etags };
+
     // Load file ID index from Drive
     await this.buildFileIdCache();
 
     // On startup: diff local cache vs Drive, resolve conflicts via ETag
-    await this.resolveConflicts();
+    await this.resolveConflicts(previousEtags);
 
     this.logger.success("drive:init", "Drive client ready", {
       vaultFolderId: this.vaultFolderId,
@@ -454,7 +461,7 @@ export class DriveClient {
    * On startup: compare local cache with Drive files.
    * If Drive has a newer version (different ETag), download and merge.
    */
-  private async resolveConflicts(): Promise<void> {
+  private async resolveConflicts(previousEtags: Record<string, string>): Promise<void> {
     if (!this.driveApi || !this.vaultFolderId) return;
 
     this.logger.dbLog("drive:conflict", "Checking for conflicts", {
@@ -462,7 +469,7 @@ export class DriveClient {
       cachedFiles: this.fileIdCache.size,
     });
 
-    // For each file on Drive, check if it's newer than our cache
+    // For each file on Drive, check if it's missing locally or newer than our cache
     const downloads: Promise<void>[] = [];
     for (const [fileName, fileId] of this.fileIdCache) {
       const parsed = this.parseItemFileName(fileName);
@@ -478,7 +485,30 @@ export class DriveClient {
           fileName,
         });
         downloads.push(this.downloadAndCacheItem(fileId, parsed.id, parsed.type));
+        continue;
       }
+
+      // File exists both locally and on Drive — only a genuine conflict if
+      // Drive's modifiedTime moved on since our last sync (i.e. it was
+      // edited from another device/session).
+      const knownModified = previousEtags[fileId];
+      if (knownModified === driveModified) continue;
+
+      // Don't clobber local edits that haven't been pushed to Drive yet.
+      const hasUnsyncedLocalChange = this.cache.dirtyQueue.some(
+        (d) => d.id === localItem.id && d.type === parsed.type,
+      );
+      if (hasUnsyncedLocalChange) {
+        this.logger.dbLog("drive:conflict", "Skipping remote update — local change pending", {
+          fileName,
+        });
+        continue;
+      }
+
+      this.logger.dbLog("drive:conflict", "Drive has a newer version — refreshing local copy", {
+        fileName,
+      });
+      downloads.push(this.downloadAndCacheItem(fileId, parsed.id, parsed.type));
     }
     await Promise.all(downloads);
 
@@ -501,17 +531,27 @@ export class DriveClient {
 
     const encryptedData = Buffer.from(res.data as ArrayBuffer).toString("utf8");
     const now = new Date().toISOString();
-    const item: CacheItem = {
-      id,
-      sortOrder: 0,
-      encryptedData,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-    };
-
     const arr = this.getCacheArray(type);
-    arr.push(item);
+    const existingIdx = arr.findIndex((i) => i.id === id);
+    if (existingIdx >= 0) {
+      // Item already exists locally but Drive has a newer version — refresh
+      // it in place rather than pushing a duplicate entry.
+      arr[existingIdx] = {
+        ...arr[existingIdx],
+        encryptedData,
+        updatedAt: now,
+      };
+    } else {
+      const item: CacheItem = {
+        id,
+        sortOrder: 0,
+        encryptedData,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      };
+      arr.push(item);
+    }
     this.cacheDirty = true;
   }
 

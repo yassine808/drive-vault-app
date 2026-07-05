@@ -99,28 +99,29 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
 ### PIN Authentication
 
 - **Purpose**: Skip Google OAuth on subsequent logins. Users first sign in with Google, then enable PIN in settings.
-- **Storage**: All PIN data is local only — never sent to any remote server. Stored in `%APPDATA%/Vault/vault_user_key` (or `~/Library/Application Support/Vault/` on macOS, `~/.config/Vault/` on Linux).
-- **File format**: `JSON.stringify({ version: 1, salt: base64, data: enc({ pinHash, userKey: { googleId, email } }, derivePinKey(pin, salt)) })`
+- **Storage**: All PIN data is local only — never sent to any remote server. Two files under `%APPDATA%/Vault/` (or `~/Library/Application Support/Vault/` on macOS, `~/.config/Vault/` on Linux):
+  - `vault_user_key` — encrypted PIN payload (see below).
+  - `vault_pin_meta` — small **unencrypted** file: `{ googleId, allowAlpha }`. Neither field is sensitive; this only exists so the pre-login PIN screen (before any session/settings exist) knows *which* account has a PIN and whether it may contain letters. Reads of this file are defensive (missing/corrupt → `null`), since a PIN created by an older app version won't have it yet.
+- **File format** (`vault_user_key`): `JSON.stringify({ version: 1, salt: base64, data: enc({ pinHash, userKey: { googleId, email }, allowAlpha }, derivePinKey(pin, salt)) })`
 - **Key derivation**: `derivePinKey(pin, salt)` — PBKDF2-SHA256, 600k iterations → 32-byte hex string.
 - **PIN hash**: Separate PBKDF2-SHA256 (600k iterations) stored inside the encrypted payload for verification.
-- **PIN policy**: 4-12 characters. Numbers-only by default; alphanumeric optional (`pin_allow_alpha` setting).
-- **Rate limiting**: 5 attempts per 15-minute sliding window, 15-minute lockout (same pattern as 2FA).
+- **PIN policy**: 4-12 characters. Numbers-only by default; alphanumeric optional (`pin_allow_alpha` setting, mirrored into `vault_pin_meta` on setup/change).
+- **Rate limiting**: 5 attempts per 15-minute sliding window, 15-minute lockout (same pattern as 2FA). Persisted to `vault_pin_rate_limit` so it survives restarts; reset on successful verify, on PIN change, and on PIN disable (so deleting and re-creating a PIN never leaves a stale lockout behind).
 - **Flow**:
-  1. Startup: renderer calls `pin:status` → if enabled, show `#s-pin` screen; else show `#s-login`
-  2. User enters PIN → `pin:verify` returns `{ ok, googleId, email }` on success
-  3. Renderer calls `auth:loginWithPin(googleId, email)` → main creates session, loads vault
-  4. Lock: if `pin_login_enabled` → show `#s-pin`; else → show `#s-lock`
-  5. Logout: if `pin_login_enabled` → show `#s-pin`; else → show `#s-login`
+  1. Startup: renderer calls `pin:status` → `{ ok, enabled, allowAlpha }`. If `enabled`, apply `allowAlpha` to the PIN input's `inputmode` and show `#s-pin`; else show `#s-login`.
+  2. User enters PIN → `pin:verify` validates it and, on success, stashes `{ googleId, email }` server-side and returns `{ ok, verifyId, email }`. The token/credentials never pass through the renderer.
+  3. Renderer calls `auth:loginWithPin(verifyId)` → main consumes the verify entry, creates a session, loads the vault.
+  4. Lock: if `pin_login_enabled` → show `#s-pin` (using the already-loaded `S.settings.pin_allow_alpha`); else → show `#s-lock`.
+  5. Logout: same as lock.
 - **Recovery**: "Sign in with Google instead" link on PIN screen falls back to full OAuth flow.
-- **Drive sync on PIN login**: The initial Google login requests `access_type: "offline"`, so Google issues a `refresh_token`. That token is encrypted via Electron's `safeStorage` and stored in the account's cache settings (`oauthTokens`). PIN login rehydrates `oauth2Client` from this stored token before initializing `DriveClient` — without this, PIN login used to silently fall back to a local-only cache and nothing ever synced to Drive.
+- **Drive sync on PIN login**: The initial Google login requests `access_type: "offline"`, so Google issues a `refresh_token`. That token is encrypted via Electron's `safeStorage` and stored in the account's cache settings (`oauthTokens`). PIN login rehydrates `oauth2Client` from this stored token before initializing `DriveClient` — without this, PIN login would silently fall back to a local-only cache and nothing would sync to Drive.
 - **IPC handlers**:
-  - `pin:setup` (auth): validates PIN, creates encrypted user key file
-  - `pin:verify` (public): rate-limited, decrypts file, returns googleId + email
-  - `pin:change` (auth): verifies old PIN, writes new file with new salt/key
-  - `pin:disable` (auth): deletes user key file
-  - `pin:status` (public): returns `{ ok, enabled, allowAlpha }` — `allowAlpha` read from `vault_settings`
-- **Settings columns**: `pin_login_enabled` and `pin_allow_alpha` in `vault_settings` table (require DB migration if not already applied).
-- **Settings sync**: `pin:setup` auto-sets `pin_login_enabled=true` and `pin_allow_alpha` in `vault_settings`; `pin:disable` auto-sets `pin_login_enabled=false`.
+  - `pin:setup` (auth): validates PIN, creates encrypted user key file + `vault_pin_meta`
+  - `pin:verify` (public): rate-limited, decrypts file, returns a one-time `verifyId`
+  - `pin:change` (auth): verifies old PIN, writes new file with new salt/key, updates `vault_pin_meta`
+  - `pin:disable` (auth): deletes user key file + `vault_pin_meta`, resets the rate limiter
+  - `pin:status` (public): returns `{ ok, enabled, allowAlpha }` — `allowAlpha` read from `vault_pin_meta`, not `vault_settings` (settings are behind auth and unavailable pre-login)
+- **Settings columns**: `pin_login_enabled` and `pin_allow_alpha` live in `vault_settings` and are managed entirely by the renderer's Settings screen (toggled and saved directly via `settings:save`). `pin:setup`/`pin:change`/`pin:disable` do **not** touch `vault_settings` themselves — they only read the `allowAlpha` flag passed in from the renderer for that call.
 
 ### Saved Accounts
 
@@ -156,7 +157,12 @@ All user data is stored in the user's Google Drive inside a `Vault` folder. Each
 - **2FA file**: `vault_2fa` — JSON with secret and enabled flag
 - **Logos file**: `vault_logos` — JSON array of cached favicon data URLs
 - **Local cache**: `%APPDATA%/Vault/Cache/vault_cache.json` — full offline copy of all data
-- **Sync**: Event-driven debounce (2s) with dirty queue retry on failure. ETag-based conflict resolution on startup.
+- **Sync**: Event-driven debounce (2s) with dirty queue retry on failure.
+- **Conflict resolution on startup** (`DriveClient.init()` → `resolveConflicts()`): a snapshot of the previously-synced Drive `modifiedTime` per file is taken *before* `buildFileIcCache()` refreshes `cache.etags` to the current Drive state, so the two can actually be diffed. For each Drive file:
+  - Missing locally → downloaded and added to the cache.
+  - Present locally but Drive's `modifiedTime` has changed since the last sync → re-downloaded and the local item is updated in place (unless that item has an unsynced local change still sitting in the dirty queue, in which case the local edit wins and the remote refresh is skipped).
+  - Unchanged → left alone.
+  This is what lets an edit made on another device actually show up here; a version that only checked "does this item exist locally at all" would never pick up remote edits to items you already have cached.
 - **Offline**: Full offline support via local cache. Dirty queue flushes when connectivity returns.
 
 ### Security Measures
@@ -182,6 +188,7 @@ All user data is stored in the user's Google Drive inside a `Vault` folder. Each
 
 - **Tabs**: Passwords, Notes, Job Tracker, Authenticator, Trash, Generator, Settings.
 - **State**: In-memory JS objects, no state management library.
+- **Sync indicator**: `withSyncSpin(promise)` (top of `app.ts`) increments an in-flight counter, adds `.syncing` to the sidebar `#btn-sync` icon (CSS spins it via `@keyframes syncSpin`), and removes it once the counter returns to zero. Every save/sync call that should visibly spin the icon — password/note/settings saves, the manual "Sync now" button, sync-folder operations — is wrapped in `withSyncSpin(...)`.
 - **Sounds**: Web Audio API with configurable tones (chime, ding, soft, bright, click, tap, pop).
 - **Accent colors**: 13 options applied via CSS custom properties on `:root`.
 - **Password generator**: CSPRNG (`crypto.getRandomValues`) with Fisher-Yates shuffle. Guarantees at least one character from each enabled class.

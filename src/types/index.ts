@@ -131,6 +131,7 @@ export interface LogEntry {
 export interface PinStatus {
   ok: boolean;
   enabled: boolean;
+  allowAlpha?: boolean;
 }
 
 export interface PinVerifyResult {
