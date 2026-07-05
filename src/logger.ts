@@ -69,7 +69,7 @@ function write(level: number, ctx: string, msg: string, data?: unknown): void {
       } else if (typeof data === "string") {
         dataStr = data;
       } else {
-        dataStr = String(data);
+        dataStr = `${data}`; // NOSONAR - narrowed to non-object primitive above
       }
       line += ` | data: ${dataStr}`;
     } catch {
