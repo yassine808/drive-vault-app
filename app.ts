@@ -484,6 +484,9 @@ function doLock(): void {
   });
   if (S.settings.pin_login_enabled) {
     screen("s-pin");
+    loadPinAccounts().catch(() => {
+      /* noop */
+    });
     logInfo("auth", "Locked — showing PIN entry screen");
   } else {
     screen("s-lock");
@@ -852,6 +855,9 @@ async function doLogout(): Promise<void> {
   clearAllInputs();
   if (S.settings.pin_login_enabled) {
     screen("s-pin");
+    loadPinAccounts().catch(() => {
+      /* noop */
+    });
     logOk("auth", "Logged out, showing PIN entry screen");
   } else {
     screen("s-login");
