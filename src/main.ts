@@ -276,6 +276,41 @@ function verify2fa(secret: string, token: string): boolean {
   }
 }
 
+/**
+ * Persist OAuth tokens (refresh_token + access_token) encrypted at rest via
+ * Electron's safeStorage, keyed to the account's cache settings. This lets
+ * PIN login re-authenticate with Drive without a browser popup.
+ */
+function persistOAuthTokens(cacheSettings: Record<string, unknown>, tokens: unknown): void {
+  try {
+    if (!electron.safeStorage.isEncryptionAvailable()) {
+      logger.warn("oauth", "safeStorage encryption unavailable — tokens not persisted");
+      return;
+    }
+    const encrypted = electron.safeStorage.encryptString(JSON.stringify(tokens));
+    cacheSettings.oauthTokens = encrypted.toString("base64");
+  } catch (e) {
+    logger.warn("oauth", "Failed to persist OAuth tokens", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+function loadOAuthTokens(cacheSettings: Record<string, unknown>): Record<string, unknown> | null {
+  try {
+    const stored = cacheSettings.oauthTokens as string | undefined;
+    if (!stored) return null;
+    if (!electron.safeStorage.isEncryptionAvailable()) return null;
+    const decrypted = electron.safeStorage.decryptString(Buffer.from(stored, "base64"));
+    return JSON.parse(decrypted);
+  } catch (e) {
+    logger.warn("oauth", "Failed to load stored OAuth tokens", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+}
+
 async function googleOAuth(): Promise<GoogleProfile> {
   logger.authLog("oauth", "Starting OAuth flow");
   if (oauthServer) {
@@ -301,7 +336,7 @@ async function googleOAuth(): Promise<GoogleProfile> {
   const state = crypto.randomBytes(16).toString("hex");
   const stateCreatedAt = Date.now();
   const authUrl = oauth2Client.generateAuthUrl({
-    access_type: "online",
+    access_type: "offline",
     scope: SCOPES,
     state,
     prompt: "consent",
@@ -546,6 +581,22 @@ ipcMain.handle("auth:login", async () => {
     driveClient = new DriveClient(profile.googleId, encKey, logger as any);
     await driveClient.init(oauth2Client);
     updateDriveClient(driveClient);
+
+    // Persist OAuth tokens (encrypted) so PIN login can re-authenticate with
+    // Drive without a browser popup, and keep them fresh on auto-refresh.
+    persistOAuthTokens(
+      driveClient.cache.settings as Record<string, unknown>,
+      oauth2Client.credentials,
+    );
+    oauth2Client.on("tokens", (t: Record<string, unknown>) => {
+      if (driveClient) {
+        persistOAuthTokens(driveClient.cache.settings as Record<string, unknown>, {
+          ...oauth2Client.credentials,
+          ...t,
+        });
+        cacheMod.saveCache(driveClient.cache);
+      }
+    });
 
     // Persist salt in settings so future logins use strong derivation
     driveClient.cache.settings = { ...driveClient.cache.settings, userSalt };
@@ -829,12 +880,38 @@ ipcMain.handle(
 
       const encKey = deriveKey(googleId, pinSalt);
 
+      // Rehydrate oauth2Client from stored (encrypted) tokens if we don't
+      // already have a live one from this session — without this, PIN login
+      // silently fell back to a cache-only client and nothing ever synced.
+      if (!oauth2Client) {
+        const storedTokens = loadOAuthTokens((pinCached.settings as Record<string, unknown>) || {});
+        if (storedTokens) {
+          const google = await import("googleapis");
+          oauth2Client = new google.google.auth.OAuth2(
+            GOOGLE_CLIENT_ID,
+            GOOGLE_CLIENT_SECRET,
+            REDIRECT_URI,
+          );
+          oauth2Client.setCredentials(storedTokens);
+        }
+      }
+
       // Try to initialize Drive client if we have OAuth tokens
       if (oauth2Client) {
         try {
           driveClient = new DriveClient(googleId, encKey, logger as any);
           await driveClient.init(oauth2Client);
           updateDriveClient(driveClient);
+          // Keep persisted tokens fresh as the client auto-refreshes them
+          oauth2Client.on("tokens", (t: Record<string, unknown>) => {
+            if (driveClient) {
+              persistOAuthTokens(driveClient.cache.settings as Record<string, unknown>, {
+                ...oauth2Client.credentials,
+                ...t,
+              });
+              pinCacheMod.saveCache(driveClient.cache);
+            }
+          });
         } catch (driveErr) {
           logger.warn("auth:loginWithPin", "Drive init failed, using local cache only", {
             error: driveErr instanceof Error ? driveErr.message : String(driveErr),

@@ -112,6 +112,7 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
   4. Lock: if `pin_login_enabled` → show `#s-pin`; else → show `#s-lock`
   5. Logout: if `pin_login_enabled` → show `#s-pin`; else → show `#s-login`
 - **Recovery**: "Sign in with Google instead" link on PIN screen falls back to full OAuth flow.
+- **Drive sync on PIN login**: The initial Google login requests `access_type: "offline"`, so Google issues a `refresh_token`. That token is encrypted via Electron's `safeStorage` and stored in the account's cache settings (`oauthTokens`). PIN login rehydrates `oauth2Client` from this stored token before initializing `DriveClient` — without this, PIN login used to silently fall back to a local-only cache and nothing ever synced to Drive.
 - **IPC handlers**:
   - `pin:setup` (auth): validates PIN, creates encrypted user key file
   - `pin:verify` (public): rate-limited, decrypts file, returns googleId + email

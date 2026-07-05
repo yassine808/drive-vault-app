@@ -75,34 +75,34 @@ Vault is an **Electron desktop application** for secure local storage of sensiti
 
 ### Feature Matrix
 
-| Feature                        | Status | Notes                                                |
-| ------------------------------ | ------ | ---------------------------------------------------- |
-| AES-256-CBC + HMAC-SHA256      | ✅     | Encrypt-then-MAC, random 16-byte IV per encryption   |
-| PBKDF2-SHA256 key derivation   | ✅     | 600k iterations, per-account salt                    |
-| Legacy CryptoJS decryption     | ✅     | Auto-detected via `U2FsdGVk` prefix                  |
-| Google Drive per-item files    | ✅     | One file per item, AES-encrypted JSON                |
-| Local cache with offline mode  | ✅     | Full offline reads; dirty queue for writes           |
-| ETag-based conflict resolution | ✅     | On startup, diffs local cache vs Drive               |
-| Debounced sync                 | ✅     | 2-second debounce after last change                  |
-| Google OAuth 2.0               | ✅     | Local HTTP callback server on `127.0.0.1:42813`      |
-| TOTP 2FA                       | ✅     | Via `speakeasy`, 6-digit codes, window=1             |
-| PIN quick-login                | ✅     | 4-12 chars, numbers-only or alphanumeric             |
-| 2FA rate limiting              | ✅     | 5 attempts / 15-min window, 15-min lockout           |
-| PIN rate limiting              | ✅     | Same limits, persisted to disk                       |
-| System tray                    | ✅     | Lock, logout, quit from tray menu                    |
-| Window controls                | ✅     | Minimize, maximize, close-to-tray                    |
-| Sound feedback                 | ✅     | Web Audio API, configurable tones                    |
-| Password generator             | ✅     | CSPRNG, Fisher-Yates, guaranteed class coverage      |
-| 13 accent colors               | ✅     | Applied via CSS custom properties                    |
-| Sync engine                    | ✅     | Two-way folder sync with conflict detection          |
-| File watcher                   | ✅     | `fs.watch` with 2-second debounce                    |
-| Drag-and-drop sync             | ✅     | Drop files/folders into sync panel                   |
-| CSP hardening                  | ✅     | `script-src 'self'`, `frame-src 'none'`              |
-| XSS prevention                 | ✅     | `createElement` / `textContent` only, no `innerHTML` |
-| Navigation blocking            | ✅     | `will-navigate` blocks non-file: URLs                |
-| Clipboard auto-clear           | ✅     | 30-second timeout                                    |
-| Session token rotation         | ✅     | Regenerated on every auth event                      |
-| Log rotation                   | ✅     | 5 MB max per file, 7-day bak cleanup                 |
+| Feature                        | Status | Notes                                                                                                                                   |
+| ------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| AES-256-CBC + HMAC-SHA256      | ✅     | Encrypt-then-MAC, random 16-byte IV per encryption                                                                                      |
+| PBKDF2-SHA256 key derivation   | ✅     | 600k iterations, per-account salt                                                                                                       |
+| Legacy CryptoJS decryption     | ✅     | Auto-detected via `U2FsdGVk` prefix                                                                                                     |
+| Google Drive per-item files    | ✅     | One file per item, AES-encrypted JSON                                                                                                   |
+| Local cache with offline mode  | ✅     | Full offline reads; dirty queue for writes                                                                                              |
+| ETag-based conflict resolution | ✅     | On startup, diffs local cache vs Drive                                                                                                  |
+| Debounced sync                 | ✅     | 2-second debounce after last change                                                                                                     |
+| Google OAuth 2.0               | ✅     | Local HTTP callback server on `127.0.0.1:42813`, offline access with encrypted refresh-token persistence so PIN login can sync to Drive |
+| TOTP 2FA                       | ✅     | Via `speakeasy`, 6-digit codes, window=1                                                                                                |
+| PIN quick-login                | ✅     | 4-12 chars, numbers-only or alphanumeric                                                                                                |
+| 2FA rate limiting              | ✅     | 5 attempts / 15-min window, 15-min lockout                                                                                              |
+| PIN rate limiting              | ✅     | Same limits, persisted to disk                                                                                                          |
+| System tray                    | ✅     | Lock, logout, quit from tray menu                                                                                                       |
+| Window controls                | ✅     | Minimize, maximize, close-to-tray                                                                                                       |
+| Sound feedback                 | ✅     | Web Audio API, configurable tones                                                                                                       |
+| Password generator             | ✅     | CSPRNG, Fisher-Yates, guaranteed class coverage                                                                                         |
+| 13 accent colors               | ✅     | Applied via CSS custom properties                                                                                                       |
+| Sync engine                    | ✅     | Two-way folder sync with conflict detection                                                                                             |
+| File watcher                   | ✅     | `fs.watch` with 2-second debounce                                                                                                       |
+| Drag-and-drop sync             | ✅     | Drop files/folders into sync panel                                                                                                      |
+| CSP hardening                  | ✅     | `script-src 'self'`, `frame-src 'none'`                                                                                                 |
+| XSS prevention                 | ✅     | `createElement` / `textContent` only, no `innerHTML`                                                                                    |
+| Navigation blocking            | ✅     | `will-navigate` blocks non-file: URLs                                                                                                   |
+| Clipboard auto-clear           | ✅     | 30-second timeout                                                                                                                       |
+| Session token rotation         | ✅     | Regenerated on every auth event                                                                                                         |
+| Log rotation                   | ✅     | 5 MB max per file, 7-day bak cleanup                                                                                                    |
 
 ---
 
