@@ -1,6 +1,6 @@
 {
   "name": "vault",
-  "version": "3.0",
+  "version": "3.0.0",
   "description": "Encrypted password & notes vault",
   "main": "dist/main.js",
   "scripts": {
@@ -9,12 +9,14 @@
     "start": "vite build && tsc && tsc -p tsconfig.preload.json && electron .",
     "build:all": "vite build && tsc",
     "build:mac": "npm run build:all && electron-builder --mac",
-    "build:win": "npm run build:all && electron-builder --win",
-    "build:linux": "npm run build:all && electron-builder --linux"
+    "build:win": "npm run build:all && electron-builder --win && npm run rename:artifacts",
+    "build:linux": "npm run build:all && electron-builder --linux",
+    "rename:artifacts": "powershell -Command \"Get-ChildItem dist/*.exe | ForEach-Object { Rename-Item $_ $_.Name.Replace('3.0.0', '3.0') }; Get-ChildItem dist/*.blockmap | ForEach-Object { Rename-Item $_ $_.Name.Replace('3.0.0', '3.0') }\""
   },
   "build": {
     "appId": "com.vault.app",
     "productName": "Vault",
+    "artifactName": "Vault-${version}.${ext}",
     "icon": "assets/icon",
     "files": [
       "dist/**/*",
