@@ -934,11 +934,13 @@ ipcMain.handle(
       pinCacheMod.saveCache(driveClient.cache);
 
       const vault = await driveLoadItems(encKey, googleId, pinSalt);
+      const accountsMod = await import("./modules/accounts");
+      const savedAccount = accountsMod.loadAccounts().find((a) => a.googleId === googleId);
       const sess: Session = {
         googleId,
         email,
-        name: email.split("@")[0],
-        avatar: null as string | null,
+        name: savedAccount?.name || email.split("@")[0],
+        avatar: savedAccount?.avatar ?? null,
         userId: googleId,
         encKey,
         pending2fa: false,
@@ -949,7 +951,7 @@ ipcMain.handle(
       logger.authLog("auth:loginWithPin", "PIN login success", { email });
       return {
         ok: true,
-        user: { name: sess.name, email, avatar: null },
+        user: { name: sess.name, email, avatar: sess.avatar },
         token,
         vault,
       };

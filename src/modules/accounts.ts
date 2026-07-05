@@ -45,7 +45,7 @@ function getAccountsFilePath(): string {
   return path.join(dir, "vault_accounts");
 }
 
-function loadAccounts(): SavedAccount[] {
+export function loadAccounts(): SavedAccount[] {
   try {
     const file = getAccountsFilePath();
     if (!fs.existsSync(file)) return [];

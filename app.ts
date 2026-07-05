@@ -1901,20 +1901,24 @@ function openPwModal(existing: VaultItem | null = null): void {
   hideOverlay("modal-overlay");
   if (existing) {
     Object.assign(existing, { site, username, password, notes });
-    const r = await api.save("password", existing);
-    if (r.ok && !existing._localId) existing._localId = r.id;
     toast("Updated");
     logOk("password", "Password updated", { site });
+    renderPasswords();
+    updateCounts();
+    api.save("password", existing).then((r) => {
+      if (r.ok && !existing._localId) existing._localId = r.id;
+    });
   } else {
     const item: VaultItem = { id: uid(), site, username, password, notes };
-    const r = await api.save("password", item);
-    if (r.ok) item._localId = r.id;
     S.passwords.unshift(item);
     toast("Saved");
     logOk("password", "Password created", { site });
+    renderPasswords();
+    updateCounts();
+    api.save("password", item).then((r) => {
+      if (r.ok) item._localId = r.id;
+    });
   }
-  renderPasswords();
-  updateCounts();
 });
 (document.getElementById("modal-cancel") as HTMLButtonElement).addEventListener("click", () =>
   hideOverlay("modal-overlay"),
@@ -1933,12 +1937,13 @@ function openPwModal(existing: VaultItem | null = null): void {
   async () => {
     logInfo("note", "New note created");
     const note: VaultItem = { id: uid(), title: "Untitled", body: "" };
-    const r = await api.save("note", note);
-    if (r.ok) note._localId = r.id;
     S.notes.unshift(note);
     renderNotesList();
     updateCounts();
     openNote(note.id as string);
+    api.save("note", note).then((r) => {
+      if (r.ok) note._localId = r.id;
+    });
   },
 );
 
@@ -2961,6 +2966,27 @@ function applyAccent(name: string): void {
   document.querySelectorAll(".accent-swatch").forEach((s) => {
     (s as HTMLElement).classList.toggle("active", (s as HTMLElement).dataset.accent === name);
   });
+
+  // Sync the liquid background tint with the accent (mono/white stays neutral).
+  const setTint = (globalThis as unknown as Record<string, unknown>).__setLiquidBgAccent as
+    | ((r: number, g: number, b: number) => void)
+    | undefined;
+  if (setTint) {
+    if (name === "mono") {
+      setTint(255, 255, 255);
+    } else {
+      const probe = document.createElement("div");
+      probe.style.color = c;
+      probe.style.display = "none";
+      document.body.appendChild(probe);
+      const rgb = getComputedStyle(probe).color;
+      document.body.removeChild(probe);
+      const m = rgb.match(/[\d.]+/g);
+      if (m && m.length >= 3) {
+        setTint(Number.parseFloat(m[0]), Number.parseFloat(m[1]), Number.parseFloat(m[2]));
+      }
+    }
+  }
 }
 
 function applySetting(key: string, value: unknown): void {
@@ -3821,14 +3847,57 @@ void main() {
       1,
     ];
   };
-  const PALETTE = ["#050505", "#0f0f0f", "#0a0a0a", "#1a1a1a", "#141414"];
+  const BASE_PALETTE = ["#050505", "#0f0f0f", "#0a0a0a", "#1a1a1a", "#141414"];
+  let PALETTE = [...BASE_PALETTE];
   const colorBuf = new Float32Array(8 * 4);
-  PALETTE.forEach((hex, i) => {
-    const [r, g, b, a] = hexToRgba(hex);
-    colorBuf.set([r, g, b, a], i * 4);
-  });
-  const lastColor = hexToRgba(PALETTE[PALETTE.length - 1]);
-  for (let i = PALETTE.length; i < 8; i++) colorBuf.set(lastColor, i * 4);
+  function rebuildColorBuf(): void {
+    PALETTE.forEach((hex, i) => {
+      const [r, g, b, a] = hexToRgba(hex);
+      colorBuf.set([r, g, b, a], i * 4);
+    });
+    const lastColor = hexToRgba(PALETTE[PALETTE.length - 1]);
+    for (let i = PALETTE.length; i < 8; i++) colorBuf.set(lastColor, i * 4);
+  }
+  rebuildColorBuf();
+
+  // Blend each near-black base tone slightly toward the accent's hue, so the
+  // liquid background subtly shifts with the chosen accent color. "mono"
+  // (white) accent keeps the background purely neutral grayscale.
+  (globalThis as unknown as Record<string, unknown>).__setLiquidBgAccent = (
+    r: number,
+    g: number,
+    b: number,
+  ) => {
+    const MIX = 0.09; // subtle — background stays near-black
+    PALETTE = BASE_PALETTE.map((hex) => {
+      const [br, bg, bb] = hexToRgba(hex);
+      const mr = Math.round((br * (1 - MIX) + (r / 255) * MIX) * 255);
+      const mg = Math.round((bg * (1 - MIX) + (g / 255) * MIX) * 255);
+      const mb = Math.round((bb * (1 - MIX) + (b / 255) * MIX) * 255);
+      return `#${[mr, mg, mb].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+    });
+    rebuildColorBuf();
+  };
+  // applyAccent() at startup runs before this IIFE, so sync once now using
+  // whatever accent color is currently set on :root.
+  (() => {
+    const probe = document.createElement("div");
+    probe.style.color = getComputedStyle(document.documentElement).getPropertyValue("--accent");
+    probe.style.display = "none";
+    document.body.appendChild(probe);
+    const rgb = getComputedStyle(probe).color;
+    document.body.removeChild(probe);
+    const m = rgb.match(/[\d.]+/g);
+    if (m && m.length >= 3) {
+      (
+        (globalThis as unknown as Record<string, unknown>).__setLiquidBgAccent as (
+          r: number,
+          g: number,
+          b: number,
+        ) => void
+      )(Number.parseFloat(m[0]), Number.parseFloat(m[1]), Number.parseFloat(m[2]));
+    }
+  })();
 
   const PARAMS = {
     speed: 0.2,

@@ -327,33 +327,35 @@ export class DriveClient {
   }
 
   private async ensureSubfolders(): Promise<void> {
-    for (const name of Object.values(SUBFOLDERS)) {
-      if (this.subfolderIds[name]) continue;
-      const res = await this.driveApi!.files.list({
-        q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
-        spaces: "drive",
-        fields: "files(id, name)",
-      });
-      if (res.data.files && res.data.files.length > 0) {
-        this.subfolderIds[name] = res.data.files[0].id!;
-        this.logger.dbLog("drive:folder", `Found existing subfolder: ${name}`, {
-          folderId: this.subfolderIds[name],
+    await Promise.all(
+      Object.values(SUBFOLDERS).map(async (name) => {
+        if (this.subfolderIds[name]) return;
+        const res = await this.driveApi!.files.list({
+          q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${this.vaultFolderId}' in parents and trashed=false`,
+          spaces: "drive",
+          fields: "files(id, name)",
         });
-      } else {
-        const created = await this.driveApi!.files.create({
-          requestBody: {
-            name,
-            mimeType: "application/vnd.google-apps.folder",
-            parents: [this.vaultFolderId!],
-          },
-          fields: "id",
-        });
-        this.subfolderIds[name] = created.data.id!;
-        this.logger.dbLog("drive:folder", `Created subfolder: ${name}`, {
-          folderId: this.subfolderIds[name],
-        });
-      }
-    }
+        if (res.data.files && res.data.files.length > 0) {
+          this.subfolderIds[name] = res.data.files[0].id!;
+          this.logger.dbLog("drive:folder", `Found existing subfolder: ${name}`, {
+            folderId: this.subfolderIds[name],
+          });
+        } else {
+          const created = await this.driveApi!.files.create({
+            requestBody: {
+              name,
+              mimeType: "application/vnd.google-apps.folder",
+              parents: [this.vaultFolderId!],
+            },
+            fields: "id",
+          });
+          this.subfolderIds[name] = created.data.id!;
+          this.logger.dbLog("drive:folder", `Created subfolder: ${name}`, {
+            folderId: this.subfolderIds[name],
+          });
+        }
+      }),
+    );
   }
 
   /**
@@ -439,9 +441,9 @@ export class DriveClient {
   private async buildFileIdCache(): Promise<void> {
     if (!this.driveApi || !this.vaultFolderId) return;
 
-    for (const [, subfolderId] of Object.entries(this.subfolderIds)) {
-      await this.cacheSubfolderFiles(subfolderId);
-    }
+    await Promise.all(
+      Object.values(this.subfolderIds).map((subfolderId) => this.cacheSubfolderFiles(subfolderId)),
+    );
 
     this.logger.dbLog("drive:cache", "File ID cache built", {
       count: this.fileIdCache.size,
@@ -461,6 +463,7 @@ export class DriveClient {
     });
 
     // For each file on Drive, check if it's newer than our cache
+    const downloads: Promise<void>[] = [];
     for (const [fileName, fileId] of this.fileIdCache) {
       const parsed = this.parseItemFileName(fileName);
       if (!parsed) continue; // Skip non-item files (settings, etc.)
@@ -474,9 +477,10 @@ export class DriveClient {
         this.logger.dbLog("drive:conflict", "Downloading missing local item", {
           fileName,
         });
-        await this.downloadAndCacheItem(fileId, parsed.id, parsed.type);
+        downloads.push(this.downloadAndCacheItem(fileId, parsed.id, parsed.type));
       }
     }
+    await Promise.all(downloads);
 
     // Process any remaining dirty items from previous session
     if (this.cache.dirtyQueue.length > 0) {
