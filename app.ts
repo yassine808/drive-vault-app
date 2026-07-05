@@ -1663,6 +1663,7 @@ function renderPasswords(): void {
   list.forEach((pw) => {
     const row = document.createElement("div");
     row.className = "pw-row";
+    row.setAttribute("data-glow", "");
     const initial = (pw.site || "?")[0].toUpperCase();
 
     const iconId = "icon-" + pw.id;
@@ -1949,6 +1950,7 @@ function renderNotesList(): void {
   S.notes.forEach((n) => {
     const el = document.createElement("div");
     el.className = "note-chip draggable" + (String(n.id) === S.activeNote ? " active" : "");
+    el.setAttribute("data-glow", "");
     el.draggable = true;
     el.dataset.id = String(n.id);
     const dragHandle = document.createElement("span");
@@ -3548,14 +3550,69 @@ globalThis.addEventListener("beforeunload", () => {
   Object.keys(iconCache).forEach((k) => delete iconCache[k]);
 });
 
-// ── Spotlight glow: track pointer position over [data-glow] cards ──
+// ── Liquid gradient background — subtle black & white, speed 0.35 ──
+(function initLiquidBackground() {
+  const canvas = document.getElementById("liquid-bg") as HTMLCanvasElement | null;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const SPEED = 0.35;
+
+  function resize(): void {
+    canvas!.width = window.innerWidth;
+    canvas!.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  const blobs = [
+    { fx: 0.6, fy: 0.4, r: 0.55, phase: 0, alpha: 0.05 },
+    { fx: -0.5, fy: 0.6, r: 0.5, phase: 2.1, alpha: 0.04 },
+    { fx: 0.35, fy: -0.55, r: 0.45, phase: 4.2, alpha: 0.045 },
+    { fx: -0.4, fy: -0.35, r: 0.4, phase: 1.3, alpha: 0.035 },
+  ];
+
+  let t = 0;
+  function frame(): void {
+    t += 0.006 * SPEED;
+    const w = canvas!.width;
+    const h = canvas!.height;
+    ctx!.fillStyle = "#0a0a0a";
+    ctx!.fillRect(0, 0, w, h);
+    blobs.forEach((b) => {
+      const x = w / 2 + Math.sin(t * b.fx + b.phase) * w * 0.32;
+      const y = h / 2 + Math.cos(t * b.fy + b.phase) * h * 0.32;
+      const r = Math.max(w, h) * b.r;
+      const g = ctx!.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(255,255,255,${b.alpha})`);
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx!.fillStyle = g;
+      ctx!.fillRect(0, 0, w, h);
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+// ── Spotlight glow: track pointer, idle-orbit when not hovered ──
+let _hoveredGlowCard: HTMLElement | null = null;
 document.addEventListener("pointermove", (e: PointerEvent) => {
-  const target = (e.target as HTMLElement)?.closest("[data-glow]") as HTMLElement | null;
-  document.querySelectorAll<HTMLElement>("[data-glow]").forEach((card) => {
-    if (card === target) {
-      const rect = card.getBoundingClientRect();
-      card.style.setProperty("--glow-x", `${e.clientX - rect.left}px`);
-      card.style.setProperty("--glow-y", `${e.clientY - rect.top}px`);
-    }
-  });
+  _hoveredGlowCard = (e.target as HTMLElement)?.closest("[data-glow]") as HTMLElement | null;
+  if (_hoveredGlowCard) {
+    const rect = _hoveredGlowCard.getBoundingClientRect();
+    _hoveredGlowCard.style.setProperty("--glow-x", `${e.clientX - rect.left}px`);
+    _hoveredGlowCard.style.setProperty("--glow-y", `${e.clientY - rect.top}px`);
+  }
 });
+(function animateIdleGlow() {
+  const t = Date.now() / 3000;
+  document.querySelectorAll<HTMLElement>("[data-glow]").forEach((card) => {
+    if (card === _hoveredGlowCard) return;
+    const rect = card.getBoundingClientRect();
+    const x = 50 + Math.sin(t + rect.left * 0.01) * 40;
+    const y = 50 + Math.cos(t * 0.8 + rect.top * 0.01) * 40;
+    card.style.setProperty("--glow-x", `${x}%`);
+    card.style.setProperty("--glow-y", `${y}%`);
+  });
+  requestAnimationFrame(animateIdleGlow);
+})();
