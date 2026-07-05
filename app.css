@@ -188,7 +188,41 @@ body {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg), var(--shadow-in);
   animation: fadeUp var(--t-slow);
+  position: relative;
+  overflow: hidden;
 }
+
+/* ── Spotlight glow — white only, follows cursor ─────────────── */
+.login-card[data-glow]::before,
+.login-card[data-glow]::after {
+  pointer-events: none;
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.login-card[data-glow]:hover::before,
+.login-card[data-glow]:hover::after {
+  opacity: 1;
+}
+.login-card[data-glow]::before {
+  background: radial-gradient(
+    260px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+    oklch(1 0 0 / 0.16),
+    transparent 65%
+  );
+}
+.login-card[data-glow]::after {
+  background: radial-gradient(
+    140px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+    oklch(1 0 0 / 0.3),
+    transparent 70%
+  );
+  mix-blend-mode: overlay;
+}
+
 @keyframes fadeUp {
   from {
     opacity: 0;

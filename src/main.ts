@@ -323,11 +323,11 @@ async function googleOAuth(): Promise<GoogleProfile> {
 <meta http-equiv="refresh" content="2;url=${authUrl}">
 <style nonce="${nonce}">
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+body{background:#0d0d0d;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
 .card{background:rgba(30,30,50,.8);border:1px solid rgba(139,92,246,.3);border-radius:16px;padding:40px;text-align:center;max-width:400px}
-h2{color:#a78bfa;margin-bottom:8px}
+h2{color:#ffffff;margin-bottom:8px}
 p{color:#94a3b8;font-size:14px}
-a{color:#a78bfa}
+a{color:#ffffff}
 </style>
 </head><body><div class="card">
 <h2>Sign in with Google</h2>
@@ -426,9 +426,9 @@ a{color:#a78bfa}
       res.end(`<!DOCTYPE html><html><head><title>Vault — Authenticated</title>
 <style nonce="${nonce}">
   *{margin:0;padding:0;box-sizing:border-box}
-  body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+  body{background:#0d0d0d;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
   .card{background:rgba(30,30,50,.8);border:1px solid rgba(139,92,246,.3);border-radius:16px;padding:40px;text-align:center;max-width:400px}
-  h2{color:#a78bfa;margin-bottom:8px}
+  h2{color:#ffffff;margin-bottom:8px}
   p{color:#94a3b8;font-size:14px}
 </style>
 </head><body><div class="card"><h2>Authenticated!</h2><p>You can close this window.</p>
@@ -1308,9 +1308,9 @@ function createWindow(): void {
     frame: false,
     transparent: false,
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#00000000", symbolColor: "#a78bfa", height: 40 },
+    titleBarOverlay: { color: "#00000000", symbolColor: "#ffffff", height: 40 },
     icon: path.join(__dirname, "..", "icon.png"),
-    backgroundColor: "#0a0a0f",
+    backgroundColor: "#0d0d0d",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

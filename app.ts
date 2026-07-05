@@ -3547,3 +3547,15 @@ document.addEventListener("mouseover", (e: MouseEvent) => {
 globalThis.addEventListener("beforeunload", () => {
   Object.keys(iconCache).forEach((k) => delete iconCache[k]);
 });
+
+// ── Spotlight glow: track pointer position over [data-glow] cards ──
+document.addEventListener("pointermove", (e: PointerEvent) => {
+  const target = (e.target as HTMLElement)?.closest("[data-glow]") as HTMLElement | null;
+  document.querySelectorAll<HTMLElement>("[data-glow]").forEach((card) => {
+    if (card === target) {
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty("--glow-x", `${e.clientX - rect.left}px`);
+      card.style.setProperty("--glow-y", `${e.clientY - rect.top}px`);
+    }
+  });
+});
