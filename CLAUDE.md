@@ -202,6 +202,7 @@ Per-level log files in `Logs/` directory: `debug.log`, `info.log`, `success.log`
 ## Git commit identity
 
 Always commit as:
+
 - Author/committer: `yassine808 <166349232+yassine808@users.noreply.github.com>`
 - Add trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
 
