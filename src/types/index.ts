@@ -79,6 +79,7 @@ export interface Settings {
   lock_countdown: boolean;
   lock_on_minimize: boolean;
   compact: boolean;
+  bg_speed: number;
   animations: boolean;
   accent: string;
   gen_length: number;

@@ -20,6 +20,20 @@ declare global {
 }
 declare const api: PreloadApi;
 
+// ── Sync icon spin: shown while any save/sync is actively in flight ──
+let __activeSyncOps = 0;
+function withSyncSpin<T>(promise: Promise<T>): Promise<T> {
+  __activeSyncOps++;
+  const btn = document.getElementById("btn-sync");
+  btn?.classList.add("syncing");
+  const done = (): void => {
+    __activeSyncOps = Math.max(0, __activeSyncOps - 1);
+    if (__activeSyncOps === 0) btn?.classList.remove("syncing");
+  };
+  promise.then(done, done);
+  return promise;
+}
+
 // ── Extended settings for renderer (includes sound tone settings not in shared type) ──
 interface AppSettings extends Settings {
   sound_login_tone: string;
@@ -68,6 +82,7 @@ const S: AppState = {
     lock_countdown: true,
     lock_on_minimize: false,
     compact: false,
+    bg_speed: 0.2,
     animations: true,
     accent: "mono",
     sounds: true,
@@ -1905,7 +1920,7 @@ function openPwModal(existing: VaultItem | null = null): void {
     logOk("password", "Password updated", { site });
     renderPasswords();
     updateCounts();
-    api.save("password", existing).then((r) => {
+    withSyncSpin(api.save("password", existing)).then((r) => {
       if (r.ok && !existing._localId) existing._localId = r.id;
     });
   } else {
@@ -1915,7 +1930,7 @@ function openPwModal(existing: VaultItem | null = null): void {
     logOk("password", "Password created", { site });
     renderPasswords();
     updateCounts();
-    api.save("password", item).then((r) => {
+    withSyncSpin(api.save("password", item)).then((r) => {
       if (r.ok) item._localId = r.id;
     });
   }
@@ -1941,7 +1956,7 @@ function openPwModal(existing: VaultItem | null = null): void {
     renderNotesList();
     updateCounts();
     openNote(note.id as string);
-    api.save("note", note).then((r) => {
+    withSyncSpin(api.save("note", note)).then((r) => {
       if (r.ok) note._localId = r.id;
     });
   },
@@ -2026,7 +2041,7 @@ function openNote(id: string): void {
     (document.getElementById("n-wc") as HTMLElement).textContent = wc(note.body) + " words";
     renderNotesList();
     (document.getElementById("n-status") as HTMLElement).textContent = "Saving…";
-    const r = await api.save("note", note);
+    const r = await withSyncSpin(api.save("note", note));
     if (r.ok && !note._localId) note._localId = r.id;
     const s = document.getElementById("n-status") as HTMLElement;
     if (s) s.textContent = "Saved";
@@ -2910,6 +2925,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   lock_countdown: true,
   lock_on_minimize: false,
   compact: false,
+  bg_speed: 0.2,
   animations: true,
   accent: "mono",
   gen_length: 20,
@@ -2969,11 +2985,11 @@ function applyAccent(name: string): void {
 
   // Sync the liquid background tint with the accent (mono/white stays neutral).
   const setTint = (globalThis as unknown as Record<string, unknown>).__setLiquidBgAccent as
-    | ((r: number, g: number, b: number) => void)
+    | ((r: number, g: number, b: number, isMono: boolean) => void)
     | undefined;
   if (setTint) {
     if (name === "mono") {
-      setTint(255, 255, 255);
+      setTint(255, 255, 255, true);
     } else {
       const probe = document.createElement("div");
       probe.style.color = c;
@@ -2983,7 +2999,7 @@ function applyAccent(name: string): void {
       document.body.removeChild(probe);
       const m = rgb.match(/[\d.]+/g);
       if (m && m.length >= 3) {
-        setTint(Number.parseFloat(m[0]), Number.parseFloat(m[1]), Number.parseFloat(m[2]));
+        setTint(Number.parseFloat(m[0]), Number.parseFloat(m[1]), Number.parseFloat(m[2]), false);
       }
     }
   }
@@ -2998,6 +3014,12 @@ function applySetting(key: string, value: unknown): void {
   if (key === "compact") document.body.classList.toggle("compact", !!value);
   if (key === "animations") document.body.style.setProperty("--transition", value ? "" : "0s");
   if (key === "accent") applyAccent(value as string);
+  if (key === "bg_speed") {
+    const setSpeed = (globalThis as unknown as Record<string, unknown>).__setLiquidBgSpeed as
+      | ((speed: number) => void)
+      | undefined;
+    setSpeed?.(Number(value));
+  }
   if (key === "sounds")
     (globalThis as unknown as Record<string, unknown>).__soundsEnabled = !!value;
   __saveSettings();
@@ -3007,7 +3029,7 @@ function __saveSettings(): void {
   clearTimeout(__saveTimer!);
   __saveTimer = setTimeout(async () => {
     try {
-      await api.settings.save(S.settings as unknown as Record<string, unknown>);
+      await withSyncSpin(api.settings.save(S.settings as unknown as Record<string, unknown>));
     } catch {
       /* noop */
     }
@@ -3048,8 +3070,23 @@ async function loadSettingsTab(): Promise<void> {
   bind("s-lock-action", "lock_action", "select");
   bind("s-lock-countdown", "lock_countdown", "toggle");
   bind("s-lock-minimize", "lock_on_minimize", "toggle");
-  bind("s-compact", "compact", "toggle");
   bind("s-animations", "animations", "toggle");
+  {
+    const speedEl = document.getElementById("s-bg-speed") as HTMLInputElement | null;
+    const setSpeed = (globalThis as unknown as Record<string, unknown>).__setLiquidBgSpeed as
+      | ((speed: number) => void)
+      | undefined;
+    const initialSpeed = Number(S.settings.bg_speed ?? 0.2);
+    setSpeed?.(initialSpeed);
+    if (speedEl) {
+      speedEl.value = String(initialSpeed);
+      speedEl.addEventListener("input", () => {
+        const v = Number.parseFloat(speedEl.value);
+        setSpeed?.(v);
+        applySetting("bg_speed", v);
+      });
+    }
+  }
   bind("s-gen-length", "gen_length", "number");
   bind("s-gen-symbols", "gen_symbols", "toggle");
   bind("s-gen-numbers", "gen_numbers", "toggle");
@@ -3867,13 +3904,21 @@ void main() {
     r: number,
     g: number,
     b: number,
+    isMono: boolean,
   ) => {
-    const MIX = 0.09; // subtle — background stays near-black
-    PALETTE = BASE_PALETTE.map((hex) => {
-      const [br, bg, bb] = hexToRgba(hex);
-      const mr = Math.round((br * (1 - MIX) + (r / 255) * MIX) * 255);
-      const mg = Math.round((bg * (1 - MIX) + (g / 255) * MIX) * 255);
-      const mb = Math.round((bb * (1 - MIX) + (b / 255) * MIX) * 255);
+    if (isMono) {
+      PALETTE = [...BASE_PALETTE];
+      rebuildColorBuf();
+      return;
+    }
+    // Build a set of dark-to-mid tonal shades of the accent color itself,
+    // so the background visibly matches the chosen accent (e.g. red accent
+    // → red-black background), not just a faint hint of it.
+    const shades = [0.06, 0.1, 0.16, 0.22, 0.14];
+    PALETTE = shades.map((k) => {
+      const mr = Math.round(r * k);
+      const mg = Math.round(g * k);
+      const mb = Math.round(b * k);
       return `#${[mr, mg, mb].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
     });
     rebuildColorBuf();
@@ -3889,13 +3934,18 @@ void main() {
     document.body.removeChild(probe);
     const m = rgb.match(/[\d.]+/g);
     if (m && m.length >= 3) {
+      const rr = Number.parseFloat(m[0]);
+      const gg = Number.parseFloat(m[1]);
+      const bb = Number.parseFloat(m[2]);
+      const isGray = Math.abs(rr - gg) < 3 && Math.abs(gg - bb) < 3;
       (
         (globalThis as unknown as Record<string, unknown>).__setLiquidBgAccent as (
           r: number,
           g: number,
           b: number,
+          isMono: boolean,
         ) => void
-      )(Number.parseFloat(m[0]), Number.parseFloat(m[1]), Number.parseFloat(m[2]));
+      )(rr, gg, bb, isGray);
     }
   })();
 
@@ -3915,6 +3965,9 @@ void main() {
     contrast: 1.1,
     saturation: 1.0,
     loop: 0,
+  };
+  (globalThis as unknown as Record<string, unknown>).__setLiquidBgSpeed = (speed: number) => {
+    PARAMS.speed = Math.max(0, Math.min(1, speed));
   };
 
   let w = 0;

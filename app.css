@@ -477,6 +477,17 @@ body {
 .side-btn.sync:hover {
   background: var(--accent-dim);
 }
+.side-btn.sync.syncing svg {
+  animation: syncSpin 0.8s linear infinite;
+}
+@keyframes syncSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 .side-btn.logout:hover {
   background: var(--red-dim);
   color: var(--red);

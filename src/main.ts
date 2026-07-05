@@ -493,11 +493,17 @@ a{color:#ffffff}
         });
         const profile: GoogleProfile = {
           googleId:
-            (me.data.metadata?.sources?.[0]?.id as string) || crypto.randomBytes(8).toString("hex"),
+            (me.data.resourceName || "").replace("people/", "") ||
+            (me.data.metadata?.sources?.find((s) => s.type === "PROFILE")?.id as string) ||
+            (me.data.emailAddresses?.[0]?.value as string) ||
+            "",
           email: (me.data.emailAddresses?.[0]?.value as string) || "",
           name: (me.data.names?.[0]?.displayName as string) || "",
           avatar: (me.data.photos?.[0]?.url as string) || null,
         };
+        if (!profile.googleId) {
+          throw new Error("Could not determine a stable Google account ID");
+        }
         logger.authLog("oauth", "OAuth success", {
           email: profile.email,
           name: profile.name,
@@ -510,10 +516,28 @@ a{color:#ffffff}
         reject(e);
       }
     });
+    oauthServer.on("error", (err: NodeJS.ErrnoException) => {
+      logger.authLog("oauth", "OAuth server failed to start", { message: err.message });
+      oauthInProgress = false;
+      reject(err);
+    });
     oauthServer.listen(42813, "127.0.0.1", () => {
       logger.authLog("oauth", "OAuth server listening on 127.0.0.1:42813");
-      // Open Google auth directly — skip the intermediate redirect page
-      shell.openExternal(authUrl);
+      // Open Google auth directly — skip the intermediate redirect page.
+      // openExternal occasionally fails silently (e.g. default-browser
+      // resolution race on some OSes) — retry once if it does.
+      shell.openExternal(authUrl).catch((err) => {
+        logger.warn("oauth", "openExternal failed, retrying once", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        setTimeout(() => {
+          shell.openExternal(authUrl).catch((err2) => {
+            logger.warn("oauth", "openExternal retry failed", {
+              message: err2 instanceof Error ? err2.message : String(err2),
+            });
+          });
+        }, 400);
+      });
     });
     setTimeout(() => {
       try {
