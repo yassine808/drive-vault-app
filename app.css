@@ -192,35 +192,32 @@ body {
   overflow: hidden;
 }
 
-/* ── Spotlight glow — white only, follows cursor ─────────────── */
-.login-card[data-glow]::before,
-.login-card[data-glow]::after {
+/* ── Spotlight glow — white only, edge/border only, follows cursor ── */
+[data-glow] {
+  position: relative;
+}
+[data-glow]::before {
   pointer-events: none;
   content: "";
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(
+    180px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+    oklch(1 0 0 / 0.9),
+    transparent 70%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
   opacity: 0;
   transition: opacity 0.3s ease;
 }
-.login-card[data-glow]:hover::before,
-.login-card[data-glow]:hover::after {
+[data-glow]:hover::before {
   opacity: 1;
-}
-.login-card[data-glow]::before {
-  background: radial-gradient(
-    260px circle at var(--glow-x, 50%) var(--glow-y, 50%),
-    oklch(1 0 0 / 0.16),
-    transparent 65%
-  );
-}
-.login-card[data-glow]::after {
-  background: radial-gradient(
-    140px circle at var(--glow-x, 50%) var(--glow-y, 50%),
-    oklch(1 0 0 / 0.3),
-    transparent 70%
-  );
-  mix-blend-mode: overlay;
 }
 
 @keyframes fadeUp {
