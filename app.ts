@@ -69,7 +69,7 @@ const S: AppState = {
     lock_on_minimize: false,
     compact: false,
     animations: true,
-    accent: "copper",
+    accent: "mono",
     sounds: true,
     sound_login: true,
     sound_exit: true,
@@ -883,7 +883,7 @@ async function loadSettings(): Promise<void> {
   const r = await api.settings.load();
   if (r.ok) S.settings = { ...S.settings, ...r.settings } as AppSettings;
   applyLockSettings();
-  applyAccent(S.settings.accent || "copper");
+  applyAccent(S.settings.accent || "mono");
   document.body.classList.toggle("compact", !!S.settings.compact);
   document.body.style.setProperty("--transition", S.settings.animations ? "" : "0s");
   (globalThis as unknown as Record<string, unknown>).__soundsEnabled = S.settings.sounds !== false;
@@ -2904,7 +2904,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   lock_on_minimize: false,
   compact: false,
   animations: true,
-  accent: "copper",
+  accent: "mono",
   gen_length: 20,
   gen_symbols: true,
   gen_numbers: true,
@@ -2923,7 +2923,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const ACCENT_MAP: Record<string, string> = {
-  copper: "oklch(0.66 0.14 55)",
+  mono: "oklch(0.95 0 0)",
   blue: "oklch(0.62 0.20 250)",
   teal: "oklch(0.62 0.18 190)",
   green: "oklch(0.65 0.20 145)",
@@ -2938,7 +2938,7 @@ const ACCENT_MAP: Record<string, string> = {
   lime: "oklch(0.72 0.20 130)",
 };
 function applyAccent(name: string): void {
-  const c = ACCENT_MAP[name] || ACCENT_MAP.copper;
+  const c = ACCENT_MAP[name] || ACCENT_MAP.mono;
   document.documentElement.style.setProperty("--accent", c);
   document.documentElement.style.setProperty(
     "--accent-dim",
