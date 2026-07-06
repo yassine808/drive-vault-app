@@ -101,7 +101,7 @@ All handlers return `{ ok: boolean, ... }` pattern. Errors are caught and return
 - **Purpose**: Skip Google OAuth on subsequent logins. Users first sign in with Google, then enable PIN in settings.
 - **Storage**: All PIN data is local only — never sent to any remote server. Two files under `%APPDATA%/Vault/` (or `~/Library/Application Support/Vault/` on macOS, `~/.config/Vault/` on Linux):
   - `vault_user_key` — encrypted PIN payload (see below).
-  - `vault_pin_meta` — small **unencrypted** file: `{ googleId, allowAlpha }`. Neither field is sensitive; this only exists so the pre-login PIN screen (before any session/settings exist) knows *which* account has a PIN and whether it may contain letters. Reads of this file are defensive (missing/corrupt → `null`), since a PIN created by an older app version won't have it yet.
+  - `vault_pin_meta` — small **unencrypted** file: `{ googleId, allowAlpha }`. Neither field is sensitive; this only exists so the pre-login PIN screen (before any session/settings exist) knows _which_ account has a PIN and whether it may contain letters. Reads of this file are defensive (missing/corrupt → `null`), since a PIN created by an older app version won't have it yet.
 - **File format** (`vault_user_key`): `JSON.stringify({ version: 1, salt: base64, data: enc({ pinHash, userKey: { googleId, email }, allowAlpha }, derivePinKey(pin, salt)) })`
 - **Key derivation**: `derivePinKey(pin, salt)` — PBKDF2-SHA256, 600k iterations → 32-byte hex string.
 - **PIN hash**: Separate PBKDF2-SHA256 (600k iterations) stored inside the encrypted payload for verification.
@@ -158,11 +158,11 @@ All user data is stored in the user's Google Drive inside a `Vault` folder. Each
 - **Logos file**: `vault_logos` — JSON array of cached favicon data URLs
 - **Local cache**: `%APPDATA%/Vault/Cache/vault_cache.json` — full offline copy of all data
 - **Sync**: Event-driven debounce (2s) with dirty queue retry on failure.
-- **Conflict resolution on startup** (`DriveClient.init()` → `resolveConflicts()`): a snapshot of the previously-synced Drive `modifiedTime` per file is taken *before* `buildFileIcCache()` refreshes `cache.etags` to the current Drive state, so the two can actually be diffed. For each Drive file:
+- **Conflict resolution on startup** (`DriveClient.init()` → `resolveConflicts()`): a snapshot of the previously-synced Drive `modifiedTime` per file is taken _before_ `buildFileIcCache()` refreshes `cache.etags` to the current Drive state, so the two can actually be diffed. For each Drive file:
   - Missing locally → downloaded and added to the cache.
   - Present locally but Drive's `modifiedTime` has changed since the last sync → re-downloaded and the local item is updated in place (unless that item has an unsynced local change still sitting in the dirty queue, in which case the local edit wins and the remote refresh is skipped).
   - Unchanged → left alone.
-  This is what lets an edit made on another device actually show up here; a version that only checked "does this item exist locally at all" would never pick up remote edits to items you already have cached.
+    This is what lets an edit made on another device actually show up here; a version that only checked "does this item exist locally at all" would never pick up remote edits to items you already have cached.
 - **Offline**: Full offline support via local cache. Dirty queue flushes when connectivity returns.
 
 ### Security Measures

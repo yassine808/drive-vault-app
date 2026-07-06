@@ -19,14 +19,14 @@ _Secure storage for passwords, notes, job applications, and TOTP authenticator s
 
 Vault is an **Electron desktop app** for secure local storage of sensitive data. Everything is encrypted client-side (AES-256-CBC + HMAC-SHA256) before it ever touches Google Drive, so the server only ever sees ciphertext. Sign in with Google OAuth 2.0 (with optional TOTP 2FA), or skip straight past OAuth on later launches with a local PIN.
 
-| Property           | Detail                                                           |
-| ------------------ | ----------------------------------------------------------------- |
-| **Encryption**      | AES-256-CBC + HMAC-SHA256 (encrypt-then-MAC), per-item files      |
-| **Key derivation**  | PBKDF2-SHA256, 600k iterations, per-account salt                  |
-| **Storage**         | Google Drive (one encrypted file per item) + local offline cache  |
-| **Auth**            | Google OAuth 2.0 + optional TOTP 2FA + optional PIN quick-login   |
-| **Platform**        | Windows (NSIS/Portable), macOS (DMG), Linux (AppImage)            |
-| **Stack**           | TypeScript throughout, no frontend framework, Vite/esbuild bundling |
+| Property           | Detail                                                              |
+| ------------------ | ------------------------------------------------------------------- |
+| **Encryption**     | AES-256-CBC + HMAC-SHA256 (encrypt-then-MAC), per-item files        |
+| **Key derivation** | PBKDF2-SHA256, 600k iterations, per-account salt                    |
+| **Storage**        | Google Drive (one encrypted file per item) + local offline cache    |
+| **Auth**           | Google OAuth 2.0 + optional TOTP 2FA + optional PIN quick-login     |
+| **Platform**       | Windows (NSIS/Portable), macOS (DMG), Linux (AppImage)              |
+| **Stack**          | TypeScript throughout, no frontend framework, Vite/esbuild bundling |
 
 For module-by-module internals, IPC channel reference, and file layout, see [`CLAUDE.md`](./CLAUDE.md). This document focuses on **how the app actually behaves end-to-end**, from cold launch to lock/logout and back.
 
@@ -34,7 +34,7 @@ For module-by-module internals, IPC channel reference, and file layout, see [`CL
 
 ## Full Lifecycle
 
-The diagram below traces the app end-to-end, matching the actual code path for each step: process boot → both login paths (with their real internal ordering — Drive is initialized *before* the 2FA check on Google login, and PIN login rehydrates or falls back to a cache-only client) → Drive's conflict resolution → every active-session mutation and how it reaches Drive → the difference between locking, logging out, minimizing to tray, and quitting.
+The diagram below traces the app end-to-end, matching the actual code path for each step: process boot → both login paths (with their real internal ordering — Drive is initialized _before_ the 2FA check on Google login, and PIN login rehydrates or falls back to a cache-only client) → Drive's conflict resolution → every active-session mutation and how it reaches Drive → the difference between locking, logging out, minimizing to tray, and quitting.
 
 ```mermaid
 flowchart TD
@@ -188,16 +188,15 @@ flowchart TD
 
 **Boot.** The main process loads native deps, registers every IPC module (`jobs`, `totp`, `settings`, `logo`, `pin`, `accounts`, `sync`), then creates one frameless `BrowserWindow` plus a system tray icon before the renderer ever runs. Nothing in the renderer can assume a session or settings exist yet — the very first call it makes is `pin:status`, which decides both the starting screen and whether the PIN input should accept letters (`allowAlpha`).
 
-**Google OAuth path.** Drive is initialized (folder, subfolders, migration, conflict resolution) and the refresh token is encrypted to disk **before** the 2FA check — 2FA is the last gate before a session token exists, not the first. If 2FA is enabled, a *pending* session is set with no token yet; only a correct TOTP code (`auth:verify2fa`, rate-limited 5/15 min) produces one.
+**Google OAuth path.** Drive is initialized (folder, subfolders, migration, conflict resolution) and the refresh token is encrypted to disk **before** the 2FA check — 2FA is the last gate before a session token exists, not the first. If 2FA is enabled, a _pending_ session is set with no token yet; only a correct TOTP code (`auth:verify2fa`, rate-limited 5/15 min) produces one.
 
 **PIN login path.** `pin:verify` never hands the renderer a password, token, or Google ID — it returns a one-time `verifyId` that `auth:loginWithPin` immediately burns via `consumePinVerify`. From there it rebuilds Drive access from a stored, encrypted OAuth refresh token if no live client exists yet; if there's no stored token, or `driveClient.init()` throws, it silently falls back to a **cache-only** client — the app still opens, but nothing syncs until a full Google sign-in restores the connection. Five wrong PIN attempts in 15 minutes trigger a 15-minute lockout, tracked on disk so it survives a restart.
 
-**Drive init & conflict resolution.** Both login paths funnel into the exact same `driveClient.init()` sequence. The key line is the etag snapshot taken *before* `buildFileIdCache()` refreshes the live etags — without it there'd be nothing to diff against, and edits made on another device would never come down. Items missing locally get downloaded; items that exist locally *and* changed on Drive get re-downloaded and replace the local copy in place, unless that item still has an unsynced edit sitting in the dirty queue, in which case the local edit wins.
+**Drive init & conflict resolution.** Both login paths funnel into the exact same `driveClient.init()` sequence. The key line is the etag snapshot taken _before_ `buildFileIdCache()` refreshes the live etags — without it there'd be nothing to diff against, and edits made on another device would never come down. Items missing locally get downloaded; items that exist locally _and_ changed on Drive get re-downloaded and replace the local copy in place, unless that item still has an unsynced edit sitting in the dirty queue, in which case the local edit wins.
 
 **Active session.** Every mutation — add, edit, soft-delete (to Trash), restore, permanent delete, or reorder — updates the local cache first (instant UI, works offline), then queues a dirty-queue entry and (re)starts a 2-second debounce. The sidebar sync icon spins for the whole in-flight window. "Sync Now" (`vault:sync`) forces an immediate flush of that queue and reloads from the local cache — it does **not** re-run conflict resolution against Drive, so it won't pull down someone else's edits the way a fresh login does. Failed Drive writes retry up to 3 times before being dropped (and logged) rather than looping forever; anything still queued when the app closes just waits for the next launch or manual sync.
 
 **Locking vs. logging out vs. closing the window.** These three are not the same operation. **Lock** only calls `clearSession()` — the `DriveClient` instance, and any sync it has in flight, keeps running in the background. **Logout** calls `driveClient.close()` first (final flush, timer stopped, client discarded) and only then clears the session — a clean break. **Clicking the window's close button** doesn't quit at all; it minimizes to the tray so background sync can keep working. Only quitting from the tray menu or an OS shutdown hits `before-quit`, which flushes any pending sync one last time before the process exits.
-
 
 ---
 
@@ -205,11 +204,11 @@ flowchart TD
 
 ### Prerequisites
 
-| Requirement           | Version | Purpose                               |
-| ---------------------- | ------- | -------------------------------------- |
-| Node.js                | ≥ 18    | Runtime                                |
-| npm                    | ≥ 9     | Package manager                        |
-| Google Cloud Project   | —       | OAuth credentials + Drive API enabled  |
+| Requirement          | Version | Purpose                               |
+| -------------------- | ------- | ------------------------------------- |
+| Node.js              | ≥ 18    | Runtime                               |
+| npm                  | ≥ 9     | Package manager                       |
+| Google Cloud Project | —       | OAuth credentials + Drive API enabled |
 
 ### Environment variables
 
@@ -258,11 +257,11 @@ No test suite, linter, or formatter is currently configured.
 
 ## Build Targets
 
-| Platform | Command               | Output                                                  |
-| -------- | ---------------------- | -------------------------------------------------------- |
-| Windows  | `npm run build:win`    | `dist/Vault Setup {version}.exe` (NSIS) + portable `.exe` |
-| macOS    | `npm run build:mac`    | `dist/Vault-{version}.dmg`                                |
-| Linux    | `npm run build:linux`  | `dist/Vault-{version}.AppImage`                           |
+| Platform | Command               | Output                                                    |
+| -------- | --------------------- | --------------------------------------------------------- |
+| Windows  | `npm run build:win`   | `dist/Vault Setup {version}.exe` (NSIS) + portable `.exe` |
+| macOS    | `npm run build:mac`   | `dist/Vault-{version}.dmg`                                |
+| Linux    | `npm run build:linux` | `dist/Vault-{version}.AppImage`                           |
 
 ---
 
