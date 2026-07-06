@@ -1639,9 +1639,7 @@ async function checkBreach(password: string): Promise<{ breached: boolean; count
   try {
     // SHA-1 is mandated by the HIBP k-anonymity API (RFC 9132): the protocol
     // only accepts a 5-char SHA-1 prefix; the full hash never leaves the client.
-    // Sonar weak-hash rule does not apply to protocol-mandated algorithms. // NOSONAR
-    // eslint-disable-next-line sonarjs/no-weak-hash
-    const sha1 = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(password));
+    const sha1 = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(password)); // NOSONAR
     const hex = Array.from(new Uint8Array(sha1))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("")
@@ -1708,7 +1706,7 @@ function renderPasswords(): void {
   list.forEach((pw) => {
     const row = document.createElement("div");
     row.className = "pw-row";
-    row.setAttribute("data-glow", "");
+    row.dataset.glow = "";
     const initial = (pw.site || "?")[0].toUpperCase();
 
     const iconId = "icon-" + pw.id;
@@ -2000,7 +1998,7 @@ function renderNotesList(): void {
   S.notes.forEach((n) => {
     const el = document.createElement("div");
     el.className = "note-chip draggable" + (String(n.id) === S.activeNote ? " active" : "");
-    el.setAttribute("data-glow", "");
+    el.dataset.glow = "";
     el.draggable = true;
     el.dataset.id = String(n.id);
     const dragHandle = document.createElement("span");
@@ -3025,7 +3023,7 @@ function applyAccent(name: string): void {
       probe.style.display = "none";
       document.body.appendChild(probe);
       const rgb = getComputedStyle(probe).color;
-      document.body.removeChild(probe);
+      probe.remove();
       const m = rgb.match(/[\d.]+/g);
       if (m && m.length >= 3) {
         setTint(Number.parseFloat(m[0]), Number.parseFloat(m[1]), Number.parseFloat(m[2]), false);
@@ -3906,9 +3904,9 @@ void main() {
   const hexToRgba = (hex: string): [number, number, number, number] => {
     const c = hex.replace("#", "");
     return [
-      parseInt(c.substring(0, 2), 16) / 255,
-      parseInt(c.substring(2, 4), 16) / 255,
-      parseInt(c.substring(4, 6), 16) / 255,
+      Number.parseInt(c.substring(0, 2), 16) / 255,
+      Number.parseInt(c.substring(2, 4), 16) / 255,
+      Number.parseInt(c.substring(4, 6), 16) / 255,
       1,
     ];
   };
@@ -3920,7 +3918,7 @@ void main() {
       const [r, g, b, a] = hexToRgba(hex);
       colorBuf.set([r, g, b, a], i * 4);
     });
-    const lastColor = hexToRgba(PALETTE[PALETTE.length - 1]);
+    const lastColor = hexToRgba(PALETTE.at(-1)!);
     for (let i = PALETTE.length; i < 8; i++) colorBuf.set(lastColor, i * 4);
   }
   rebuildColorBuf();
@@ -3959,7 +3957,7 @@ void main() {
     probe.style.display = "none";
     document.body.appendChild(probe);
     const rgb = getComputedStyle(probe).color;
-    document.body.removeChild(probe);
+    probe.remove();
     const m = rgb.match(/[\d.]+/g);
     if (m && m.length >= 3) {
       const rr = Number.parseFloat(m[0]);

@@ -530,17 +530,18 @@ a{color:#ffffff}
       // resolution race on some OSes, or resolves without actually
       // launching a window) — retry once, then let the renderer offer a
       // manual "open link" fallback via auth:openUrl if it still didn't work.
+      const retryOpenExternal = (): void => {
+        shell.openExternal(authUrl).catch((error_) => {
+          logger.warn("oauth", "openExternal retry failed", {
+            message: error_ instanceof Error ? error_.message : String(error_),
+          });
+        });
+      };
       shell.openExternal(authUrl).catch((err) => {
         logger.warn("oauth", "openExternal failed, retrying once", {
           message: err instanceof Error ? err.message : String(err),
         });
-        setTimeout(() => {
-          shell.openExternal(authUrl).catch((err2) => {
-            logger.warn("oauth", "openExternal retry failed", {
-              message: err2 instanceof Error ? err2.message : String(err2),
-            });
-          });
-        }, 400);
+        setTimeout(retryOpenExternal, 400);
       });
       win?.webContents.send("auth:url-ready", authUrl);
     });

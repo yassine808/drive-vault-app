@@ -90,7 +90,12 @@ function enc(obj: object, key: string): string {
   const { encKey, macKey } = _keysFromHexKey(key);
   const plaintext = JSON.stringify(obj);
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", encKey, iv);
+  // CBC here is paired with a separate HMAC-SHA256 over (iv || ciphertext) —
+  // a standard encrypt-then-MAC construction, not raw unauthenticated CBC.
+  // Switching to an AEAD mode (e.g. GCM) would require a full re-encryption
+  // migration of all existing user vaults; not done here to avoid risking
+  // data loss. NOSONAR
+  const cipher = crypto.createCipheriv("aes-256-cbc", encKey, iv); // NOSONAR
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const mac = crypto.createHmac("sha256", macKey).update(iv).update(ct).digest();
   const packed = Buffer.concat([mac, iv, ct]);
