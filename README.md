@@ -34,101 +34,170 @@ For module-by-module internals, IPC channel reference, and file layout, see [`CL
 
 ## Full Lifecycle
 
-The diagram below traces one continuous path through the app: cold start → authentication (PIN or Google) → Drive initialization & conflict resolution → the active session's CRUD/sync loop → locking or logging out and looping back to the start.
+The diagram below traces the app end-to-end, matching the actual code path for each step: process boot → both login paths (with their real internal ordering — Drive is initialized *before* the 2FA check on Google login, and PIN login rehydrates or falls back to a cache-only client) → Drive's conflict resolution → every active-session mutation and how it reaches Drive → the difference between locking, logging out, minimizing to tray, and quitting.
 
 ```mermaid
 flowchart TD
-    Start([App launches]) --> CheckPin{"pin:status"}
-    CheckPin -- "PIN enabled" --> PinScreen[Show PIN screen<br/>apply allowAlpha to input]
-    CheckPin -- "no PIN set up" --> LoginScreen[Show Google sign-in screen]
+    AppStart([Electron app.whenReady]) --> LoadDeps["Load CryptoJS + speakeasy"]
+    LoadDeps --> RegisterIPC["Register IPC modules:<br/>jobs, totp, settings, logo, pin, accounts, sync"]
+    RegisterIPC --> CreateWindow["createWindow(): frameless BrowserWindow<br/>+ system tray, loads dist/index.html"]
+    CreateWindow --> RendererBoot["Renderer boots, calls pin:status"]
+    RendererBoot --> CheckPin{"pin:status"}
+    CheckPin -- "PIN enabled" --> PinScreen["Show PIN screen<br/>apply allowAlpha to input"]
+    CheckPin -- "no PIN set up" --> LoginScreen["Show Google sign-in screen"]
 
-    subgraph AUTH["Authentication"]
+    subgraph AUTH_PIN["PIN login path"]
         direction TB
-        PinScreen --> PickAccount[Pick a saved account, or none]
-        PickAccount --> EnterPin[Enter PIN]
-        EnterPin --> PinVerify{"pin:verify"}
+        PinScreen --> PickAccount["Pick a saved account, or none"]
+        PickAccount --> EnterPin["Enter PIN"]
+        EnterPin --> PinVerify{"pin:verify<br/>rate-limited 5 / 15 min"}
         PinVerify -- wrong --> EnterPin
-        PinVerify -- "5 wrong attempts / 15 min" --> Lockout["15-minute lockout"]
+        PinVerify -- "5 wrong attempts" --> Lockout["15-minute lockout"]
         Lockout --> EnterPin
-        PinVerify -- correct --> LoginWithPin["auth:loginWithPin(verifyId)"]
+        PinVerify -- correct --> VerifyId["Returns one-time verifyId + email<br/>no PIN or token reaches the renderer"]
+        VerifyId --> LoginWithPin["auth:loginWithPin(verifyId)"]
+        LoginWithPin --> ConsumeVerify["consumePinVerify(verifyId) burns the one-time id"]
+        ConsumeVerify --> ValidateShape["Validate googleId + email format"]
+        ValidateShape --> PinSalt["Load, or generate, per-account salt"]
+        PinSalt --> PinDeriveKey["deriveKey(googleId, salt) — PBKDF2-SHA256, 600k iters"]
+        PinDeriveKey --> Rehydrate{"Live oauth2Client already in memory?"}
+        Rehydrate -- no --> LoadTokens["loadOAuthTokens(): decrypt stored refresh token"]
+        LoadTokens --> HaveTokens{"Tokens on disk?"}
+        HaveTokens -- yes --> BuildClient["Rebuild oauth2Client from stored tokens"]
+        HaveTokens -- no --> CacheOnlyPin["Cache-only DriveClient — offline, nothing syncs"]
+        Rehydrate -- yes --> PinDriveInit
+        BuildClient --> PinDriveInit["new DriveClient + driveClient.init()"]
+        PinDriveInit -- "init throws" --> CacheOnlyPin
+        PinDriveInit -- ok --> PersistPinSalt["Persist salt to cache settings"]
+        CacheOnlyPin --> PersistPinSalt
         PinScreen -. "Sign in with Google instead" .-> LoginScreen
-
-        LoginScreen --> OAuth[Google OAuth 2.0 popup]
-        OAuth --> TwoFACheck{"2FA enabled?"}
-        TwoFACheck -- yes --> TwoFA[Enter TOTP code]
-        TwoFA --> TwoFAVerify{"2fa:verify"}
-        TwoFAVerify -- wrong --> TwoFA
-        TwoFAVerify -- correct --> SessionCreate
-        TwoFACheck -- no --> SessionCreate[Create session token]
-        LoginWithPin --> SessionCreate
     end
 
-    SessionCreate --> RehydrateOAuth[Rehydrate OAuth client from encrypted refresh token]
-    RehydrateOAuth --> DriveInit[DriveClient.init]
-    DriveInit --> EnsureFolders[Ensure Vault folder + subfolders on Drive]
-    EnsureFolders --> Snapshot["Snapshot previously-synced etags"]
-    Snapshot --> BuildIndex["buildFileIdCache: list Drive files, refresh etags"]
-    BuildIndex --> Resolve["resolveConflicts: diff current vs snapshot"]
-    Resolve -- "missing locally" --> Download[Download file, add to cache]
-    Resolve -- "changed on Drive, no local edit pending" --> Download
-    Resolve -- "local edit still unsynced" --> KeepLocal[Keep local version]
-    Resolve -- "unchanged" --> KeepLocal
-    Download --> LoadVault[Decrypt items, load vault into memory]
-    KeepLocal --> LoadVault
-    LoadVault --> AppReady([Enter app])
+    subgraph AUTH_GOOGLE["Google OAuth path"]
+        direction TB
+        LoginScreen --> ClearOldSession["auth:login: clearSession()"]
+        ClearOldSession --> OAuthBusy{"OAuth already in progress?"}
+        OAuthBusy -- yes --> OAuthBlocked["Reject: finish it in the browser first"]
+        OAuthBusy -- no --> GoogleOAuth["googleOAuth(): spins up localhost:42813,<br/>opens system browser, exchanges code for tokens"]
+        GoogleOAuth --> GoogleSalt["Load, or generate, per-account salt"]
+        GoogleSalt --> GoogleDeriveKey["deriveKey(googleId, salt) — PBKDF2-SHA256, 600k iters"]
+        GoogleDeriveKey --> GoogleDriveInit["new DriveClient + driveClient.init()"]
+        GoogleDriveInit --> PersistTokens["persistOAuthTokens(): encrypt refresh token<br/>with Electron safeStorage"]
+        PersistTokens --> TwoFACheck{"2FA enabled on this account?"}
+        TwoFACheck -- yes --> PendingSession["setSession(pending2fa: true) — no session token yet"]
+        PendingSession --> TwoFAScreen["Show TOTP entry screen"]
+        TwoFAScreen --> TwoFAVerify{"auth:verify2fa<br/>rate-limited 5 / 15 min"}
+        TwoFAVerify -- wrong --> TwoFAScreen
+        TwoFAVerify -- correct --> GoogleFinish
+        TwoFACheck -- no --> GoogleFinish["genSessionToken() — 12h TTL, timing-safe checked on every call"]
+    end
+
+    PersistPinSalt --> LoadVault["driveLoadItems(): decrypt every password + note"]
+    GoogleFinish --> LoadVault
+    LoadVault --> SetSession["setSession(...) + play login sound"]
+    SetSession --> AppReady(["Enter app"])
+
+    subgraph DRIVEINIT["driveClient.init() — run by both login paths"]
+        direction TB
+        DI_Start["init(authClient) called"] --> DI_Folder["ensureVaultFolder(): find/create the Vault folder on Drive"]
+        DI_Folder --> DI_Sub["ensureSubfolders(): passwords/notes/jobs/totp subfolders"]
+        DI_Sub --> DI_Migrate["migrateFlatFiles(): move any pre-subfolder files into place"]
+        DI_Migrate --> DI_Snapshot["Snapshot previousEtags = {...cache.etags}<br/>before it gets overwritten"]
+        DI_Snapshot --> DI_Build["buildFileIdCache(): list files per subfolder,<br/>refresh cache.etags to current modifiedTime"]
+        DI_Build --> DI_Resolve["resolveConflicts(previousEtags)"]
+        DI_Resolve -- "missing locally" --> DI_Download["downloadAndCacheItem(): add to cache"]
+        DI_Resolve -- "changed on Drive, no local edit pending" --> DI_Download2["downloadAndCacheItem(): update cache item in place"]
+        DI_Resolve -- "local edit still in dirty queue" --> DI_Keep["Keep local version — local edit wins"]
+        DI_Resolve -- unchanged --> DI_Keep
+        DI_Download --> DI_Ready(["Drive client ready"])
+        DI_Download2 --> DI_Ready
+        DI_Keep --> DI_Ready
+    end
+
+    GoogleDriveInit -.-> DI_Start
+    PinDriveInit -.-> DI_Start
 
     subgraph SESSION["Active session"]
         direction TB
         AppReady --> UserAction{"User action"}
 
-        UserAction -- "add / edit item" --> SaveItem[Update local cache]
-        UserAction -- "delete item" --> SoftDelete["Soft-delete: mark deletedAt (moves to Trash)"]
-        UserAction -- "permanently delete from Trash" --> PermDelete["permDelete: remove from cache + queue Drive file deletion"]
-        SaveItem --> DirtyQueue[Push to dirty queue<br/>persisted to disk cache]
-        SoftDelete --> DirtyQueue
-        PermDelete --> DirtyQueue
-        DirtyQueue --> IconSpin["Sidebar sync icon spins (withSyncSpin)"]
-        IconSpin --> Debounce["2s debounce"]
-        Debounce --> SyncToDrive["syncToDrive: flush dirty queue"]
+        UserAction -- "add / edit password, note, job, or TOTP entry" --> Encrypt["enc(): AES-256-CBC + HMAC-SHA256, random IV"]
+        Encrypt --> SaveItem["driveClient.saveItem(): update the cache array in place,<br/>or create with a new UUID"]
+        UserAction -- "delete item" --> SoftDelete["softDelete(): set deletedAt — moves item to Trash"]
+        UserAction -- "restore from Trash" --> Restore["restore(): clear deletedAt"]
+        UserAction -- "permanently delete from Trash" --> PermDelete["permDelete(): splice item out of the cache array"]
+        UserAction -- "reorder a list" --> Reorder["updateSortOrder(): reindex every item, queue each one"]
 
-        UserAction -- "click Sync Now button" --> ManualSync["api.vaultSync()"]
+        SaveItem --> PushDirty["pushDirty(): create/update entry —<br/>replaces any existing entry for the same id"]
+        SoftDelete --> PushDirty
+        Restore --> PushDirty
+        Reorder --> PushDirty
+        PermDelete --> PushDirtyDel["pushDirty(): delete entry"]
+
+        PushDirty --> MarkDirty["markDirty(): (re)start the 2s debounce timer"]
+        PushDirtyDel --> MarkDirty
+        MarkDirty --> IconSpin["Sidebar sync icon spins — withSyncSpin"]
+        IconSpin --> Debounce["2s debounce elapses with no further edits"]
+        Debounce --> SyncToDrive["syncToDrive(): save cache to disk,<br/>then flush the dirty queue"]
+
+        UserAction -- "click Sync Now button" --> ManualSync["vault:sync — syncToDrive() runs immediately,<br/>then reloads items from local cache<br/>(push-only: doesn't re-run conflict resolution)"]
         ManualSync --> IconSpin
 
-        SyncToDrive -- success --> ClearDirty[Remove item from dirty queue]
-        SyncToDrive -- "network / API error" --> Retry{"retryCount < 3?"}
-        Retry -- yes --> DirtyQueue
-        Retry -- "no, or app was offline" --> StayQueued["Item stays in dirty queue on disk,<br/>retried next launch or Sync Now"]
-        ClearDirty --> IconStop[Icon stops spinning]
-        StayQueued --> IconStop
+        SyncToDrive --> ProcessItem{"For each item in the queue"}
+        ProcessItem -- "create, no Drive file yet" --> DriveCreate["Drive files.create in the right subfolder"]
+        ProcessItem -- "update, file exists" --> DriveUpdate["Drive files.update"]
+        ProcessItem -- delete --> DriveDelete["Drive files.delete"]
+        DriveCreate -- success --> ClearDirty["Remove item from dirty queue"]
+        DriveUpdate -- success --> ClearDirty
+        DriveDelete -- success --> ClearDirty
+        DriveCreate -- "network / API error" --> Retry{"retryCount < 3?"}
+        DriveUpdate -- "network / API error" --> Retry
+        DriveDelete -- "network / API error" --> Retry
+        Retry -- yes --> StillQueued["Stays in the dirty queue,<br/>retried next debounce, Sync Now, or launch"]
+        Retry -- no --> DropItem["Drop item from queue, log the error"]
+        ClearDirty --> IconStop["Icon stops spinning"]
+        StillQueued --> IconStop
+        DropItem --> IconStop
 
         UserAction -- "enable / change / disable PIN in Settings" --> PinMgmt{"pin:setup / pin:change / pin:disable"}
-        PinMgmt --> UpdateMeta["Update vault_pin_meta + reset rate limiter"]
+        PinMgmt --> UpdateMeta["Update vault_pin_meta + reset the PIN rate limiter"]
         UpdateMeta --> UserAction
 
-        UserAction -- "idle timeout / manual lock" --> Lock[doLock: wipe sensitive data from memory]
-        UserAction -- "logout" --> Logout[doLogout: clear session + memory]
+        UserAction -- "manual lock (lock icon)" --> Lock["auth:lock: clearSession() only —<br/>DriveClient and any pending sync keep running"]
+        UserAction -- logout --> Logout["auth:logout: driveClient.close()<br/>(flush + stop debounce timer), then clearSession()"]
+        UserAction -- "idle timer expires (default 5 min, configurable)" --> AutoLockCheck{"lock_action setting"}
+        AutoLockCheck -- lock --> Lock
+        AutoLockCheck -- "exit app" --> QuitApp
+        UserAction -- "close window (X)" --> MinimizeToTray["Hide/minimize to tray — app keeps running"]
+        MinimizeToTray -.-> UserAction
+        UserAction -- "Quit from tray menu, or OS shutdown" --> QuitApp["before-quit: driveClient.close() flushes any pending sync"]
     end
 
     Lock --> PostLockCheck{"pin_login_enabled?"}
     PostLockCheck -- yes --> PinScreen
-    PostLockCheck -- no --> GoogleUnlock[Show Google unlock screen]
+    PostLockCheck -- no --> GoogleUnlock["Show Google unlock screen"]
 
     Logout --> PostLogoutCheck{"pin_login_enabled?"}
     PostLogoutCheck -- yes --> PinScreen
     PostLogoutCheck -- no --> LoginScreen
+
+    QuitApp --> ProcessExit(["Process exits"])
 ```
 
 ### Reading the flow
 
-**Cold start.** The renderer never assumes it knows anything before `pin:status` answers — that single call decides both which screen to show and, now, whether the PIN input should accept letters (`allowAlpha`), since real session settings don't exist yet at this point.
+**Boot.** The main process loads native deps, registers every IPC module (`jobs`, `totp`, `settings`, `logo`, `pin`, `accounts`, `sync`), then creates one frameless `BrowserWindow` plus a system tray icon before the renderer ever runs. Nothing in the renderer can assume a session or settings exist yet — the very first call it makes is `pin:status`, which decides both the starting screen and whether the PIN input should accept letters (`allowAlpha`).
 
-**Authentication.** Both paths converge on a session token. PIN login never lets a token or Google ID pass through the renderer in cleartext — `pin:verify` hands back a short-lived `verifyId` that only `auth:loginWithPin` can redeem. Five wrong PIN attempts in 15 minutes trigger a 15-minute lockout, tracked on disk so it survives an app restart.
+**Google OAuth path.** Drive is initialized (folder, subfolders, migration, conflict resolution) and the refresh token is encrypted to disk **before** the 2FA check — 2FA is the last gate before a session token exists, not the first. If 2FA is enabled, a *pending* session is set with no token yet; only a correct TOTP code (`auth:verify2fa`, rate-limited 5/15 min) produces one.
 
-**Drive init & conflict resolution.** This is the step that keeps the local cache honest. A snapshot of each file's last-known `modifiedTime` is taken *before* the live index refresh overwrites it, so the app can tell "unchanged" apart from "edited elsewhere since we last synced" — the latter triggers a re-download that replaces the stale local copy, unless that item still has an unsynced local edit sitting in the dirty queue (local wins in that case).
+**PIN login path.** `pin:verify` never hands the renderer a password, token, or Google ID — it returns a one-time `verifyId` that `auth:loginWithPin` immediately burns via `consumePinVerify`. From there it rebuilds Drive access from a stored, encrypted OAuth refresh token if no live client exists yet; if there's no stored token, or `driveClient.init()` throws, it silently falls back to a **cache-only** client — the app still opens, but nothing syncs until a full Google sign-in restores the connection. Five wrong PIN attempts in 15 minutes trigger a 15-minute lockout, tracked on disk so it survives a restart.
 
-**Active session.** Every mutation — add, edit, soft-delete (to Trash), or permanent delete — goes local-first (instant UI, offline-safe), gets queued, and is flushed to Drive on a 2-second debounce or an immediate manual "Sync now". The sidebar sync icon spins for the whole in-flight window, whether that's one save or several queued at once. Failed syncs retry up to 3 times; if the app is offline or retries are exhausted, the item simply stays in the on-disk dirty queue and is picked up again on the next launch or manual sync — nothing is silently lost. Enabling, changing, or disabling the PIN from Settings updates `vault_pin_meta` and resets the rate limiter, then returns straight back into the session.
+**Drive init & conflict resolution.** Both login paths funnel into the exact same `driveClient.init()` sequence. The key line is the etag snapshot taken *before* `buildFileIdCache()` refreshes the live etags — without it there'd be nothing to diff against, and edits made on another device would never come down. Items missing locally get downloaded; items that exist locally *and* changed on Drive get re-downloaded and replace the local copy in place, unless that item still has an unsynced edit sitting in the dirty queue, in which case the local edit wins.
 
-**Locking / logging out.** Both funnel back to the same fork at the top of the diagram: if PIN login is enabled you land back on the PIN screen, otherwise back on the appropriate Google screen — closing the loop.
+**Active session.** Every mutation — add, edit, soft-delete (to Trash), restore, permanent delete, or reorder — updates the local cache first (instant UI, works offline), then queues a dirty-queue entry and (re)starts a 2-second debounce. The sidebar sync icon spins for the whole in-flight window. "Sync Now" (`vault:sync`) forces an immediate flush of that queue and reloads from the local cache — it does **not** re-run conflict resolution against Drive, so it won't pull down someone else's edits the way a fresh login does. Failed Drive writes retry up to 3 times before being dropped (and logged) rather than looping forever; anything still queued when the app closes just waits for the next launch or manual sync.
+
+**Locking vs. logging out vs. closing the window.** These three are not the same operation. **Lock** only calls `clearSession()` — the `DriveClient` instance, and any sync it has in flight, keeps running in the background. **Logout** calls `driveClient.close()` first (final flush, timer stopped, client discarded) and only then clears the session — a clean break. **Clicking the window's close button** doesn't quit at all; it minimizes to the tray so background sync can keep working. Only quitting from the tray menu or an OS shutdown hits `before-quit`, which flushes any pending sync one last time before the process exits.
+
 
 ---
 
