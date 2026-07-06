@@ -47,8 +47,10 @@ flowchart TD
         PinScreen --> PickAccount[Pick a saved account, or none]
         PickAccount --> EnterPin[Enter PIN]
         EnterPin --> PinVerify{"pin:verify"}
-        PinVerify -- "wrong / rate-limited" --> EnterPin
-        PinVerify -- "correct" --> LoginWithPin["auth:loginWithPin(verifyId)"]
+        PinVerify -- wrong --> EnterPin
+        PinVerify -- "5 wrong attempts / 15 min" --> Lockout["15-minute lockout"]
+        Lockout --> EnterPin
+        PinVerify -- correct --> LoginWithPin["auth:loginWithPin(verifyId)"]
         PinScreen -. "Sign in with Google instead" .-> LoginScreen
 
         LoginScreen --> OAuth[Google OAuth 2.0 popup]
@@ -79,21 +81,29 @@ flowchart TD
         direction TB
         AppReady --> UserAction{"User action"}
 
-        UserAction -- "add / edit / delete item" --> SaveItem[Update local cache]
-        SaveItem --> DirtyQueue[Push to dirty queue]
+        UserAction -- "add / edit item" --> SaveItem[Update local cache]
+        UserAction -- "delete item" --> SoftDelete["Soft-delete: mark deletedAt (moves to Trash)"]
+        UserAction -- "permanently delete from Trash" --> PermDelete["permDelete: remove from cache + queue Drive file deletion"]
+        SaveItem --> DirtyQueue[Push to dirty queue<br/>persisted to disk cache]
+        SoftDelete --> DirtyQueue
+        PermDelete --> DirtyQueue
         DirtyQueue --> IconSpin["Sidebar sync icon spins (withSyncSpin)"]
         IconSpin --> Debounce["2s debounce"]
         Debounce --> SyncToDrive["syncToDrive: flush dirty queue"]
 
-        UserAction -- 'click "Sync now"' --> ManualSync["api.vaultSync()"]
+        UserAction -- "click Sync Now button" --> ManualSync["api.vaultSync()"]
         ManualSync --> IconSpin
 
         SyncToDrive -- success --> ClearDirty[Remove item from dirty queue]
-        SyncToDrive -- failure --> Retry{"retryCount < 3?"}
+        SyncToDrive -- "network / API error" --> Retry{"retryCount < 3?"}
         Retry -- yes --> DirtyQueue
-        Retry -- no --> DropItem[Drop item, log error]
+        Retry -- "no, or app was offline" --> StayQueued["Item stays in dirty queue on disk,<br/>retried next launch or Sync Now"]
         ClearDirty --> IconStop[Icon stops spinning]
-        DropItem --> IconStop
+        StayQueued --> IconStop
+
+        UserAction -- "enable / change / disable PIN in Settings" --> PinMgmt{"pin:setup / pin:change / pin:disable"}
+        PinMgmt --> UpdateMeta["Update vault_pin_meta + reset rate limiter"]
+        UpdateMeta --> UserAction
 
         UserAction -- "idle timeout / manual lock" --> Lock[doLock: wipe sensitive data from memory]
         UserAction -- "logout" --> Logout[doLogout: clear session + memory]
@@ -112,11 +122,11 @@ flowchart TD
 
 **Cold start.** The renderer never assumes it knows anything before `pin:status` answers — that single call decides both which screen to show and, now, whether the PIN input should accept letters (`allowAlpha`), since real session settings don't exist yet at this point.
 
-**Authentication.** Both paths converge on a session token. PIN login never lets a token or Google ID pass through the renderer in cleartext — `pin:verify` hands back a short-lived `verifyId` that only `auth:loginWithPin` can redeem.
+**Authentication.** Both paths converge on a session token. PIN login never lets a token or Google ID pass through the renderer in cleartext — `pin:verify` hands back a short-lived `verifyId` that only `auth:loginWithPin` can redeem. Five wrong PIN attempts in 15 minutes trigger a 15-minute lockout, tracked on disk so it survives an app restart.
 
 **Drive init & conflict resolution.** This is the step that keeps the local cache honest. A snapshot of each file's last-known `modifiedTime` is taken *before* the live index refresh overwrites it, so the app can tell "unchanged" apart from "edited elsewhere since we last synced" — the latter triggers a re-download that replaces the stale local copy, unless that item still has an unsynced local edit sitting in the dirty queue (local wins in that case).
 
-**Active session.** Every mutation goes local-first (instant UI, offline-safe), gets queued, and is flushed to Drive on a 2-second debounce or an immediate manual "Sync now". The sidebar sync icon spins for the whole in-flight window, whether that's one save or several queued at once. Failed syncs retry up to 3 times before being dropped (and logged) rather than looping forever.
+**Active session.** Every mutation — add, edit, soft-delete (to Trash), or permanent delete — goes local-first (instant UI, offline-safe), gets queued, and is flushed to Drive on a 2-second debounce or an immediate manual "Sync now". The sidebar sync icon spins for the whole in-flight window, whether that's one save or several queued at once. Failed syncs retry up to 3 times; if the app is offline or retries are exhausted, the item simply stays in the on-disk dirty queue and is picked up again on the next launch or manual sync — nothing is silently lost. Enabling, changing, or disabling the PIN from Settings updates `vault_pin_meta` and resets the rate limiter, then returns straight back into the session.
 
 **Locking / logging out.** Both funnel back to the same fork at the top of the diagram: if PIN login is enabled you land back on the PIN screen, otherwise back on the appropriate Google screen — closing the loop.
 
