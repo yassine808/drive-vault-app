@@ -109,6 +109,49 @@ const { MAX_NOTES_LEN, sanitizeStr, validType } = validation;
 
 // ── Drive-backed data operations ──
 
+/**
+ * Resolve the real per-account encryption salt after driveClient.init().
+ *
+ * Local cache alone is NOT a reliable source for this: on a fresh install,
+ * a new device, or after the local cache file is cleared, the local
+ * settings won't have `userSalt` even though the *real* one already lives
+ * in Drive (vault_settings). Previously every login path treated "missing
+ * locally" as "never existed" and minted a brand-new random salt — which
+ * derives a different encKey than the one used to encrypt existing items,
+ * so every already-synced password/note silently failed to decrypt and
+ * just vanished from the list (with only newly-saved items, encrypted
+ * under the new wrong key, showing up).
+ *
+ * Fix: after init(), the file ID cache is populated, so we can pull
+ * vault_settings straight from Drive and recover the authoritative salt
+ * before deriving encKey. Only mint a new salt if Drive genuinely has
+ * none either (a real first-time login).
+ */
+async function resolveUserSalt(
+  driveClientRef: DriveClient,
+  localSalt: string | undefined,
+  context: string,
+): Promise<string> {
+  if (localSalt) return localSalt;
+  try {
+    const driveSettings = await driveClientRef.loadSettings();
+    const driveSalt = (driveSettings as Record<string, unknown> | null)?.userSalt as
+      | string
+      | undefined;
+    if (driveSalt) {
+      logger.info("crypto", "Recovered existing per-account salt from Drive", { context });
+      return driveSalt;
+    }
+  } catch (e) {
+    logger.warn("crypto", "Could not check Drive for existing salt", {
+      context,
+      message: (e as Error).message,
+    });
+  }
+  logger.info("crypto", "Generated new per-account salt", { context });
+  return generateUserSalt();
+}
+
 async function driveLoadItems(
   encKey: string,
   googleId?: string,
@@ -608,24 +651,24 @@ ipcMain.handle("auth:login", async () => {
     const profile = await googleOAuth();
 
     // Load or generate per-account salt for strong key derivation.
-    // Try the local cache file first — if the user has logged in before
-    // (even on another machine that synced the cache), the salt will be there.
+    // Local cache is checked first, but it's not authoritative — see
+    // resolveUserSalt() for why we must also check Drive before minting
+    // a new one.
     const cacheMod = await import("./modules/cache");
     const cachedData = cacheMod.loadCache(profile.googleId);
-    let userSalt = (cachedData.settings as Record<string, unknown>)?.userSalt as string | undefined;
-    if (!userSalt) {
-      userSalt = generateUserSalt();
-      logger.info("crypto", "Generated new per-account salt", {
-        email: profile.email,
-      });
-    }
+    const localSalt = (cachedData.settings as Record<string, unknown>)?.userSalt as
+      | string
+      | undefined;
 
-    const encKey = deriveKey(profile.googleId, userSalt);
-
-    // Initialize Drive client with the OAuth2 credentials
-    driveClient = new DriveClient(profile.googleId, encKey, logger as any);
+    // Initialize Drive client with the OAuth2 credentials. Use a
+    // placeholder key for now — DriveClient doesn't use it internally,
+    // only main.ts's later decrypt calls do, and encKey is finalized below.
+    driveClient = new DriveClient(profile.googleId, deriveKey(profile.googleId), logger as any);
     await driveClient.init(oauth2Client);
     updateDriveClient(driveClient);
+
+    const userSalt = await resolveUserSalt(driveClient, localSalt, "login");
+    const encKey = deriveKey(profile.googleId, userSalt);
 
     // Persist OAuth tokens (encrypted) so PIN login can re-authenticate with
     // Drive without a browser popup, and keep them fresh on auto-refresh.
@@ -819,22 +862,18 @@ ipcMain.handle("auth:reauth", async () => {
     }
     const cacheMod2 = await import("./modules/cache");
     const cachedData2 = cacheMod2.loadCache(profile.googleId);
-    let userSalt2 = (cachedData2.settings as Record<string, unknown>)?.userSalt as
+    const localSalt2 = (cachedData2.settings as Record<string, unknown>)?.userSalt as
       | string
       | undefined;
-    if (!userSalt2) {
-      userSalt2 = generateUserSalt();
-      logger.info("crypto", "Generated new per-account salt (reauth)", {
-        email: profile.email,
-      });
-    }
 
-    const encKey = deriveKey(profile.googleId, userSalt2);
-
-    // Re-init Drive client
-    driveClient = new DriveClient(profile.googleId, encKey, logger as any);
+    // Re-init Drive client with a placeholder key; finalize encKey after
+    // recovering the real salt (see resolveUserSalt for why).
+    driveClient = new DriveClient(profile.googleId, deriveKey(profile.googleId), logger as any);
     await driveClient.init(oauth2Client);
     updateDriveClient(driveClient);
+
+    const userSalt2 = await resolveUserSalt(driveClient, localSalt2, "reauth");
+    const encKey = deriveKey(profile.googleId, userSalt2);
 
     driveClient.cache.settings = {
       ...driveClient.cache.settings,
@@ -911,19 +950,14 @@ ipcMain.handle(
         return { ok: false, error: "Invalid session" };
       }
 
-      // Load or generate per-account salt for PIN login
+      // Load per-account salt for PIN login. Local cache is checked first,
+      // but final value is resolved against Drive after init (see
+      // resolveUserSalt) — local-only is not authoritative.
       const pinCacheMod = await import("./modules/cache");
       const pinCached = pinCacheMod.loadCache(googleId);
-      let pinSalt = (pinCached.settings as Record<string, unknown>)?.userSalt as string | undefined;
-      if (!pinSalt) {
-        // First PIN login on this machine — generate and persist
-        pinSalt = generateUserSalt();
-        logger.info("crypto", "Generated new per-account salt (PIN login)", {
-          email,
-        });
-      }
-
-      const encKey = deriveKey(googleId, pinSalt);
+      const localPinSalt = (pinCached.settings as Record<string, unknown>)?.userSalt as
+        | string
+        | undefined;
 
       // Rehydrate oauth2Client from stored (encrypted) tokens if we don't
       // already have a live one from this session — without this, PIN login
@@ -941,12 +975,15 @@ ipcMain.handle(
         }
       }
 
-      // Try to initialize Drive client if we have OAuth tokens
+      // Try to initialize Drive client if we have OAuth tokens (placeholder
+      // key for now; finalized below once the real salt is known)
+      let pinSalt: string;
       if (oauth2Client) {
         try {
-          driveClient = new DriveClient(googleId, encKey, logger as any);
+          driveClient = new DriveClient(googleId, deriveKey(googleId), logger as any);
           await driveClient.init(oauth2Client);
           updateDriveClient(driveClient);
+          pinSalt = await resolveUserSalt(driveClient, localPinSalt, "pin-login");
           // Keep persisted tokens fresh as the client auto-refreshes them
           oauth2Client.on("tokens", (t: Record<string, unknown>) => {
             if (driveClient) {
@@ -962,8 +999,13 @@ ipcMain.handle(
             error: driveErr instanceof Error ? driveErr.message : String(driveErr),
           });
           driveClient = null;
+          pinSalt = localPinSalt || generateUserSalt();
         }
+      } else {
+        pinSalt = localPinSalt || generateUserSalt();
       }
+
+      const encKey = deriveKey(googleId, pinSalt);
 
       // If driveClient is null (no OAuth or init failed), create a cache-only instance
       if (!driveClient) {
